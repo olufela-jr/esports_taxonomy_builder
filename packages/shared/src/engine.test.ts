@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compose, validate, type Rule } from "./engine";
+import { compose, rollup, validate, type Rule, type RuleScan } from "./engine";
 
 const campaignRule: Rule = {
   key: "campaign",
@@ -90,5 +90,54 @@ describe("naming rule engine", () => {
 
     expect(result.errors).toContain("Optional segments must appear at the end of a rule.");
     expect(result.errors).toContain('Segment keys must be unique: "custom_id".');
+  });
+});
+
+describe("All Rules rollup", () => {
+  const scans: RuleScan[] = [
+    {
+      ruleKey: "google_campaigns",
+      ruleName: "Google Campaigns",
+      tags: { platform: "google", entityType: "campaign" },
+      scanned: 2,
+      valid: 1,
+    },
+    {
+      ruleKey: "meta_ad_sets",
+      ruleName: "Meta Ad Sets",
+      tags: { platform: "meta", entityType: "ad_set" },
+      scanned: 3,
+      valid: 2,
+    },
+  ];
+
+  it("pools valid and scanned counts across rules", () => {
+    const result = rollup(scans);
+
+    expect(result.total).toEqual({ scanned: 5, valid: 3, invalid: 2 });
+    expect(result.perRule.map((rule) => rule.invalid)).toEqual([1, 1]);
+  });
+
+  it("groups counts by platform and entity type, defaulting to untagged", () => {
+    const result = rollup([
+      ...scans,
+      { ruleKey: "tiktok_creatives", ruleName: "TikTok Creatives", scanned: 4, valid: 4 },
+    ]);
+
+    expect(result.byPlatform).toEqual({
+      google: { scanned: 2, valid: 1, invalid: 1 },
+      meta: { scanned: 3, valid: 2, invalid: 1 },
+      untagged: { scanned: 4, valid: 4, invalid: 0 },
+    });
+    expect(result.byEntityType.campaign).toEqual({ scanned: 2, valid: 1, invalid: 1 });
+    expect(result.byEntityType.untagged).toEqual({ scanned: 4, valid: 4, invalid: 0 });
+  });
+
+  it("returns zero counts for no scans and for rules with nothing to scan", () => {
+    expect(rollup([]).total).toEqual({ scanned: 0, valid: 0, invalid: 0 });
+
+    const result = rollup([{ ruleKey: "empty", ruleName: "Empty", scanned: 0, valid: 0 }]);
+    expect(result.total).toEqual({ scanned: 0, valid: 0, invalid: 0 });
+    expect(result.perRule[0]?.invalid).toBe(0);
   });
 });

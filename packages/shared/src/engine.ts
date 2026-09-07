@@ -59,6 +59,36 @@ export type ValidateResult = {
   violations: Violation[];
 };
 
+export type Tags = {
+  platform?: string;
+  entityType?: string;
+};
+
+// One Rule's scan totals, however the names were obtained (CSV rows now,
+// a BigQuery scan in Stage 2). Raw counts only: the UI decides how to round.
+export type RuleScan = {
+  ruleKey: string;
+  ruleName: string;
+  tags?: Tags;
+  scanned: number;
+  valid: number;
+};
+
+export type Counts = {
+  scanned: number;
+  valid: number;
+  invalid: number;
+};
+
+export type Rollup = {
+  total: Counts;
+  perRule: (RuleScan & Counts)[];
+  byPlatform: Record<string, Counts>;
+  byEntityType: Record<string, Counts>;
+};
+
+export const UNTAGGED = "untagged";
+
 const NAME_VIOLATION_KEY = "__name__";
 
 function getRuleErrors(rule: Rule): string[] {
@@ -265,4 +295,43 @@ export function validate(rule: Rule, name: string): ValidateResult {
     valid: violations.length === 0,
     violations,
   };
+}
+
+function emptyCounts(): Counts {
+  return { scanned: 0, valid: 0, invalid: 0 };
+}
+
+function addScan(counts: Counts, scan: RuleScan): void {
+  counts.scanned += scan.scanned;
+  counts.valid += scan.valid;
+  counts.invalid += scan.scanned - scan.valid;
+}
+
+// Pools every Rule's counts into one Rule-Set-wide figure: total valid over
+// total scanned across Rules. The CSV checker and the Stage 2 scan must both
+// call this so "All Rules" always means the same thing.
+export function rollup(scans: RuleScan[]): Rollup {
+  const total = emptyCounts();
+  const byPlatform: Record<string, Counts> = {};
+  const byEntityType: Record<string, Counts> = {};
+  const perRule: (RuleScan & Counts)[] = [];
+
+  for (const scan of scans) {
+    addScan(total, scan);
+
+    const platform = scan.tags?.platform || UNTAGGED;
+    byPlatform[platform] ??= emptyCounts();
+    addScan(byPlatform[platform], scan);
+
+    const entityType = scan.tags?.entityType || UNTAGGED;
+    byEntityType[entityType] ??= emptyCounts();
+    addScan(byEntityType[entityType], scan);
+
+    perRule.push({
+      ...scan,
+      invalid: scan.scanned - scan.valid,
+    });
+  }
+
+  return { total, perRule, byPlatform, byEntityType };
 }

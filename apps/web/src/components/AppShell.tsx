@@ -25,22 +25,21 @@ function NavItem({ href, icon: Icon, label, active, onClick }: { href: string; i
 export function AppShell({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { ruleSetId, ruleId, individualRuleId, setRuleSetId, setRuleId, setLastAction } = useUi();
+  const { ruleSetId, ruleId, setRuleSetId, setRuleId, setLastAction } = useUi();
   const { ruleSets } = useRuleSets();
 
   const current = location.startsWith('/build') ? 'build' : location.startsWith('/check') ? 'check' : 'author';
 
   const selectedRuleSet = ruleSets.find(rs => rs.id === ruleSetId);
-  
+
+  // Keep the Rule selection valid for the selected Rule Set: fall back to its first Rule.
   useEffect(() => {
     if (selectedRuleSet && selectedRuleSet.rules.length > 0) {
-      if (current !== 'check' && ruleId === 'all_rules') {
-        setRuleId(individualRuleId || selectedRuleSet.rules[0].key);
-      } else if (!ruleId || (ruleId !== 'all_rules' && !selectedRuleSet.rules.find(r => r.key === ruleId))) {
+      if (!ruleId || !selectedRuleSet.rules.find(r => r.key === ruleId)) {
         setRuleId(selectedRuleSet.rules[0].key);
       }
     }
-  }, [selectedRuleSet, ruleId, individualRuleId, current, setRuleId]);
+  }, [selectedRuleSet, ruleId, setRuleId]);
 
   return (
     <div className="min-h-[100dvh] bg-background">
@@ -92,7 +91,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               {selectedRuleSet && selectedRuleSet.rules.map(r => (
                 <option key={r.key} value={r.key}>{r.label}</option>
               ))}
-              {selectedRuleSet && current === 'check' && <option value="all_rules">All Rules</option>}
             </select>
           </div>
         </div>
