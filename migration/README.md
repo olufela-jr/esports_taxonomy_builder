@@ -10,8 +10,9 @@ Working notes for moving the Replit prototype to the target described in `CLAUDE
 | [phase-2.md](phase-2.md) | Immutable ids, spec data model, engine owns authoring checks, segment reorder |
 | [phase-3.md](phase-3.md) | Playwright regression tests for editor typing and shared context; three defects fixed |
 | [phase-4a.md](phase-4a.md) | One store module with Firestore and in-memory implementations; Check All Rules coverage; loud production failure without config |
+| [phase-4b.md](phase-4b.md) | State in App.tsx with useState and props, no Context; screens renamed to the spec's component names |
 
-Phases still to come: 4b (state to `useState` and props, screen renames), 5 (Firebase Auth and Security Rules), 6 (finish stripping, docs), 7 (final verification).
+Phases still to come: 5 (Firebase Auth and Security Rules), 6 (finish stripping, docs), 7 (final verification).
 
 Conventions for the notes files:
 
