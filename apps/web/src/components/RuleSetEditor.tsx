@@ -1,106 +1,26 @@
-import { type FormEvent, type ReactNode, useState, useEffect } from 'react';
+import { type FormEvent, useState, useEffect } from 'react';
 import {
   AlertCircle,
   ArrowDown,
   ArrowLeft,
-  ArrowRight,
   ArrowUp,
-  BadgeCheck,
   BookOpen,
   Check,
   CheckCircle2,
   Database,
-  Hash,
-  Layers3,
   Plus,
-  Search,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { checkRuleSet } from '@taxo/shared';
-import { type FreeformSegment, type Rule, type Segment, type RuleSet, type Tags, useRuleSets } from '@/hooks/use-rulesets';
-import { useUi } from '@/context/UiContext';
+import { checkRuleSet, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
+import type { RuleSet, RuleSetDraft } from '@/data/store';
 import { newId } from '@/lib/ids';
-
-const OWNER_NAMES: Record<string, string> = { maya: 'Maya Chen', jonah: 'Jonah Reed', alina: 'Alina Park', you: 'You' };
-const inputClass = 'h-9 w-full rounded-[4px] border-0 bg-[#EAE8E3] px-3 text-[13px] font-semibold text-gray-900 shadow-inner outline-none transition-all placeholder:text-gray-500 focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#F2F0EB]';
-const buttonPrimary = 'inline-flex h-9 items-center justify-center gap-2 rounded-[4px] bg-primary px-4 text-[13px] font-bold text-primary-foreground transition-all hover:brightness-110 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50';
-const buttonQuiet = 'inline-flex h-9 items-center justify-center gap-2 rounded-[4px] border border-border bg-card px-3.5 text-[13px] font-bold text-foreground transition-all hover:-translate-y-px hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50';
-const buttonDanger = 'inline-flex h-9 items-center justify-center gap-2 rounded-[4px] border border-destructive/25 bg-destructive/10 px-3.5 text-[13px] font-bold text-destructive transition-all hover:bg-destructive/20';
-const iconButton = 'rounded-md p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:opacity-30';
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
-}
-
-function ownerName(ownerId: string) {
-  return OWNER_NAMES[ownerId] ?? ownerId;
-}
+import { buttonDanger, buttonPrimary, buttonQuiet, iconButton, inputClass } from './styles';
 
 // Editable slug derived from a display name. Keys are lowercase by convention;
 // enum values are not touched, they match exactly and case-sensitively.
 function slugify(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-}
-
-function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: ReactNode }) {
-  return (
-    <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div>
-        <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">{eyebrow}</div>
-        <h1 className="font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{title}</h1>
-        {description && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>}
-      </div>
-      {action && <div>{action}</div>}
-    </div>
-  );
-}
-
-function StatCard({ label, value, caption, icon: Icon, status }: { label: string; value: string; caption: string; icon: typeof Layers3; status: string }) {
-  return <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
-    <div className="flex items-start justify-between">
-      <div>
-        <div className="font-serif text-xl font-medium text-foreground">{label}</div>
-        <div className="mt-1 text-[11px] font-bold text-muted-foreground">{caption}</div>
-      </div>
-      <div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><Icon className="h-3 w-3" /></div>
-    </div>
-    <div className="mt-8 font-serif text-4xl tracking-tight text-foreground" data-testid={`text-stat-${label.toLowerCase().replaceAll(' ', '-')}`}>{value}</div>
-    <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-primary" /><span className="text-[10px] font-bold text-foreground">{status}</span></div>
-  </div>;
-}
-
-function EmptyState({ query }: { query: string }) {
-  return <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded bg-muted text-muted-foreground"><Search className="h-5 w-5" /></div><h3 className="mt-4 text-sm font-semibold text-foreground">{query ? 'No matching Rule Sets' : 'No Rule Sets configured'}</h3><p className="mt-1.5 text-xs text-muted-foreground">{query ? 'Try a different search term.' : 'Create a new Rule Set to define naming rules.'}</p></div>;
-}
-
-function RuleSetRow({ ruleSet, index, onSelect }: { ruleSet: RuleSet; index: number; onSelect: () => void }) {
-  const segmentCount = ruleSet.rules.reduce((sum: number, rule: Rule) => sum + rule.segments.length, 0);
-  return <button onClick={onSelect} className="w-full text-left group flex flex-col gap-4 rounded-xl border border-border/30 bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md sm:flex-row sm:items-center sm:justify-between" data-testid={`card-ruleset-${ruleSet.id}`}>
-    <div className="flex min-w-0 items-center gap-4"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted font-mono text-sm text-foreground shadow-inner">{String(index + 1).padStart(2, '0')}</div><div className="min-w-0"><div className="flex items-center gap-2.5"><h3 className="truncate font-serif text-xl font-medium text-foreground">{ruleSet.name}</h3><span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Active</span></div><p className="mt-1.5 text-[13px] font-medium text-muted-foreground">Owned by {ownerName(ruleSet.ownerId)} · Updated {formatDate(ruleSet.updatedAt)}</p></div></div>
-    <div className="flex items-center justify-between gap-5 pl-14 sm:justify-end sm:pl-0"><div className="text-right"><div className="font-serif text-2xl font-medium text-foreground">{ruleSet.rules.length}</div><div className="text-[11px] font-bold text-muted-foreground mt-0.5">Rules / {segmentCount} segments</div></div><ArrowRight className="h-5 w-5 text-muted-foreground transition-all group-hover:translate-x-1 group-hover:text-primary" /></div>
-  </button>;
-}
-
-function Overview({ ruleSets, onCreate }: { ruleSets: RuleSet[]; onCreate: () => void }) {
-  const [query, setQuery] = useState('');
-  const { setRuleSetId } = useUi();
-  const filtered = ruleSets.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
-  const totalSegments = ruleSets.reduce((sum, ruleSet) => sum + ruleSet.rules.reduce((ruleSum: number, rule: Rule) => ruleSum + rule.segments.length, 0), 0);
-  return (
-    <div>
-      <PageHeading eyebrow="Marketing Operations" title="Rule Set overview" description="Manage campaign naming rules and structures across the organization." action={<button type="button" onClick={onCreate} className={buttonPrimary} data-testid="button-create-ruleset"><Plus className="h-4 w-4" /> New Rule Set</button>} />
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Rule Sets" value={String(ruleSets.length)} caption="Active configurations" icon={Layers3} status="Active" />
-        <StatCard label="Defined rules" value={String(ruleSets.reduce((sum, item) => sum + item.rules.length, 0))} caption={`${totalSegments} configured segments`} icon={Hash} status="Configured" />
-        <StatCard label="Status" value="100%" caption="Local draft active" icon={BadgeCheck} status="Operational" />
-      </div>
-      <section id="rulesets">
-        <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-serif text-2xl font-medium tracking-tight text-foreground">Configured Rule Sets</h2><p className="mt-1.5 text-sm text-muted-foreground">Select a Rule Set to edit its rules and source mappings.</p></div><div className="relative w-full sm:w-72"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} className={`${inputClass} pl-10`} placeholder="Search Rule Sets" aria-label="Search Rule Sets" data-testid="input-search-rulesets" /></div></div>
-        {filtered.length > 0 ? <div className="grid gap-4">{filtered.map((ruleSet, index) => <RuleSetRow key={ruleSet.id} ruleSet={ruleSet} index={index} onSelect={() => setRuleSetId(ruleSet.id)} />)}</div> : <EmptyState query={query} />}
-      </section>
-    </div>
-  );
 }
 
 function emptyRule(index: number): Rule {
@@ -155,8 +75,8 @@ function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, onChang
   </div>;
 }
 
-function RuleSetEditor({ existing, justCreated, onSaved, onClose }: { existing: RuleSet | null; justCreated?: boolean; onSaved: (id: string) => void; onClose: () => void }) {
-  const { createRuleSet, updateRuleSet, deleteRuleSet } = useRuleSets();
+// Feature 1: author one Rule Set and its Rules. Storage arrives as props.
+export function RuleSetEditor({ existing, justCreated, onCreate, onUpdate, onDelete, onSaved, onClose }: { existing: RuleSet | null; justCreated?: boolean; onCreate: (draft: RuleSetDraft) => Promise<RuleSet>; onUpdate: (id: string, draft: RuleSetDraft) => Promise<void>; onDelete: (id: string) => Promise<void>; onSaved: (id: string) => void; onClose: () => void }) {
   const isNew = existing === null;
   const [name, setName] = useState(existing?.name ?? 'Untitled Rule Set');
   const [rules, setRules] = useState<Rule[]>(existing?.rules ?? [emptyRule(0)]);
@@ -202,11 +122,11 @@ function RuleSetEditor({ existing, justCreated, onSaved, onClose }: { existing: 
     setError('');
     try {
       if (isNew) {
-        const created = await createRuleSet(draft);
+        const created = await onCreate(draft);
         onSaved(created.id);
         return;
       }
-      await updateRuleSet(existing.id, draft);
+      await onUpdate(existing.id, draft);
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Saving failed.');
@@ -214,7 +134,7 @@ function RuleSetEditor({ existing, justCreated, onSaved, onClose }: { existing: 
   };
 
   return <form onSubmit={onSubmit}>
-    <div className="mb-8 flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between"><div><button type="button" onClick={onClose} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:text-foreground" data-testid="button-back-overview"><ArrowLeft className="h-3.5 w-3.5" /> Overview</button><div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Rule Set' : 'Edit Rule Set'}</div><h1 className="mt-2 font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{isNew ? 'Create Rule Set' : 'Edit Rule Set'}</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">Define naming rules and required segments for campaigns.</p></div><div className="flex items-center gap-3">{saved ? <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary"><CheckCircle2 className="h-4 w-4" /> Saved locally</span> : isDirty ? <span className="mr-2 text-xs font-semibold text-muted-foreground">Unsaved — save to use in Build</span> : null}{!isNew && <button type="button" className={buttonDanger} onClick={() => { if (window.confirm('Delete this Rule Set?')) { void deleteRuleSet(existing.id); onClose(); } }} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}<button type="submit" className={buttonPrimary} data-testid="button-save-ruleset"><Check className="h-4 w-4" /> Save Rule Set</button></div></div>
+    <div className="mb-8 flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between"><div><button type="button" onClick={onClose} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:text-foreground" data-testid="button-back-overview"><ArrowLeft className="h-3.5 w-3.5" /> Overview</button><div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Rule Set' : 'Edit Rule Set'}</div><h1 className="mt-2 font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{isNew ? 'Create Rule Set' : 'Edit Rule Set'}</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">Define naming rules and required segments for campaigns.</p></div><div className="flex items-center gap-3">{saved ? <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary"><CheckCircle2 className="h-4 w-4" /> Saved locally</span> : isDirty ? <span className="mr-2 text-xs font-semibold text-muted-foreground">Unsaved — save to use in Build</span> : null}{!isNew && <button type="button" className={buttonDanger} onClick={() => { if (window.confirm('Delete this Rule Set?')) { void onDelete(existing.id); onClose(); } }} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}<button type="submit" className={buttonPrimary} data-testid="button-save-ruleset"><Check className="h-4 w-4" /> Save Rule Set</button></div></div>
     <div className="mx-auto max-w-4xl">
       {error && <div className="mb-6 flex items-center gap-3 rounded-[4px] border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert" data-testid="status-ruleset-error"><AlertCircle className="h-5 w-5 shrink-0" /> {error}</div>}
       <section className="mb-8 rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="mb-6 flex items-start justify-between"><div className="flex flex-col"><h2 className="font-serif text-2xl font-medium text-foreground">General information</h2><p className="text-xs font-bold text-muted-foreground mt-1">Name this Rule Set to identify it in the workspace.</p></div><div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><BookOpen className="h-3 w-3" /></div></div><label className="block text-[13px] font-bold text-foreground">Rule Set name:<input value={name} onChange={(event) => setName(event.target.value)} className={`${inputClass} mt-2 font-serif text-lg`} placeholder="e.g. Regional paid media" data-testid="input-ruleset-name" /></label></section>
@@ -252,27 +172,4 @@ function RuleSetEditor({ existing, justCreated, onSaved, onClose }: { existing: 
       <div className="mt-8 rounded-xl border border-border/30 bg-card p-5 text-[13px] font-bold leading-relaxed text-muted-foreground shadow-sm"><div className="flex items-center gap-2 text-foreground mb-1"><ShieldCheck className="h-4 w-4" /> Governance constraint</div><p>Keys should remain stable once a Rule Set is in use.</p></div>
     </div>
   </form>;
-}
-
-export function Author() {
-  const { ruleSets } = useRuleSets();
-  const { ruleSetId, setRuleSetId } = useUi();
-  const [creating, setCreating] = useState(false);
-  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
-  const existing = ruleSets.find((rs) => rs.id === ruleSetId) ?? null;
-
-  // Picking a Rule Set from the shell while a draft is open abandons the draft.
-  useEffect(() => {
-    if (ruleSetId) setCreating(false);
-  }, [ruleSetId]);
-
-  if (existing) {
-    return <RuleSetEditor key={existing.id} existing={existing} justCreated={existing.id === justCreatedId} onSaved={setRuleSetId} onClose={() => setRuleSetId(null)} />;
-  }
-
-  if (creating) {
-    return <RuleSetEditor key="new" existing={null} onSaved={(id) => { setCreating(false); setJustCreatedId(id); setRuleSetId(id); }} onClose={() => setCreating(false)} />;
-  }
-
-  return <Overview ruleSets={ruleSets} onCreate={() => setCreating(true)} />;
 }

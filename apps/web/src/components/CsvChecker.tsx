@@ -1,26 +1,11 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { useUi, type CheckMode } from '@/context/UiContext';
-import { useRuleSets, type Rule, type RuleSet } from '@/hooks/use-rulesets';
-import { rollup, validate, UNTAGGED, type Counts, type Rollup, type RuleScan, type Violation } from '@taxo/shared';
+import { rollup, validate, UNTAGGED, type Counts, type Rollup, type Rule, type RuleScan, type Violation } from '@taxo/shared';
 import { ClipboardCheck, Download, FileSpreadsheet, Filter, Upload, CheckCircle2, XCircle, AlertCircle, AlertTriangle } from 'lucide-react';
-
-const inputClass = 'h-9 w-full rounded-[4px] border-0 bg-[#EAE8E3] px-3 text-[13px] font-semibold text-gray-900 shadow-inner outline-none transition-all placeholder:text-gray-500 focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#F2F0EB]';
-const buttonPrimary = 'inline-flex h-9 items-center justify-center gap-2 rounded-[4px] bg-primary px-4 text-[13px] font-bold text-primary-foreground transition-all hover:brightness-110 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50';
-const buttonQuiet = 'inline-flex h-9 items-center justify-center gap-2 rounded-[4px] border border-border bg-card px-3.5 text-[13px] font-bold text-foreground transition-all hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50';
-
-function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: React.ReactNode }) {
-  return (
-    <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div>
-        <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">{eyebrow}</div>
-        <h1 className="font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{title}</h1>
-        {description && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>}
-      </div>
-      {action && <div>{action}</div>}
-    </div>
-  );
-}
+import type { RuleSet } from '@/data/store';
+import type { CheckMode } from '@/data/ui-state';
+import { PageHeading } from './PageHeading';
+import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 type SingleCheckResult = { row: number; name: string; valid: boolean; violations: Violation[] };
 
@@ -112,13 +97,12 @@ function ModeButton({ active, onClick, testId, children }: { active: boolean; on
   );
 }
 
-export function Check() {
-  const { ruleSetId, ruleId, checkMode, setCheckMode } = useUi();
-  const { ruleSets } = useRuleSets();
-
-  const ruleSet = ruleSets.find(rs => rs.id === ruleSetId);
+// Feature 3a: validate a CSV client-side against the Rule selected in the shell,
+// or every Rule in the Rule Set.
+export function CsvChecker({ ruleSet, rule, checkMode, onCheckModeChange }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; checkMode: CheckMode; onCheckModeChange: (mode: CheckMode) => void }) {
+  const ruleSetId = ruleSet?.id;
+  const ruleId = rule?.id;
   const isAllRules = checkMode === 'all';
-  const rule = ruleSet?.rules.find((r: Rule) => r.id === ruleId);
 
   // The sample CSV and name column follow the selection until the user edits them.
   const [csv, setCsv] = useState(() => (ruleSet ? sampleCsv(ruleSet) : ''));
@@ -153,7 +137,7 @@ export function Check() {
   };
 
   const changeMode = (mode: CheckMode) => {
-    setCheckMode(mode);
+    onCheckModeChange(mode);
     resetResults();
   };
 

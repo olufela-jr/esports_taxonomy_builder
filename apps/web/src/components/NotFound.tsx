@@ -1,6 +1,6 @@
 import { AlertCircle } from 'lucide-react';
 
-export default function NotFound() {
+export function NotFound() {
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
       <div className="mx-4 w-full max-w-md rounded-xl border border-card-border bg-card p-6 shadow-xl">

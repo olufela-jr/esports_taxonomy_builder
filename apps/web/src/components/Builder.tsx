@@ -1,23 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useUi } from '@/context/UiContext';
-import { useRuleSets, type Segment, type Rule } from '@/hooks/use-rulesets';
-import { compose } from '@taxo/shared';
+import { compose, type Rule, type Segment } from '@taxo/shared';
 import { AlertCircle, Check, Copy, Database, Filter, Zap } from 'lucide-react';
-
-const inputClass = 'h-9 w-full rounded-[4px] border-0 bg-[#EAE8E3] px-3 text-[13px] font-semibold text-gray-900 shadow-inner outline-none transition-all placeholder:text-gray-500 focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#F2F0EB]';
-const buttonPrimary = 'inline-flex h-9 items-center justify-center gap-2 rounded-[4px] bg-primary px-4 text-[13px] font-bold text-primary-foreground transition-all hover:brightness-110 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50';
-
-function PageHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description?: string }) {
-  return (
-    <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div>
-        <div className="mb-1.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">{eyebrow}</div>
-        <h1 className="font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{title}</h1>
-        {description && <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>}
-      </div>
-    </div>
-  );
-}
+import type { RuleSet } from '@/data/store';
+import { PageHeading } from './PageHeading';
+import { buttonPrimary, inputClass } from './styles';
 
 function EmptyState() {
   return (
@@ -33,12 +19,10 @@ function EmptyState() {
   );
 }
 
-export function Build() {
-  const { ruleSetId, ruleId } = useUi();
-  const { ruleSets } = useRuleSets();
-
-  const ruleSet = ruleSets.find(rs => rs.id === ruleSetId);
-  const rule = ruleSet?.rules.find((r: Rule) => r.id === ruleId);
+// Feature 2: compose a compliant name from the Rule selected in the shell.
+export function Builder({ ruleSet, rule }: { ruleSet: RuleSet | undefined; rule: Rule | undefined }) {
+  const ruleSetId = ruleSet?.id;
+  const ruleId = rule?.id;
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);

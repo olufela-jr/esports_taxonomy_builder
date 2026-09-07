@@ -1,33 +1,27 @@
-import { createContext, useContext, ReactNode, useEffect, useState, useCallback } from "react";
-import { useLocation } from "wouter";
-import { useRuleSets, type RuleSet } from "@/hooks/use-rulesets";
+import type { RuleSet } from './types';
 
-type ActionPath = '/author' | '/build' | '/check';
+// The persistent workspace context: which Rule Set and Rule are selected, the
+// last action used, and the Check scope. Per-browser, so it lives in
+// localStorage; Rule Set data itself goes through the store module.
 
+export type ActionPath = '/author' | '/build' | '/check';
 export type CheckMode = 'single' | 'all';
 
 // ruleId is the selected Rule's immutable id, never its editable key.
-type UiState = {
+export type UiState = {
   ruleSetId: string | null;
   ruleId: string | null;
   lastAction: ActionPath;
   checkMode: CheckMode;
 };
 
-type UiContextType = UiState & {
-  setRuleSetId: (id: string | null) => void;
-  setRuleId: (id: string | null) => void;
-  setLastAction: (action: ActionPath) => void;
-  setCheckMode: (mode: CheckMode) => void;
-};
+export const defaultUiState: UiState = { ruleSetId: null, ruleId: null, lastAction: '/author', checkMode: 'single' };
 
-const UiContext = createContext<UiContextType | null>(null);
-
-const STORAGE_KEY = "campaign-tool-ui-state-v4";
+const STORAGE_KEY = 'campaign-tool-ui-state-v4';
 // v3 stored ruleId as the Rule's key (Rules had no ids yet).
-const V3_STORAGE_KEY = "campaign-tool-ui-state-v3";
+const V3_STORAGE_KEY = 'campaign-tool-ui-state-v3';
 // v2 stored "All Rules" as a sentinel ruleId and the real Rule's key in individualRuleId.
-const V2_STORAGE_KEY = "campaign-tool-ui-state-v2";
+const V2_STORAGE_KEY = 'campaign-tool-ui-state-v2';
 
 type StoredState = {
   ruleSetId?: string | null;
@@ -37,9 +31,7 @@ type StoredState = {
   checkMode?: string;
 };
 
-const defaultState: UiState = { ruleSetId: null, ruleId: null, lastAction: '/author', checkMode: 'single' };
-
-function isActionPath(value: unknown): value is ActionPath {
+export function isActionPath(value: unknown): value is ActionPath {
   return value === '/author' || value === '/build' || value === '/check';
 }
 
@@ -54,7 +46,7 @@ function ruleIdFromKey(ruleSets: RuleSet[], ruleSetId: string | null, ruleKey: s
   return ruleSet?.rules.find((rule) => rule.key === ruleKey)?.id ?? null;
 }
 
-function readInitialState(ruleSets: RuleSet[]): UiState {
+export function readUiState(ruleSets: RuleSet[]): UiState {
   try {
     const current = window.localStorage.getItem(STORAGE_KEY);
     if (current) {
@@ -96,54 +88,13 @@ function readInitialState(ruleSets: RuleSet[]): UiState {
   } catch {
     // Corrupt or unavailable storage: start fresh.
   }
-  return defaultState;
+  return defaultUiState;
 }
 
-export function UiProvider({ children }: { children: ReactNode }) {
-  const { ruleSets } = useRuleSets();
-  const [state, setState] = useState<UiState>(() => readInitialState(ruleSets));
-
-  const [location] = useLocation();
-
-  useEffect(() => {
+export function writeUiState(state: UiState): void {
+  try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
-
-  useEffect(() => {
-    if (isActionPath(location)) {
-      setState(s => (s.lastAction === location ? s : { ...s, lastAction: location }));
-    }
-  }, [location]);
-
-  const setRuleSetId = useCallback((id: string | null) => setState(s => {
-    if (s.ruleSetId === id) return s;
-    return { ...s, ruleSetId: id, ruleId: null };
-  }), []);
-
-  const setRuleId = useCallback((id: string | null) => setState(s => {
-    if (s.ruleId === id) return s;
-    return { ...s, ruleId: id };
-  }), []);
-
-  const setLastAction = useCallback((action: ActionPath) => setState(s => {
-    if (s.lastAction === action) return s;
-    return { ...s, lastAction: action };
-  }), []);
-
-  const setCheckMode = useCallback((mode: CheckMode) => setState(s => {
-    if (s.checkMode === mode) return s;
-    return { ...s, checkMode: mode };
-  }), []);
-
-  return (
-    <UiContext.Provider value={{ ...state, setRuleSetId, setRuleId, setLastAction, setCheckMode }}>
-      {children}
-    </UiContext.Provider>
-  );
-}
-
-export function useUi() {
-  const ctx = useContext(UiContext);
-  if (!ctx) throw new Error("useUi must be used within UiProvider");
-  return ctx;
+  } catch {
+    // Storage unavailable: the selection still works for this session.
+  }
 }

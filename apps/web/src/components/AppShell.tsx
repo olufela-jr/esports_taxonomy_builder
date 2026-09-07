@@ -1,8 +1,7 @@
-import { ReactNode, useState, useEffect } from 'react';
+import { ReactNode, useState } from 'react';
 import { BookOpen, Zap, ClipboardCheck, Settings2, ShieldCheck, Menu, X, ChevronRight } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
-import { useUi } from '@/context/UiContext';
-import { useRuleSets } from '@/hooks/use-rulesets';
+import type { RuleSet } from '@/data/store';
 
 function IconMark() {
   return (
@@ -12,9 +11,9 @@ function IconMark() {
   );
 }
 
-function NavItem({ href, icon: Icon, label, active, onClick }: { href: string; icon: typeof BookOpen; label: string; active: boolean; onClick?: () => void }) {
+function NavItem({ href, icon: Icon, label, active }: { href: string; icon: typeof BookOpen; label: string; active: boolean }) {
   return (
-    <Link href={href} onClick={onClick} className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}>
+    <Link href={href} className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}>
       <Icon className={`h-4 w-4 ${active ? 'text-accent' : 'text-sidebar-foreground/55 group-hover:text-accent'}`} />
       <span>{label}</span>
       {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" />}
@@ -22,24 +21,24 @@ function NavItem({ href, icon: Icon, label, active, onClick }: { href: string; i
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+type AppShellProps = {
+  ruleSets: RuleSet[];
+  ruleSetId: string | null;
+  ruleId: string | null;
+  onSelectRuleSet: (id: string | null) => void;
+  onSelectRule: (id: string) => void;
+  children: ReactNode;
+};
+
+// The action-first shell: the persistent Rule Set and Rule context, the three
+// actions, and the workspace for the current one.
+export function AppShell({ ruleSets, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { ruleSetId, ruleId, setRuleSetId, setRuleId, setLastAction } = useUi();
-  const { ruleSets } = useRuleSets();
 
   const current = location.startsWith('/build') ? 'build' : location.startsWith('/check') ? 'check' : 'author';
 
   const selectedRuleSet = ruleSets.find(rs => rs.id === ruleSetId);
-
-  // Keep the Rule selection valid for the selected Rule Set: fall back to its first Rule.
-  useEffect(() => {
-    if (selectedRuleSet && selectedRuleSet.rules.length > 0) {
-      if (!ruleId || !selectedRuleSet.rules.find(r => r.id === ruleId)) {
-        setRuleId(selectedRuleSet.rules[0].id);
-      }
-    }
-  }, [selectedRuleSet, ruleId, setRuleId]);
 
   return (
     <div className="min-h-[100dvh] bg-background">
@@ -61,11 +60,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               value={ruleSetId || ''}
               onChange={(e) => {
                 if (e.target.value === 'manage') {
-                  setRuleSetId(null);
-                  setLastAction('/author');
+                  onSelectRuleSet(null);
                   setLocation('/author');
                 } else {
-                  setRuleSetId(e.target.value);
+                  onSelectRuleSet(e.target.value);
                 }
               }}
               data-testid="select-shell-ruleset"
@@ -83,7 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <select 
               className="h-9 w-full rounded-[4px] border-0 bg-[#EAE8E3] px-3 text-[13px] font-semibold text-gray-900 outline-none transition focus:ring-2 focus:ring-primary shadow-inner disabled:opacity-50"
               value={ruleId || ''}
-              onChange={(e) => setRuleId(e.target.value)}
+              onChange={(e) => onSelectRule(e.target.value)}
               data-testid="select-shell-rule"
               disabled={!selectedRuleSet}
             >
@@ -97,9 +95,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div className="mt-8 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Actions</div>
         <nav className="mt-2 space-y-1" aria-label="Main navigation">
-          <NavItem href="/author" onClick={() => setLastAction('/author')} icon={BookOpen} label="Author" active={current === 'author'} />
-          <NavItem href="/build" onClick={() => setLastAction('/build')} icon={Zap} label="Build" active={current === 'build'} />
-          <NavItem href="/check" onClick={() => setLastAction('/check')} icon={ClipboardCheck} label="Check" active={current === 'check'} />
+          <NavItem href="/author" icon={BookOpen} label="Author" active={current === 'author'} />
+          <NavItem href="/build" icon={Zap} label="Build" active={current === 'build'} />
+          <NavItem href="/check" icon={ClipboardCheck} label="Check" active={current === 'check'} />
         </nav>
         
         <div className="mt-auto">
