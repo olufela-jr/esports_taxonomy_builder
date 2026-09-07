@@ -11,9 +11,11 @@
     "dev": "pnpm --filter @taxo/web dev",
     "build": "pnpm run typecheck && pnpm --filter @taxo/web build",
     "test": "pnpm -r --if-present test",
+    "test:e2e": "playwright test",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   }

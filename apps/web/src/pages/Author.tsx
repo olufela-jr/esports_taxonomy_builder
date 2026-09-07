@@ -119,15 +119,26 @@ function cleanTags(tags: Tags): Tags | undefined {
   return Object.keys(next).length ? next : undefined;
 }
 
-function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, onChange, onMove, onRemove }: { segment: Segment; ruleIndex: number; segmentIndex: number; segmentCount: number; onChange: (updates: Partial<Segment>) => void; onMove: (direction: -1 | 1) => void; onRemove: () => void }) {
-  const [allowedValuesDraft, setAllowedValuesDraft] = useState(() => (segment.kind === 'enum' ? segment.allowedValues.join(', ') : ''));
+function parseList(text: string): string[] {
+  return text.split(',').map((value) => value.trim()).filter(Boolean);
+}
+
+// A comma-separated list bound to a string[] in state. Keeps its own text while
+// the user types so a trailing comma or space survives the next render; only
+// resyncs from the list when the list changed by other means (a kind switch).
+function CommaListInput({ value, onChange, className, placeholder, testId }: { value: string[]; onChange: (list: string[]) => void; className: string; placeholder?: string; testId: string }) {
+  const [draft, setDraft] = useState(() => value.join(', '));
 
   useEffect(() => {
-    if (segment.kind === 'enum') {
-      setAllowedValuesDraft(segment.allowedValues.join(', '));
+    if (JSON.stringify(parseList(draft)) !== JSON.stringify(value)) {
+      setDraft(value.join(', '));
     }
-  }, [segment.kind]);
+  }, [value]);
 
+  return <input className={className} value={draft} onChange={(event) => { setDraft(event.target.value); onChange(parseList(event.target.value)); }} placeholder={placeholder} data-testid={testId} />;
+}
+
+function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, onChange, onMove, onRemove }: { segment: Segment; ruleIndex: number; segmentIndex: number; segmentCount: number; onChange: (updates: Partial<Segment>) => void; onMove: (direction: -1 | 1) => void; onRemove: () => void }) {
   return <div className="rounded-lg border border-border/30 bg-background/50 p-4" data-testid={`card-segment-${ruleIndex}-${segmentIndex}`}><div className="grid gap-4 sm:grid-cols-[1fr_1fr_145px_auto] sm:items-end">
     <label className="text-[13px] font-bold text-foreground">Label:<input className={`${inputClass} mt-2`} value={segment.label} onChange={(event) => {
       const newLabel = event.target.value;
@@ -140,17 +151,25 @@ function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, onChang
       <button type="button" className={iconButton} onClick={() => onMove(1)} disabled={segmentIndex === segmentCount - 1} aria-label="Move segment down" data-testid={`button-move-segment-down-${ruleIndex}-${segmentIndex}`}><ArrowDown className="h-4 w-4" /></button>
       <button type="button" className="rounded-md p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive" onClick={onRemove} aria-label="Remove segment" data-testid={`button-remove-segment-${ruleIndex}-${segmentIndex}`}><Trash2 className="h-4 w-4" /></button>
     </div></div>
-     <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end">{segment.kind === 'enum' ? <label className="flex-1 text-[13px] font-bold text-foreground">Allowed values: <span className="font-normal text-muted-foreground ml-1">(comma separated, matched exactly)</span><input className={`${inputClass} mt-2 font-mono`} value={allowedValuesDraft} onChange={(event) => { const draft = event.target.value; setAllowedValuesDraft(draft); onChange({ allowedValues: draft.split(',').map((value) => value.trim()).filter(Boolean) }); }} placeholder="na, emea, apac" data-testid={`input-segment-values-${ruleIndex}-${segmentIndex}`} /></label> : <><label className="flex-1 text-[13px] font-bold text-foreground">Max characters:<input type="number" min="1" max="200" className={`${inputClass} mt-2`} value={segment.maxLength} onChange={(event) => onChange({ maxLength: Number(event.target.value) || 1 })} data-testid={`input-segment-max-length-${ruleIndex}-${segmentIndex}`} /></label><label className="flex-1 text-[13px] font-bold text-foreground">Illegal characters: <span className="font-normal text-muted-foreground ml-1">(the delimiter is always illegal)</span><input className={`${inputClass} mt-2 font-mono`} value={segment.illegalChars.join('')} onChange={(event) => onChange({ illegalChars: Array.from(new Set([...event.target.value])) })} data-testid={`input-segment-illegal-chars-${ruleIndex}-${segmentIndex}`} /></label></>}<label className="flex items-center gap-2 pb-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={segment.required} onChange={(event) => onChange({ required: event.target.checked })} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary bg-[#EAE8E3]" data-testid={`checkbox-segment-required-${ruleIndex}-${segmentIndex}`} /> Required</label></div>
+     <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end">{segment.kind === 'enum' ? <label className="flex-1 text-[13px] font-bold text-foreground">Allowed values: <span className="font-normal text-muted-foreground ml-1">(comma separated, matched exactly)</span><CommaListInput className={`${inputClass} mt-2 font-mono`} value={segment.allowedValues} onChange={(allowedValues) => onChange({ allowedValues })} placeholder="na, emea, apac" testId={`input-segment-values-${ruleIndex}-${segmentIndex}`} /></label> : <><label className="flex-1 text-[13px] font-bold text-foreground">Max characters:<input type="number" min="1" max="200" className={`${inputClass} mt-2`} value={segment.maxLength || ''} onChange={(event) => onChange({ maxLength: event.target.value === '' ? 0 : Number(event.target.value) })} data-testid={`input-segment-max-length-${ruleIndex}-${segmentIndex}`} /></label><label className="flex-1 text-[13px] font-bold text-foreground">Illegal characters: <span className="font-normal text-muted-foreground ml-1">(the delimiter is always illegal)</span><input className={`${inputClass} mt-2 font-mono`} value={segment.illegalChars.join('')} onChange={(event) => onChange({ illegalChars: Array.from(new Set([...event.target.value])) })} data-testid={`input-segment-illegal-chars-${ruleIndex}-${segmentIndex}`} /></label></>}<label className="flex items-center gap-2 pb-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={segment.required} onChange={(event) => onChange({ required: event.target.checked })} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary bg-[#EAE8E3]" data-testid={`checkbox-segment-required-${ruleIndex}-${segmentIndex}`} /> Required</label></div>
   </div>;
 }
 
-function RuleSetEditor({ existing, onSaved, onClose }: { existing: RuleSet | null; onSaved: (id: string) => void; onClose: () => void }) {
+function RuleSetEditor({ existing, justCreated, onSaved, onClose }: { existing: RuleSet | null; justCreated?: boolean; onSaved: (id: string) => void; onClose: () => void }) {
   const { createRuleSet, updateRuleSet, deleteRuleSet } = useRuleSets();
   const isNew = existing === null;
   const [name, setName] = useState(existing?.name ?? 'Untitled Rule Set');
   const [rules, setRules] = useState<Rule[]>(existing?.rules ?? [emptyRule(0)]);
-  const [saved, setSaved] = useState(false);
+  // Creating a Rule Set remounts this editor under the new id, so the
+  // "saved" flash for a create arrives through justCreated.
+  const [saved, setSaved] = useState(Boolean(justCreated));
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!saved) return;
+    const timer = window.setTimeout(() => setSaved(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [saved]);
   const isDirty = isNew
     || name !== existing.name
     || JSON.stringify(rules) !== JSON.stringify(existing.rules);
@@ -184,11 +203,10 @@ function RuleSetEditor({ existing, onSaved, onClose }: { existing: RuleSet | nul
     if (isNew) {
       const created = createRuleSet(draft);
       onSaved(created.id);
-    } else {
-      updateRuleSet(existing.id, draft);
+      return;
     }
+    updateRuleSet(existing.id, draft);
     setSaved(true);
-    window.setTimeout(() => setSaved(false), 2200);
   };
 
   return <form onSubmit={onSubmit}>
@@ -221,7 +239,7 @@ function RuleSetEditor({ existing, onSaved, onClose }: { existing: RuleSet | nul
           } else {
             updateRule(ruleIndex, { source: { ...rule.source, filter: { column: 'status', in: ['active'] } } });
           }
-        }} data-testid={`button-toggle-filter-${ruleIndex}`}>{rule.source.filter ? 'Remove filter' : 'Add filter'}</button></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="text-[11px] font-bold text-foreground">Dataset:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.dataset} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, dataset: event.target.value } })} data-testid={`input-source-dataset-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Table:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.table} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, table: event.target.value } })} data-testid={`input-source-table-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Name column:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.nameColumn} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, nameColumn: event.target.value } })} data-testid={`input-source-name-column-${ruleIndex}`} /></label></div>{rule.source.filter && <div className="mt-4 grid gap-3 sm:grid-cols-2 border-t border-border/50 pt-4"><label className="text-[11px] font-bold text-foreground">Filter column:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.filter.column} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, filter: { ...rule.source.filter!, column: event.target.value } } })} data-testid={`input-source-filter-col-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Filter values: <span className="font-normal text-muted-foreground ml-1">(comma separated)</span><input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.filter.in.join(', ')} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, filter: { ...rule.source.filter!, in: event.target.value.split(',').map(v => v.trim()).filter(Boolean) } } })} placeholder="active, published" data-testid={`input-source-filter-in-${ruleIndex}`} /></label></div>}</div>
+        }} data-testid={`button-toggle-filter-${ruleIndex}`}>{rule.source.filter ? 'Remove filter' : 'Add filter'}</button></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="text-[11px] font-bold text-foreground">Dataset:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.dataset} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, dataset: event.target.value } })} data-testid={`input-source-dataset-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Table:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.table} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, table: event.target.value } })} data-testid={`input-source-table-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Name column:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.nameColumn} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, nameColumn: event.target.value } })} data-testid={`input-source-name-column-${ruleIndex}`} /></label></div>{rule.source.filter && <div className="mt-4 grid gap-3 sm:grid-cols-2 border-t border-border/50 pt-4"><label className="text-[11px] font-bold text-foreground">Filter column:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.filter.column} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, filter: { ...rule.source.filter!, column: event.target.value } } })} data-testid={`input-source-filter-col-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Filter values: <span className="font-normal text-muted-foreground ml-1">(comma separated)</span><CommaListInput className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.filter.in} onChange={(list) => updateRule(ruleIndex, { source: { ...rule.source, filter: { ...rule.source.filter!, in: list } } })} placeholder="active, published" testId={`input-source-filter-in-${ruleIndex}`} /></label></div>}</div>
         <div className="mt-6 border-t border-border/50 pt-6"><div className="mb-4 flex items-center justify-between"><div><h4 className="font-serif text-lg font-medium text-foreground">Segments</h4></div><button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-[4px] border border-border px-3 text-xs font-bold text-foreground transition hover:bg-muted" onClick={() => addSegment(ruleIndex)} data-testid={`button-add-segment-${ruleIndex}`}><Plus className="h-3.5 w-3.5" /> Add segment</button></div>
           {rule.segments.length === 0 && <div className="rounded-lg border border-dashed border-border/50 bg-background/30 px-4 py-8 text-center text-[13px] font-bold text-muted-foreground">No segments defined.</div>}
           <div className="space-y-4">{rule.segments.map((segment: Segment, segmentIndex: number) => <SegmentEditor key={segment.id} segment={segment} ruleIndex={ruleIndex} segmentIndex={segmentIndex} segmentCount={rule.segments.length} onChange={(updates) => updateSegment(ruleIndex, segmentIndex, updates)} onMove={(direction) => moveSegment(ruleIndex, segmentIndex, direction)} onRemove={() => removeSegment(ruleIndex, segmentIndex)} />)}</div>
@@ -236,6 +254,7 @@ export function Author() {
   const { ruleSets } = useRuleSets();
   const { ruleSetId, setRuleSetId } = useUi();
   const [creating, setCreating] = useState(false);
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const existing = ruleSets.find((rs) => rs.id === ruleSetId) ?? null;
 
   // Picking a Rule Set from the shell while a draft is open abandons the draft.
@@ -244,11 +263,11 @@ export function Author() {
   }, [ruleSetId]);
 
   if (existing) {
-    return <RuleSetEditor key={existing.id} existing={existing} onSaved={setRuleSetId} onClose={() => setRuleSetId(null)} />;
+    return <RuleSetEditor key={existing.id} existing={existing} justCreated={existing.id === justCreatedId} onSaved={setRuleSetId} onClose={() => setRuleSetId(null)} />;
   }
 
   if (creating) {
-    return <RuleSetEditor key="new" existing={null} onSaved={(id) => { setCreating(false); setRuleSetId(id); }} onClose={() => setCreating(false)} />;
+    return <RuleSetEditor key="new" existing={null} onSaved={(id) => { setCreating(false); setJustCreatedId(id); setRuleSetId(id); }} onClose={() => setCreating(false)} />;
   }
 
   return <Overview ruleSets={ruleSets} onCreate={() => setCreating(true)} />;
