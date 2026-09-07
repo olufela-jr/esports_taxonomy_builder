@@ -36,6 +36,19 @@ function toError(value: unknown): Error {
 }
 
 function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
+  // Operator-facing problems (missing Firebase config) are shown in full in
+  // every environment; nothing works until they are fixed, so hiding them helps nobody.
+  if (error.name === 'ConfigurationError') {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-background p-6" role="alert">
+        <div className="w-full max-w-lg rounded-xl border border-destructive/40 bg-card p-6 shadow-xl">
+          <h1 className="font-serif text-2xl font-semibold text-destructive">Configuration error</h1>
+          <p className="mt-3 text-sm leading-relaxed text-foreground">{error.message}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
       <div className="w-full max-w-lg rounded-xl border border-card-border bg-card p-6 text-center shadow-xl">

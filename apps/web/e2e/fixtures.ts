@@ -1,9 +1,12 @@
 import type { Page } from '@playwright/test';
 
-// A two-Rule Rule Set in the current stored shape (v2), with tags, so tests can
-// pick a Rule that is not the default first one. Seeded into localStorage before
-// the app loads; every Playwright test starts with a fresh browser context, so
-// nothing leaks between tests.
+// Seed data for the browser tests, injected through the store module's test hook
+// rather than any storage key: `window.__taxoTestSeed` makes the app start an
+// in-memory store with exactly this data and no persistence, and the store is
+// exposed as `window.__taxoStore` so tests read back through it. Every Playwright
+// test starts with a fresh browser context, so nothing leaks between tests.
+
+// A two-Rule Rule Set with tags, so tests can pick a Rule that is not the first.
 export const paidMediaRuleSet = {
   id: 'ruleset-paid',
   name: 'Paid media (test)',
@@ -60,16 +63,21 @@ export const globalRuleSet = {
   ],
 };
 
-export const RULESETS_KEY = 'campaign-naming-rulesets-v2';
+// UI selection state (Rule Set, Rule, last action, check mode) is per-browser and
+// stays in localStorage; one test asserts on it directly.
 export const UI_STATE_KEY = 'campaign-tool-ui-state-v4';
 
 export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaRuleSet, globalRuleSet]) {
-  await page.addInitScript(
-    ({ key, value }) => {
-      window.localStorage.setItem(key, value);
-    },
-    { key: RULESETS_KEY, value: JSON.stringify(ruleSets) },
-  );
+  await page.addInitScript((seed) => {
+    window.__taxoTestSeed = seed;
+  }, ruleSets as never);
 }
 
-export const byTestId = (page: Page, id: string) => page.getByTestId(id);
+// The Rule Sets as the app currently holds them, read back through the store.
+export async function readRuleSets(page: Page): Promise<Array<{ id: string; name: string; rules: Array<{ id: string; segments: Array<{ allowedValues?: string[] }> }> }>> {
+  return page.evaluate(() => {
+    const store = window.__taxoStore;
+    if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
+    return JSON.parse(JSON.stringify(store.getSnapshot()));
+  });
+}

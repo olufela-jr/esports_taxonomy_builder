@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { seedRuleSets } from './fixtures';
+import { readRuleSets, seedRuleSets } from './fixtures';
 
 // Every editor field must accept continuous typing without losing focus, and
 // must keep exactly what was typed, including a trailing comma in the allowed
@@ -60,7 +60,7 @@ test('Segment fields keep focus and value while typing, trailing comma included'
   // The stored values keep their case and drop only the empty trailing entry.
   await page.getByTestId('button-save-ruleset').click();
   await expect(page.getByText('Saved locally')).toBeVisible();
-  const saved = await page.evaluate(() => JSON.parse(window.localStorage.getItem('campaign-naming-rulesets-v2') ?? '[]'));
+  const saved = await readRuleSets(page);
   expect(saved[0].rules[0].segments[0].allowedValues).toEqual(['NA', 'emea', 'Apac']);
 });
 

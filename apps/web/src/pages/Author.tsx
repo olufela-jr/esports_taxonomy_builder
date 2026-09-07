@@ -190,7 +190,7 @@ function RuleSetEditor({ existing, justCreated, onSaved, onClose }: { existing: 
     return { ...rule, segments };
   }));
 
-  const onSubmit = (event: FormEvent) => {
+  const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const draft = { name: name.trim(), rules };
     const errors = checkRuleSet({ id: existing?.id ?? '', ...draft });
@@ -200,17 +200,21 @@ function RuleSetEditor({ existing, justCreated, onSaved, onClose }: { existing: 
     }
 
     setError('');
-    if (isNew) {
-      const created = createRuleSet(draft);
-      onSaved(created.id);
-      return;
+    try {
+      if (isNew) {
+        const created = await createRuleSet(draft);
+        onSaved(created.id);
+        return;
+      }
+      await updateRuleSet(existing.id, draft);
+      setSaved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Saving failed.');
     }
-    updateRuleSet(existing.id, draft);
-    setSaved(true);
   };
 
   return <form onSubmit={onSubmit}>
-    <div className="mb-8 flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between"><div><button type="button" onClick={onClose} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:text-foreground" data-testid="button-back-overview"><ArrowLeft className="h-3.5 w-3.5" /> Overview</button><div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Rule Set' : 'Edit Rule Set'}</div><h1 className="mt-2 font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{isNew ? 'Create Rule Set' : 'Edit Rule Set'}</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">Define naming rules and required segments for campaigns.</p></div><div className="flex items-center gap-3">{saved ? <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary"><CheckCircle2 className="h-4 w-4" /> Saved locally</span> : isDirty ? <span className="mr-2 text-xs font-semibold text-muted-foreground">Unsaved — save to use in Build</span> : null}{!isNew && <button type="button" className={buttonDanger} onClick={() => { if (window.confirm('Delete this Rule Set?')) { deleteRuleSet(existing.id); onClose(); } }} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}<button type="submit" className={buttonPrimary} data-testid="button-save-ruleset"><Check className="h-4 w-4" /> Save Rule Set</button></div></div>
+    <div className="mb-8 flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between"><div><button type="button" onClick={onClose} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:text-foreground" data-testid="button-back-overview"><ArrowLeft className="h-3.5 w-3.5" /> Overview</button><div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Rule Set' : 'Edit Rule Set'}</div><h1 className="mt-2 font-serif text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{isNew ? 'Create Rule Set' : 'Edit Rule Set'}</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">Define naming rules and required segments for campaigns.</p></div><div className="flex items-center gap-3">{saved ? <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary"><CheckCircle2 className="h-4 w-4" /> Saved locally</span> : isDirty ? <span className="mr-2 text-xs font-semibold text-muted-foreground">Unsaved — save to use in Build</span> : null}{!isNew && <button type="button" className={buttonDanger} onClick={() => { if (window.confirm('Delete this Rule Set?')) { void deleteRuleSet(existing.id); onClose(); } }} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}<button type="submit" className={buttonPrimary} data-testid="button-save-ruleset"><Check className="h-4 w-4" /> Save Rule Set</button></div></div>
     <div className="mx-auto max-w-4xl">
       {error && <div className="mb-6 flex items-center gap-3 rounded-[4px] border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert" data-testid="status-ruleset-error"><AlertCircle className="h-5 w-5 shrink-0" /> {error}</div>}
       <section className="mb-8 rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="mb-6 flex items-start justify-between"><div className="flex flex-col"><h2 className="font-serif text-2xl font-medium text-foreground">General information</h2><p className="text-xs font-bold text-muted-foreground mt-1">Name this Rule Set to identify it in the workspace.</p></div><div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><BookOpen className="h-3 w-3" /></div></div><label className="block text-[13px] font-bold text-foreground">Rule Set name:<input value={name} onChange={(event) => setName(event.target.value)} className={`${inputClass} mt-2 font-serif text-lg`} placeholder="e.g. Regional paid media" data-testid="input-ruleset-name" /></label></section>
