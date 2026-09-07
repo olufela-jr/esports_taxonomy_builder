@@ -1,0 +1,18 @@
+# Migration log
+
+Working notes for moving the Replit prototype to the target described in `CLAUDE.md` and `docs/spec.md`. Each phase gets one commit on `main` and one notes file here, written when the phase is committed.
+
+| File | What it covers |
+|---|---|
+| [plan.md](plan.md) | The approved plan: audit findings, decisions, phases 0 to 7, review adjustments |
+| [phase-0.md](phase-0.md) | Baseline, toolchain, spec layout, strip Replit scaffolding |
+| [phase-1.md](phase-1.md) | Pooled All Rules rollup in the engine, scope toggle in Check |
+
+Phases still to come: 2 (ids, spec data model, engine single-source, segment reorder), 3 (browser regression tests), 4a and 4b (store module, Firestore, state to `useState`), 5 (Firebase Auth and Security Rules), 6 (finish stripping, docs), 7 (final verification).
+
+Conventions for the notes files:
+
+- What changed, by file, with the reason when it is not obvious from the diff.
+- What was verified and how, with the actual numbers.
+- Decisions taken during the phase that the plan did not spell out.
+- Anything left over or worth knowing for the next phase.
