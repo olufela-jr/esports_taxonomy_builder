@@ -1,6 +1,6 @@
 # Phase 1: pooled All Rules rollup, scope toggle in Check
 
-Commit: `75b7060` (local at time of writing). CLAUDE.md checklist step 1, plus the spec's per-tag rollups.
+Commit: `75b7060`. CLAUDE.md checklist step 1, plus the spec's per-tag rollups.
 
 ## Review adjustments applied
 
