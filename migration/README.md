@@ -8,8 +8,9 @@ Working notes for moving the Replit prototype to the target described in `CLAUDE
 | [phase-0.md](phase-0.md) | Baseline, toolchain, spec layout, strip Replit scaffolding |
 | [phase-1.md](phase-1.md) | Pooled All Rules rollup in the engine, scope toggle in Check |
 | [phase-2.md](phase-2.md) | Immutable ids, spec data model, engine owns authoring checks, segment reorder |
+| [phase-3.md](phase-3.md) | Playwright regression tests for editor typing and shared context; three defects fixed |
 
-Phases still to come: 3 (browser regression tests), 4a and 4b (store module, Firestore, state to `useState`), 5 (Firebase Auth and Security Rules), 6 (finish stripping, docs), 7 (final verification).
+Phases still to come: 4a and 4b (store module, Firestore, state to `useState`), 5 (Firebase Auth and Security Rules), 6 (finish stripping, docs), 7 (final verification).
 
 Conventions for the notes files:
 
