@@ -1,0 +1,61 @@
+This is a UI and user-flow pass on the existing Campaign Naming Taxonomy Tool. The shared naming engine in @taxo/shared is correct: do not change its logic. Keep localStorage as the storage for now (persistence moves to Firestore later, not in this pass). Keep pnpm. Do not add a backend, Firestore, authentication, or any BigQuery connection in this pass. Focus only on what is visible on screen and how the user moves through it.
+
+1. Rename the terminology, completely
+
+Rename throughout the app, in visible labels, TypeScript types, routes, storage keys, and tests:
+
+"Taxonomy" becomes Rule Set.
+"Level" becomes Rule.
+"Segment" stays Segment.
+
+A Rule is one complete naming convention aimed at a target the author chooses (for example "Google Campaigns", "Meta Ad Sets", "TikTok Creatives"). Do the rename fully, not just the labels, and keep the @taxo/shared tests passing and the TypeScript check green afterwards.
+
+2. Restructure navigation to be action-first with persistent context
+
+Replace the current taxonomy-centric page structure with three actions as the primary navigation, and make the selected Rule Set and Rule a shared context that persists across all three. This is the most important change in this pass.
+
+Target layout:
+
+[ Rule Set: <dropdown> ]                               (persistent context)
+  Author  |  Build  |  Check                           (primary navigation)
+[ Rule: <dropdown of Rules in the selected Rule Set> ] (persistent context)
+  <workspace for the chosen action and Rule>
+
+Rules for this:
+
+The Rule Set dropdown and the Rule dropdown live in the shell, above the workspace, and are shared by all three actions. Do not put separate Rule Set or Rule pickers inside Build or Check.
+Switching between Author, Build, and Check must keep the same Rule Set and Rule selected. Never reset the selection on navigation.
+Persist the current selection (Rule Set, Rule, and last action) so a page refresh restores exactly where the user was.
+On first open with no saved selection, land on Author with a clear prompt to create a Rule Set. On later opens, land on the last-used action with context restored.
+The existing list and overview of Rule Sets can live inside Author (as its landing view when no Rule Set is selected) or as the Rule Set dropdown's "manage" entry. Keep the create, edit, delete, search functionality; just move it under Author.
+Keep the responsive mobile navigation; the three actions and the two context dropdowns must still work on a narrow screen.
+3. Author
+
+Keep all existing editor behaviour and validations (single-character delimiter, unique segment keys within a Rule, required before optional, no delimiter inside values, at least one segment, allowed-value lists). Add:
+
+Two optional fields on each Rule: Platform and Entity type (free text or short dropdown, author's choice). They are optional; a Rule with neither still works.
+Keep the source-mapping fields, labelled clearly as "used for live scanning in Stage 2".
+4. Build
+
+Build operates on the Rule selected in the shell. Remove its own Rule Set and Rule pickers. Keep the per-segment controls (dropdown for allowed values, validated text input for freeform), the live preview, the validation messages, and the Copy button.
+
+5. Check
+
+Check operates on the Rule selected in the shell, with two additions:
+
+A Source selector at the top with two options: "CSV upload" (active) and "Live scan" (visible but disabled, labelled "Stage 2"). Do not implement Live scan.
+An "All Rules" mode. When chosen, run every Rule in the selected Rule Set over the uploaded or pasted CSV and show a combined compliant percentage for the whole Rule Set, plus a per-Rule breakdown. Keep the existing single-Rule mode as the default. Keep the existing CSV upload, paste, column selection, row-level violations, suggested fixes, valid and invalid counts, and results export.
+Acceptance
+Every visible label, route, type, and storage key says Rule Set, Rule, and Segment.
+Switching between Author, Build, and Check keeps the same Rule Set and Rule.
+Refreshing the page restores the last Rule Set, Rule, and action.
+Build and Check have no pickers of their own; they use the shell's context.
+Check shows the Source selector with Live scan disabled, and an All Rules mode.
+Each Rule can carry optional Platform and Entity type values.
+All @taxo/shared tests pass and the full TypeScript check passes.
+Do not
+Do not change the logic of compose, validate, or parse in @taxo/shared.
+Do not add Firestore, authentication, a server, or BigQuery. Storage stays localStorage.
+Do not convert pnpm to npm or add Turborepo or Nx.
+Do not add new libraries, a CSS framework, or a state-management library.
+Do not implement Live scan; it is a disabled placeholder only.

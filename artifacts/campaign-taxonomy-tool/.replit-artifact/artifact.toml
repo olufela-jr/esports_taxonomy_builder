@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Campaign Naming Rule Set Tool"
+description = "An internal workspace for marketing teams to author campaign naming Rule Sets, build compliant names, and check campaign data from CSV files."
+version = "1.0.0"
+id = "artifacts/campaign-taxonomy-tool"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 19557
+
+[services.development]
+run = "pnpm --filter @workspace/campaign-taxonomy-tool run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/campaign-taxonomy-tool", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/campaign-taxonomy-tool/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "19557"
+BASE_PATH = "/"
