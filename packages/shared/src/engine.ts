@@ -1,20 +1,26 @@
+// These types double as the Firestore document contract. Keep them plain.
+// `id` is immutable identity (React keys, references); `key` is the editable slug.
+
 export type EnumSegment = {
+  id: string;
   kind: "enum";
   key: string;
   label: string;
   required: boolean;
-  allowedValues: string[];
+  allowedValues: string[]; // exact, case-sensitive match
 };
 
 export type FreeformSegment = {
+  id: string;
   kind: "freeform";
   key: string;
   label: string;
   required: boolean;
   maxLength: number;
-  illegalChars: string[];
+  illegalChars: string[]; // the delimiter is enforced by the engine; never listed here
 };
 
+// Array order is the segment position. No stored position index.
 export type Segment = EnumSegment | FreeformSegment;
 
 export type Source = {
@@ -27,17 +33,23 @@ export type Source = {
   };
 };
 
-export type Rule = {
-  key: string;
-  label: string;
-  delimiter: string;
-  segments: Segment[];
-  source: Source;
+export type Tags = {
   platform?: string;
   entityType?: string;
 };
 
+export type Rule = {
+  id: string;
+  key: string;
+  name: string;
+  tags?: Tags;
+  delimiter: string;
+  segments: Segment[];
+  source: Source;
+};
+
 export type RuleSet = {
+  id: string;
   name: string;
   rules: Rule[];
 };
@@ -59,14 +71,10 @@ export type ValidateResult = {
   violations: Violation[];
 };
 
-export type Tags = {
-  platform?: string;
-  entityType?: string;
-};
-
 // One Rule's scan totals, however the names were obtained (CSV rows now,
 // a BigQuery scan in Stage 2). Raw counts only: the UI decides how to round.
 export type RuleScan = {
+  ruleId: string;
   ruleKey: string;
   ruleName: string;
   tags?: Tags;
@@ -117,6 +125,65 @@ function getRuleErrors(rule: Rule): string[] {
       errors.push("Optional segments must appear at the end of a rule.");
     }
   }
+
+  return errors;
+}
+
+// Everything an author must get right before a Rule can be saved. A superset
+// of the structural checks compose() and validate() apply. The authoring UI
+// calls this and keeps no checks of its own.
+export function checkRule(rule: Rule): string[] {
+  const errors: string[] = [];
+
+  if (!rule.key.trim() || !rule.name.trim()) {
+    errors.push("The rule needs a key and a name.");
+  }
+
+  errors.push(...getRuleErrors(rule));
+
+  if (rule.segments.length === 0) {
+    errors.push("The rule needs at least one segment.");
+  }
+
+  rule.segments.forEach((segment, index) => {
+    const label = segment.label.trim() || `Segment ${index + 1}`;
+
+    if (!segment.key.trim() || !segment.label.trim()) {
+      errors.push(`${label} needs a key and a label.`);
+    }
+
+    if (segment.kind === "enum") {
+      if (segment.allowedValues.length === 0) {
+        errors.push(`${label} needs at least one allowed value.`);
+      }
+      if (rule.delimiter && segment.allowedValues.some((value) => value.includes(rule.delimiter))) {
+        errors.push(`${label} has an allowed value containing the "${rule.delimiter}" delimiter.`);
+      }
+    } else if (segment.maxLength < 1) {
+      errors.push(`${label} needs a maximum length of at least 1.`);
+    }
+  });
+
+  if (!rule.source.dataset.trim() || !rule.source.table.trim() || !rule.source.nameColumn.trim()) {
+    errors.push("The source needs a dataset, table, and name column.");
+  }
+
+  return errors;
+}
+
+// Rule Set level checks, with each Rule's errors prefixed by its position.
+export function checkRuleSet(ruleSet: RuleSet): string[] {
+  const errors: string[] = [];
+
+  if (!ruleSet.name.trim()) {
+    errors.push("Give this Rule Set a name.");
+  }
+
+  ruleSet.rules.forEach((rule, index) => {
+    for (const error of checkRule(rule)) {
+      errors.push(`Rule ${index + 1}: ${error}`);
+    }
+  });
 
   return errors;
 }

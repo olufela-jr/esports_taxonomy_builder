@@ -35,8 +35,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Keep the Rule selection valid for the selected Rule Set: fall back to its first Rule.
   useEffect(() => {
     if (selectedRuleSet && selectedRuleSet.rules.length > 0) {
-      if (!ruleId || !selectedRuleSet.rules.find(r => r.key === ruleId)) {
-        setRuleId(selectedRuleSet.rules[0].key);
+      if (!ruleId || !selectedRuleSet.rules.find(r => r.id === ruleId)) {
+        setRuleId(selectedRuleSet.rules[0].id);
       }
     }
   }, [selectedRuleSet, ruleId, setRuleId]);
@@ -89,7 +89,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {!selectedRuleSet && <option value="">No Rule Set selected</option>}
               {selectedRuleSet && selectedRuleSet.rules.map(r => (
-                <option key={r.key} value={r.key}>{r.label}</option>
+                <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
           </div>

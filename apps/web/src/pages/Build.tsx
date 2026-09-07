@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useUi } from '@/context/UiContext';
 import { useRuleSets, type Segment, type Rule } from '@/hooks/use-rulesets';
 import { compose } from '@taxo/shared';
-import { AlertCircle, Check, CheckCircle2, Copy, Database, Filter, Zap } from 'lucide-react';
+import { AlertCircle, Check, Copy, Database, Filter, Zap } from 'lucide-react';
 
 const inputClass = 'h-9 w-full rounded-[4px] border-0 bg-[#EAE8E3] px-3 text-[13px] font-semibold text-gray-900 shadow-inner outline-none transition-all placeholder:text-gray-500 focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 hover:bg-[#F2F0EB]';
 const buttonPrimary = 'inline-flex h-9 items-center justify-center gap-2 rounded-[4px] bg-primary px-4 text-[13px] font-bold text-primary-foreground transition-all hover:brightness-110 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50';
@@ -36,9 +36,9 @@ function EmptyState() {
 export function Build() {
   const { ruleSetId, ruleId } = useUi();
   const { ruleSets } = useRuleSets();
-  
+
   const ruleSet = ruleSets.find(rs => rs.id === ruleSetId);
-  const rule = ruleSet?.rules.find((r: Rule) => r.key === ruleId);
+  const rule = ruleSet?.rules.find((r: Rule) => r.id === ruleId);
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
@@ -56,7 +56,7 @@ export function Build() {
       </div>
     );
   }
-  
+
   const segments = rule.segments ?? [];
   const result = compose(rule, values);
   const valid = result.errors.length === 0 && Boolean(segments.length);
@@ -72,14 +72,14 @@ export function Build() {
           <div className="mb-8 flex items-start justify-between gap-4">
             <div className="flex flex-col">
               <div className="font-serif text-2xl font-medium text-foreground">Naming parameters</div>
-              <p className="text-[13px] font-bold text-muted-foreground mt-1">Values for {rule.label}.</p>
+              <p className="text-[13px] font-bold text-muted-foreground mt-1">Values for {rule.name}.</p>
             </div>
             <div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><Zap className="h-3 w-3" /></div>
           </div>
-          
+
           <div className="space-y-5">
             {segments.map((segment: Segment) => (
-              <div key={segment.key}>
+              <div key={segment.id}>
                 <div className="mb-2.5 flex items-center justify-between">
                   <label htmlFor={`build-${segment.key}`} className="text-[13px] font-bold text-foreground">
                     {segment.label}:<span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span>
@@ -87,25 +87,25 @@ export function Build() {
                   {segment.required ? <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-destructive" /><span className="text-[10px] font-bold text-foreground">Required</span></span> : <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /><span className="text-[10px] font-bold text-foreground">Optional</span></span>}
                 </div>
                 {segment.kind === 'enum' ? (
-                  <select 
-                    id={`build-${segment.key}`} 
-                    className={inputClass} 
-                    value={values[segment.key] ?? ''} 
-                    onChange={(event) => setValues((current) => ({ ...current, [segment.key]: event.target.value }))} 
+                  <select
+                    id={`build-${segment.key}`}
+                    className={inputClass}
+                    value={values[segment.key] ?? ''}
+                    onChange={(event) => setValues((current) => ({ ...current, [segment.key]: event.target.value }))}
                     data-testid={`select-build-${segment.key}`}
                   >
                     <option value="">Select {segment.label.toLowerCase()}</option>
                     {segment.allowedValues.map((value) => <option key={value} value={value}>{value}</option>)}
                   </select>
                 ) : (
-                  <input 
-                    id={`build-${segment.key}`} 
-                    className={inputClass} 
-                    maxLength={segment.maxLength} 
-                    value={values[segment.key] ?? ''} 
-                    onChange={(event) => setValues((current) => ({ ...current, [segment.key]: event.target.value }))} 
-                    placeholder={`Enter ${segment.label.toLowerCase()}`} 
-                    data-testid={`input-build-${segment.key}`} 
+                  <input
+                    id={`build-${segment.key}`}
+                    className={inputClass}
+                    maxLength={segment.maxLength}
+                    value={values[segment.key] ?? ''}
+                    onChange={(event) => setValues((current) => ({ ...current, [segment.key]: event.target.value }))}
+                    placeholder={`Enter ${segment.label.toLowerCase()}`}
+                    data-testid={`input-build-${segment.key}`}
                   />
                 )}
               </div>
@@ -137,7 +137,7 @@ export function Build() {
           )}
           <div className="mt-4 rounded-xl border border-border/50 bg-muted/20 p-5 text-[13px] font-bold leading-relaxed text-muted-foreground shadow-sm">
             <div className="flex items-center gap-2 text-foreground"><Database className="h-4 w-4" /> Rule source</div>
-            <p className="mt-1.5">Evaluating against <span className="font-mono text-[11px] text-foreground font-bold">{ruleSet.name} - {rule.label}</span>.</p>
+            <p className="mt-1.5">Evaluating against <span className="font-mono text-[11px] text-foreground font-bold">{ruleSet.name} - {rule.name}</span>.</p>
           </div>
         </section>
       </div>

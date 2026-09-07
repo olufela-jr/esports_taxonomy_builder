@@ -26,7 +26,7 @@ type SingleCheckResult = { row: number; name: string; valid: boolean; violations
 
 type RuleEval = {
   ruleKey: string;
-  ruleLabel: string;
+  ruleName: string;
   columnName: string;
   columnMissing: boolean;
   name: string;
@@ -59,15 +59,43 @@ function scansFromResults(ruleSet: RuleSet, results: AllRulesCheckResult[]): Rul
       const found = row.ruleEvals.find((item) => item.ruleKey === rule.key);
       if (found && !found.columnMissing) evals.push(found);
     }
-    const hasTags = Boolean(rule.platform || rule.entityType);
     return {
+      ruleId: rule.id,
       ruleKey: rule.key,
-      ruleName: rule.label,
-      ...(hasTags ? { tags: { platform: rule.platform, entityType: rule.entityType } } : {}),
+      ruleName: rule.name,
+      ...(rule.tags ? { tags: rule.tags } : {}),
       scanned: evals.length,
       valid: evals.filter((item) => item.valid).length,
     };
   });
+}
+
+// A demo name for a Rule: one valid, one with a bad first value, one missing
+// its last required segment. Keeps the sample CSV meaningful for any Rule Set.
+function sampleName(rule: Rule, variant: 'valid' | 'badValue' | 'short'): string {
+  const required = rule.segments.filter((segment) => segment.required);
+  const tokens = required.map((segment, index) => {
+    const spoil = variant === 'badValue' && index === 0;
+    if (segment.kind === 'enum') return spoil ? 'xx' : (segment.allowedValues[0] ?? 'value');
+    return spoil ? 'bad value' : 'sample';
+  });
+  if (variant === 'short') tokens.pop();
+  return tokens.join(rule.delimiter);
+}
+
+function sampleCsv(ruleSet: RuleSet): string {
+  const columns = Array.from(new Set(ruleSet.rules.map((rule) => rule.source.nameColumn).filter(Boolean)));
+  if (columns.length === 0) return 'name\n';
+  const variants = ['valid', 'badValue', 'short'] as const;
+  const rows = variants.map((variant) => columns.map((column) => {
+    const rule = ruleSet.rules.find((item) => item.source.nameColumn === column);
+    return rule ? sampleName(rule, variant) : '';
+  }));
+  return [columns.join(','), ...rows.map((row) => row.join(','))].join('\n');
+}
+
+function expectedColumns(ruleSet: RuleSet): string[] {
+  return Array.from(new Set(ruleSet.rules.map((rule) => rule.source.nameColumn).filter(Boolean)));
 }
 
 function ModeButton({ active, onClick, testId, children }: { active: boolean; onClick: () => void; testId: string; children: React.ReactNode }) {
@@ -90,10 +118,13 @@ export function Check() {
 
   const ruleSet = ruleSets.find(rs => rs.id === ruleSetId);
   const isAllRules = checkMode === 'all';
-  const rule = ruleSet?.rules.find((r: Rule) => r.key === ruleId);
+  const rule = ruleSet?.rules.find((r: Rule) => r.id === ruleId);
 
-  const [csv, setCsv] = useState('name\nna-paid_social-spring_launch-q2\nemea-email-summer-q2\nlatam-partner-hello-q3');
-  const [nameColumn, setNameColumn] = useState('name');
+  // The sample CSV and name column follow the selection until the user edits them.
+  const [csv, setCsv] = useState(() => (ruleSet ? sampleCsv(ruleSet) : ''));
+  const [csvTouched, setCsvTouched] = useState(false);
+  const [nameColumn, setNameColumn] = useState(() => rule?.source.nameColumn || 'name');
+  const [columnTouched, setColumnTouched] = useState(false);
   const [singleResults, setSingleResults] = useState<SingleCheckResult[] | null>(null);
   const [allRulesResults, setAllRulesResults] = useState<AllRulesCheckResult[] | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -106,6 +137,20 @@ export function Check() {
   useEffect(() => {
     resetResults();
   }, [ruleSetId, ruleId, checkMode]);
+
+  useEffect(() => {
+    if (!csvTouched) setCsv(ruleSet ? sampleCsv(ruleSet) : '');
+  }, [ruleSetId, ruleSet, csvTouched]);
+
+  useEffect(() => {
+    if (!columnTouched) setNameColumn(rule?.source.nameColumn || 'name');
+  }, [ruleId, rule, columnTouched]);
+
+  const editCsv = (value: string) => {
+    setCsv(value);
+    setCsvTouched(true);
+    resetResults();
+  };
 
   const changeMode = (mode: CheckMode) => {
     setCheckMode(mode);
@@ -133,7 +178,7 @@ export function Check() {
 
           return {
             ruleKey: r.key,
-            ruleLabel: r.label,
+            ruleName: r.name,
             columnName: r.source.nameColumn,
             columnMissing: colMissing,
             name,
@@ -173,7 +218,7 @@ export function Check() {
     }
   };
 
-  const loadFile = (file?: File) => { if (!file) return; const reader = new FileReader(); reader.onload = () => { setCsv(String(reader.result ?? '')); resetResults(); }; reader.readAsText(file); };
+  const loadFile = (file?: File) => { if (!file) return; const reader = new FileReader(); reader.onload = () => { editCsv(String(reader.result ?? '')); }; reader.readAsText(file); };
 
   const exportSingleResults = () => {
     if (!singleResults) return;
@@ -271,12 +316,13 @@ export function Check() {
 
           <div className="mt-6">
             {!isAllRules && (
-              <label className="block text-[13px] font-bold text-foreground">Name column:<input className={`${inputClass} mt-2 font-mono text-sm`} value={nameColumn} onChange={(event) => { setNameColumn(event.target.value); resetResults(); }} data-testid="input-check-column" /></label>
+              <label className="block text-[13px] font-bold text-foreground">Name column:<input className={`${inputClass} mt-2 font-mono text-sm`} value={nameColumn} onChange={(event) => { setNameColumn(event.target.value); setColumnTouched(true); resetResults(); }} data-testid="input-check-column" /></label>
             )}
             {isAllRules && (
               <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 text-xs text-primary shadow-sm">
                 <div className="font-semibold flex items-center gap-2"><AlertCircle className="h-4 w-4" /> All Rules</div>
                 <div className="mt-1.5 leading-relaxed opacity-90">Every Rule in {ruleSet.name} runs over its own mapped source column. Counts are pooled across Rules.</div>
+                <div className="mt-2 font-mono text-[11px] opacity-90" data-testid="text-expected-columns">Expected columns: {expectedColumns(ruleSet).join(', ') || 'none mapped'}</div>
               </div>
             )}
           </div>
@@ -292,7 +338,7 @@ export function Check() {
 
           <div className="relative mt-6">
             <div className="absolute right-3 top-3 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-background px-1">paste</div>
-            <textarea className="min-h-[160px] w-full resize-y rounded-xl border border-border bg-background p-4 font-mono text-[13px] leading-relaxed text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary/50 hover:border-border/80" value={csv} onChange={(event) => { setCsv(event.target.value); resetResults(); }} aria-label="CSV data" data-testid="textarea-csv-input" />
+            <textarea className="min-h-[160px] w-full resize-y rounded-xl border border-border bg-background p-4 font-mono text-[13px] leading-relaxed text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary/50 hover:border-border/80" value={csv} onChange={(event) => editCsv(event.target.value)} aria-label="CSV data" data-testid="textarea-csv-input" />
           </div>
 
           <button type="button" className={`${buttonPrimary} mt-5 w-full`} onClick={runCheck} disabled={!csv.trim()} data-testid="button-run-check"><ClipboardCheck className="h-4 w-4" /> Validate names</button>
@@ -365,23 +411,25 @@ function SingleResultsPanel({ results, validCount }: { results: SingleCheckResul
   );
 }
 
-function CountCard({ label, caption, counts, missing, testId }: { label: string; caption?: string; counts: Counts; missing?: boolean; testId?: string }) {
+function CountCard({ label, caption, counts, missingColumn, testId }: { label: string; caption?: string; counts: Counts; missingColumn?: string; testId?: string }) {
   return (
-    <div className={`rounded-xl border p-4 shadow-sm ${missing ? 'border-destructive/30 bg-destructive/5' : 'border-border/30 bg-muted/20'}`} data-testid={testId}>
+    <div className={`rounded-xl border p-4 shadow-sm ${missingColumn ? 'border-destructive/30 bg-destructive/5' : 'border-border/30 bg-muted/20'}`} data-testid={testId}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-serif text-lg font-medium text-foreground">{label}</div>
           {caption && <div className="mt-1 text-[11px] font-bold text-muted-foreground">{caption}</div>}
         </div>
-        {missing ? (
+        {missingColumn ? (
           <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-destructive/10 border border-destructive/30 px-2 py-0.5 text-[10px] font-bold text-destructive">
-            <AlertTriangle className="h-3 w-3" /> Missing
+            <AlertTriangle className="h-3 w-3" /> Missing column
           </span>
         ) : (
           <span className="shrink-0 font-serif text-[28px] font-medium text-foreground">{percent(counts)}%</span>
         )}
       </div>
-      {!missing && <div className="mt-2 text-[11px] font-bold text-muted-foreground">{counts.valid} of {counts.scanned} valid</div>}
+      {missingColumn
+        ? <div className="mt-2 text-[11px] font-bold text-destructive">The CSV has no <span className="font-mono">{missingColumn}</span> column, so nothing was scanned for this Rule.</div>
+        : <div className="mt-2 text-[11px] font-bold text-muted-foreground">{counts.valid} of {counts.scanned} valid</div>}
     </div>
   );
 }
@@ -403,7 +451,10 @@ function TagBreakdown({ title, groups, testId }: { title: string; groups: Record
 function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results: AllRulesCheckResult[]; strictValidCount: number; ruleSet: RuleSet }) {
   const summary: Rollup = rollup(scansFromResults(ruleSet, results));
   const strictCounts: Counts = { scanned: results.length, valid: strictValidCount, invalid: results.length - strictValidCount };
-  const missingByRule = new Map(ruleSet.rules.map((rule) => [rule.key, results.some((row) => row.ruleEvals.some((item) => item.ruleKey === rule.key && item.columnMissing))]));
+  const missingColumnByRule = new Map(ruleSet.rules.map((rule) => [
+    rule.key,
+    results.some((row) => row.ruleEvals.some((item) => item.ruleKey === rule.key && item.columnMissing)) ? (rule.source.nameColumn || '(no column mapped)') : undefined,
+  ]));
 
   return (
     <div className="space-y-6">
@@ -426,7 +477,7 @@ function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results:
                 label={item.ruleName}
                 caption={`col: ${ruleSet.rules.find((rule) => rule.key === item.ruleKey)?.source.nameColumn ?? ''}`}
                 counts={item}
-                missing={missingByRule.get(item.ruleKey)}
+                missingColumn={missingColumnByRule.get(item.ruleKey)}
                 testId={`card-rule-${item.ruleKey}`}
               />
             ))}
@@ -472,7 +523,7 @@ function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results:
                             const suggestion = f.violations.find((v) => v.suggestion)?.suggestion;
                             return (
                               <div key={f.ruleKey} className="text-[11px] leading-relaxed">
-                                <span className="font-semibold text-foreground">{f.ruleLabel}:</span>{' '}
+                                <span className="font-semibold text-foreground">{f.ruleName}:</span>{' '}
                                 {f.columnMissing ? `Column "${f.columnName}" missing in CSV` : f.violations.map(v => v.reason).join(', ')}
                                 {suggestion && <div className="mt-0.5 font-semibold text-foreground">Try: <span className="font-mono">{suggestion}</span></div>}
                               </div>
