@@ -8,7 +8,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { NotFound } from '@/components/NotFound';
 import { RuleSetEditor } from '@/components/RuleSetEditor';
 import { RuleSetList } from '@/components/RuleSetList';
-import { createStore, type RuleSet, type RuleSetDraft } from '@/data/store';
+import { createStore, type RuleSet, type RuleSetDraft, type RuleSetStore } from '@/data/store';
 import { isActionPath, readUiState, writeUiState, type CheckMode, type UiState } from '@/data/ui-state';
 
 // Until Firebase Auth lands (Phase 5) every locally created Rule Set is owned by "you".
@@ -45,6 +45,7 @@ function App() {
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <Workspace
         ruleSets={ruleSets}
+        storeKind={store.kind}
         ui={ui}
         selectedRuleSet={selectedRuleSet}
         selectedRule={selectedRule}
@@ -62,6 +63,7 @@ function App() {
 
 type WorkspaceProps = {
   ruleSets: RuleSet[];
+  storeKind: RuleSetStore['kind'];
   ui: UiState;
   selectedRuleSet: RuleSet | undefined;
   selectedRule: RuleSet['rules'][number] | undefined;
@@ -77,7 +79,7 @@ type WorkspaceProps = {
 // Inside the router: syncs the last action with the URL, redirects the root to
 // it, and renders the shell plus the three actions.
 function Workspace(props: WorkspaceProps) {
-  const { ruleSets, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onCreate, onUpdate, onDelete } = props;
+  const { ruleSets, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onCreate, onUpdate, onDelete } = props;
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -97,13 +99,13 @@ function Workspace(props: WorkspaceProps) {
   }, [ui.ruleSetId]);
 
   const author = selectedRuleSet
-    ? <RuleSetEditor key={selectedRuleSet.id} existing={selectedRuleSet} justCreated={selectedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => onSelectRuleSet(null)} />
+    ? <RuleSetEditor key={selectedRuleSet.id} existing={selectedRuleSet} storeKind={storeKind} justCreated={selectedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => onSelectRuleSet(null)} />
     : creating
-      ? <RuleSetEditor key="new" existing={null} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setCreating(false); setJustCreatedId(id); onSelectRuleSet(id); }} onClose={() => setCreating(false)} />
-      : <RuleSetList ruleSets={ruleSets} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
+      ? <RuleSetEditor key="new" existing={null} storeKind={storeKind} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setCreating(false); setJustCreatedId(id); onSelectRuleSet(id); }} onClose={() => setCreating(false)} />
+      : <RuleSetList ruleSets={ruleSets} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
 
   return (
-    <AppShell ruleSets={ruleSets} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule}>
+    <AppShell ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule}>
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>

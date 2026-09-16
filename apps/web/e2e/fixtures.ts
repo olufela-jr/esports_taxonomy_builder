@@ -46,8 +46,8 @@ export const globalRuleSet = {
   id: 'ruleset-global',
   name: 'Global campaign standard',
   ownerId: 'maya',
-  createdAt: '2024-09-10T09:00:00.000Z',
-  updatedAt: '2025-02-21T15:42:00.000Z',
+  createdAt: '2026-09-01T09:00:00.000Z',
+  updatedAt: '2026-09-01T15:42:00.000Z',
   rules: [
     {
       id: 'rule-initiative',

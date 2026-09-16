@@ -55,7 +55,7 @@ export function Builder({ ruleSet, rule }: { ruleSet: RuleSet | undefined; rule:
         <section className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
           <div className="mb-8 flex items-start justify-between gap-4">
             <div className="flex flex-col">
-              <div className="font-serif text-2xl font-medium text-foreground">Naming parameters</div>
+              <div className="font-display text-2xl font-medium text-foreground">Naming parameters</div>
               <p className="text-[13px] font-bold text-muted-foreground mt-1">Values for {rule.name}.</p>
             </div>
             <div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><Zap className="h-3 w-3" /></div>
@@ -99,7 +99,7 @@ export function Builder({ ruleSet, rule }: { ruleSet: RuleSet | undefined; rule:
         <section className="self-start xl:sticky xl:top-[92px]">
           <div className="overflow-hidden rounded-xl bg-card p-6 shadow-sm border border-border/30">
             <div className="flex items-center justify-between">
-              <div className="font-serif text-2xl font-medium text-foreground">Output</div>
+              <div className="font-display text-2xl font-medium text-foreground">Output</div>
               {valid ? <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-primary" /><span className="text-[10px] font-bold text-foreground">Compliant</span></div> : <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /><span className="text-[10px] font-bold text-foreground">Incomplete</span></div>}
             </div>
             <div className="my-8 break-all font-mono text-xl leading-relaxed text-primary sm:text-2xl" data-testid="text-build-preview">{displayOutput}</div>

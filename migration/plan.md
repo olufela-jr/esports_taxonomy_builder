@@ -119,7 +119,7 @@ Files: new `apps/web/src/lib/firebase.ts`, `apps/web/src/data/store.ts`, `apps/w
 ## Phase 5: Firebase Auth and Security Rules (step 5)
 
 1. Google sign-in via `signInWithPopup`; a sign-in screen replaces the shell when `auth` is configured and no user is present. Memory-store mode uses a fixed fake user so local dev and Playwright need no Firebase.
-2. `ownerId = user.uid` on create. Edit, save, and delete are disabled with a hint when `ownerId !== user.uid`. Remove the fake "Maya Chen" footer and "System operational" pill from `AppShell.tsx:107-127`; show the signed-in user's name and a sign-out button instead.
+2. `ownerId = user.uid` on create. Edit, save, and delete are disabled with a hint when `ownerId !== user.uid`. Remove the fake "Raji Taraby" footer and "System operational" pill from `AppShell.tsx:107-127`; show the signed-in user's name and a sign-out button instead.
 3. `firestore.rules`: `rulesets/{id}`: read if `request.auth != null`; create if `request.resource.data.ownerId == request.auth.uid` and `name` is a string and `rules` is a list; update and delete if `resource.data.ownerId == request.auth.uid` and `ownerId` is unchanged.
 4. Verify: `firebase emulators:exec --only firestore,auth` with a small rules test using `@firebase/rules-unit-testing` (owner can write, non-owner cannot, unauthenticated cannot read). Commit.
 

@@ -275,7 +275,7 @@ export function CsvChecker({ ruleSet, rule, checkMode, onCheckModeChange }: { ru
         <section className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
           <div className="flex items-start justify-between">
             <div className="flex flex-col">
-              <div className="font-serif text-2xl font-medium text-foreground">Validation source</div>
+              <div className="font-display text-2xl font-medium text-foreground">Validation source</div>
             </div>
             <div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><FileSpreadsheet className="h-3 w-3" /></div>
           </div>
@@ -359,13 +359,13 @@ function SingleResultsPanel({ results, validCount }: { results: SingleCheckResul
   return (
     <div>
       <div className="mb-6 grid grid-cols-3 gap-4">
-        <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="font-serif text-xl font-medium text-foreground">Checked</div><div className="mt-4 font-serif text-[32px] font-medium text-foreground" data-testid="text-results-checked">{results.length}</div></div>
-        <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="font-serif text-xl font-medium text-foreground">Compliant</div><div className="mt-4 font-serif text-[32px] font-medium text-foreground" data-testid="text-results-valid">{validCount}</div></div>
-        <div className="rounded-xl bg-card p-6 shadow-sm border border-destructive/30"><div className="font-serif text-xl font-medium text-destructive">Invalid</div><div className="mt-4 font-serif text-[32px] font-medium text-destructive" data-testid="text-results-invalid">{invalidCount}</div></div>
+        <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="font-display text-xl font-medium text-foreground">Checked</div><div className="mt-4 font-display text-[32px] font-medium text-foreground" data-testid="text-results-checked">{results.length}</div></div>
+        <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="font-display text-xl font-medium text-foreground">Compliant</div><div className="mt-4 font-display text-[32px] font-medium text-foreground" data-testid="text-results-valid">{validCount}</div></div>
+        <div className="rounded-xl bg-card p-6 shadow-sm border border-destructive/30"><div className="font-display text-xl font-medium text-destructive">Invalid</div><div className="mt-4 font-display text-[32px] font-medium text-destructive" data-testid="text-results-invalid">{invalidCount}</div></div>
       </div>
       <div className="overflow-hidden rounded-xl bg-card shadow-sm border border-border/30">
         <div className="flex items-center justify-between border-b border-border/50 px-6 py-5">
-          <div><h2 className="font-serif text-xl font-medium text-foreground">Validation results</h2></div>
+          <div><h2 className="font-display text-xl font-medium text-foreground">Validation results</h2></div>
           <StatusPill invalidCount={invalidCount} />
         </div>
         <div className="overflow-x-auto">
@@ -400,7 +400,7 @@ function CountCard({ label, caption, counts, missingColumn, testId }: { label: s
     <div className={`rounded-xl border p-4 shadow-sm ${missingColumn ? 'border-destructive/30 bg-destructive/5' : 'border-border/30 bg-muted/20'}`} data-testid={testId}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate font-serif text-lg font-medium text-foreground">{label}</div>
+          <div className="truncate font-display text-lg font-medium text-foreground">{label}</div>
           {caption && <div className="mt-1 text-[11px] font-bold text-muted-foreground">{caption}</div>}
         </div>
         {missingColumn ? (
@@ -408,7 +408,7 @@ function CountCard({ label, caption, counts, missingColumn, testId }: { label: s
             <AlertTriangle className="h-3 w-3" /> Missing column
           </span>
         ) : (
-          <span className="shrink-0 font-serif text-[28px] font-medium text-foreground">{percent(counts)}%</span>
+          <span className="shrink-0 font-display text-[28px] font-medium text-foreground">{percent(counts)}%</span>
         )}
       </div>
       {missingColumn
@@ -424,7 +424,7 @@ function TagBreakdown({ title, groups, testId }: { title: string; groups: Record
   if (!entries.some(([name]) => name !== UNTAGGED)) return null;
   return (
     <div className="mt-6" data-testid={testId}>
-      <h4 className="mb-3 font-serif text-lg font-medium text-foreground">{title}</h4>
+      <h4 className="mb-3 font-display text-lg font-medium text-foreground">{title}</h4>
       <div className="grid gap-3 sm:grid-cols-2">
         {entries.map(([name, counts]) => <CountCard key={name} label={name} counts={counts} />)}
       </div>
@@ -443,9 +443,9 @@ function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results:
   return (
     <div className="space-y-6">
       <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
-        <h3 className="mb-2 font-serif text-2xl font-medium text-foreground">Rule Set compliance</h3>
+        <h3 className="mb-2 font-display text-2xl font-medium text-foreground">Rule Set compliance</h3>
         <div className="flex items-center gap-6 mt-4">
-          <div className="font-serif text-[40px] font-medium tracking-tight text-primary" data-testid="text-pooled-percent">{percent(summary.total)}%</div>
+          <div className="font-display text-[40px] font-medium tracking-tight text-primary" data-testid="text-pooled-percent">{percent(summary.total)}%</div>
           <div className="text-[13px] font-bold text-muted-foreground">
             <span className="text-foreground">{summary.total.valid}</span> of {summary.total.scanned} names valid, pooled across {ruleSet.rules.length} Rule{ruleSet.rules.length === 1 ? '' : 's'}.
             <div className="mt-1 font-medium">Each Rule checks its own column; totals are summed across Rules.</div>
@@ -453,7 +453,7 @@ function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results:
         </div>
 
         <div className="mt-8 pt-6 border-t border-border/50">
-          <h4 className="mb-4 font-serif text-xl font-medium text-foreground">Per Rule</h4>
+          <h4 className="mb-4 font-display text-xl font-medium text-foreground">Per Rule</h4>
           <div className="grid gap-4 sm:grid-cols-2">
             {summary.perRule.map((item) => (
               <CountCard
@@ -474,7 +474,7 @@ function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results:
       <div className="overflow-hidden rounded-xl bg-card shadow-sm border border-border/30">
         <div className="flex items-center justify-between gap-4 border-b border-border/50 px-6 py-5">
           <div>
-            <h2 className="font-serif text-xl font-medium text-foreground">Strict view: rows passing every Rule</h2>
+            <h2 className="font-display text-xl font-medium text-foreground">Strict view: rows passing every Rule</h2>
             <p className="mt-1 text-[11px] font-bold text-muted-foreground" data-testid="text-strict-summary">{strictCounts.valid} of {strictCounts.scanned} rows ({percent(strictCounts)}%) pass all {ruleSet.rules.length} Rules at once. Secondary figure for wide CSVs where one row carries a name per Rule.</p>
           </div>
           <StatusPill invalidCount={strictCounts.invalid} />

@@ -25,47 +25,4 @@ export const seedRuleSets: RuleSet[] = [
       },
     ],
   },
-  {
-    id: 'ruleset-lifecycle',
-    name: 'Lifecycle & CRM',
-    ownerId: 'jonah',
-    createdAt: '2024-11-04T11:15:00.000Z',
-    updatedAt: '2025-02-19T12:18:00.000Z',
-    rules: [
-      {
-        id: 'rule-lifecycle',
-        key: 'lifecycle_campaign',
-        name: 'Lifecycle Campaign',
-        tags: { platform: 'email', entityType: 'campaign' },
-        delimiter: '_',
-        source: { dataset: 'crm_dw', table: 'campaigns', nameColumn: 'campaign_name' },
-        segments: [
-          { id: 'seg-motion', kind: 'enum', key: 'motion', label: 'Motion', required: true, allowedValues: ['acq', 'nurture', 'retention', 'winback'] },
-          { id: 'seg-audience', kind: 'freeform', key: 'audience', label: 'Audience', required: true, maxLength: 24, illegalChars: [' ', '/', '?', '#', '&'] },
-          { id: 'seg-offer', kind: 'freeform', key: 'offer', label: 'Offer', required: false, maxLength: 28, illegalChars: [' ', '/', '?', '#', '&'] },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'ruleset-product',
-    name: 'Product launches',
-    ownerId: 'alina',
-    createdAt: '2025-01-18T08:30:00.000Z',
-    updatedAt: '2025-02-14T16:05:00.000Z',
-    rules: [
-      {
-        id: 'rule-launch',
-        key: 'launch_code',
-        name: 'Launch Code',
-        delimiter: '.',
-        source: { dataset: 'product_dw', table: 'launches', nameColumn: 'launch_code' },
-        segments: [
-          { id: 'seg-product', kind: 'enum', key: 'product', label: 'Product', required: true, allowedValues: ['atlas', 'beacon', 'orbit'] },
-          { id: 'seg-launch', kind: 'freeform', key: 'launch', label: 'Launch', required: true, maxLength: 36, illegalChars: [' ', '/', '?', '#', '&'] },
-          { id: 'seg-market', kind: 'enum', key: 'market', label: 'Market', required: true, allowedValues: ['enterprise', 'midmarket', 'smb'] },
-        ],
-      },
-    ],
-  },
 ];

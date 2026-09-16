@@ -42,7 +42,7 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-background p-6" role="alert">
         <div className="w-full max-w-lg rounded-xl border border-destructive/40 bg-card p-6 shadow-xl">
-          <h1 className="font-serif text-2xl font-semibold text-destructive">Configuration error</h1>
+          <h1 className="font-display text-2xl font-semibold text-destructive">Configuration error</h1>
           <p className="mt-3 text-sm leading-relaxed text-foreground">{error.message}</p>
         </div>
       </div>
@@ -52,7 +52,7 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
       <div className="w-full max-w-lg rounded-xl border border-card-border bg-card p-6 text-center shadow-xl">
-        <h1 className="font-serif text-2xl font-semibold text-foreground">
+        <h1 className="font-display text-2xl font-semibold text-foreground">
           Something went wrong
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
