@@ -9,9 +9,10 @@ Firebase / GCP throughout. Full reference: `docs/spec.md`.
 ## The one rule that must never break
 All naming logic lives in ONE package: `@taxo/shared` (`packages/shared`). It exports
 `compose()` and `validate()`. Round-trip guarantee: any name `compose` produces MUST pass
-`validate` for the same Rule. Never reimplement or duplicate engine logic in `apps/web`
-or `functions`. The Vitest suite in `packages/shared` proves the round-trip and every
-violation type; keep it green after every change.
+`validate` for the same Rule. `compose` and `validate` take resolved Rules only; call
+`resolveRule` first. UTM logic lives in `@taxo/shared` too. Never reimplement or duplicate
+engine logic in `apps/web` or `functions`. The Vitest suite in `packages/shared` proves the
+round-trip and every violation type; keep it green after every change.
 
 ## Canonical terminology (use everywhere: types, UI, storage keys)
 - **Rule Set**: the parent container. (The Replit prototype called this "Taxonomy".)
@@ -19,7 +20,8 @@ violation type; keep it green after every change.
   author chooses, e.g. "Google Campaigns", "Meta Ad Sets", "TikTok Creatives".
   (The prototype called this "Level".)
 - **Segment**: an ordered component of a Rule's name. Unchanged.
-- Rules are independent: no inheritance, no cross-Rule validation.
+- A Rule may inherit leading segments from a parent Rule in the same Rule Set, by reference,
+  at build time. Cross-level validation is out of scope.
 - Note: a "Rule" here is a whole convention, not a single constraint. Do not confuse it
   with Firestore Security Rules or with individual segment checks.
 
@@ -40,7 +42,10 @@ violation type; keep it green after every change.
 
 ## Data model essentials
 - A Rule Set document stores its Rules inline. `Rule = { id, key, name, tags?, delimiter,
-  segments[], source }`. `tags` is optional `{ platform?, entityType? }`.
+  segments[], source, parent?, utm? }`. `tags` is optional `{ platform?, entityType? }`.
+  `parent` links to another Rule in the same Rule Set and names the segments to inherit;
+  `utm` maps built values to UTM parameters. Both reference segments by immutable `id`,
+  never by the editable `key`.
 - `Segment` is `enum` (`allowedValues`, exact and case-sensitive match) or `freeform`
   (`maxLength`, `illegalChars`). The delimiter is ALWAYS illegal inside any value; the
   engine enforces this, authors never list it.
@@ -91,6 +96,21 @@ migration; the browser regression test in checklist step 3 guards it.)
 7. Confirm `pnpm -r test`, the browser regression tests, and the full TypeScript check
    all pass. Then proceed to Stage 2.
 
+## v2 build order (after the checklist, before Stage 2)
+The v2 work is browser-only and depends on Firestore and the `id` fields from checklist
+steps 2 and 4. Full contract in `docs/spec.md`. Build in this order:
+1. Engine types and `resolveRule` with tests.
+2. Runtime guard: `compose` and `validate` reject a Rule with `parent` set.
+3. `checkRuleSet` extensions and `dependentsOf`.
+4. Author parent UI.
+5. Build parent step and chaining.
+6. UTM types, `buildTrackingUrl` and tests.
+7. Author UTM panel.
+8. Build URL output.
+9. Playwright additions.
+Batch build (`enumerate`, `countCombinations`) follows as its own release once P12 is
+answered. Stage 2 then follows as specified, with the `resolveRule` change.
+
 ## Stage 2 (only after the checklist)
 Callable Cloud Function `scanCampaigns` in `functions/`, importing `@taxo/shared`:
 reads the chosen Rule's `source`, runs `SELECT DISTINCT nameColumn` with the optional
@@ -104,9 +124,9 @@ inlined: pnpm's symlinked `node_modules` makes this essential, do not rely on ho
 ## Do not
 - Do not duplicate engine logic outside `@taxo/shared`.
 - Do not convert pnpm to npm, or add Turborepo or Nx.
-- Do not add cross-Rule inheritance or parent-child validation.
+- Inheritance by reference at build time is in scope; cross-level validation is not.
 - Do not add server-side CSV processing.
 - Do not build scheduled scanning, roles, versioning, approval workflows, or an
   exceptions list in this phase. (Legacy noise is handled by a Rule's `source.filter`.)
 - Do not let the prototype's "suggested next prompts" reopen settled decisions:
-  Rules are independent (decided), and the items above are deferred (decided).
+  the items above are deferred (decided).
