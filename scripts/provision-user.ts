@@ -4,6 +4,11 @@
 //
 //   pnpm provision:user --email <address> --tenant <id> --role admin|user
 //   pnpm provision:user --email <address> --tenant <id> --role admin --tenant-name "<name>"
+//   pnpm provision:user --email <address> --tenant <id> --role admin --platforms google,meta
+//
+// --platforms sets the tenant's platform list (the ids in PLATFORMS from
+// @taxo/shared; v3 D38), replacing whatever the tenant document holds. Phase 2
+// scopes shared definitions by it. Without the flag the list is left as it is.
 //
 // The account must have signed in at least once (Google sign-in creates it).
 // --tenant-name creates the tenant document when it does not exist yet; the
@@ -14,7 +19,7 @@ import { parseArgs } from 'node:util';
 import { getAuth } from 'firebase-admin/auth';
 import type { Tenant, TenantUser } from '../apps/web/src/data/types';
 import { connect, defaultProjectId, fail } from './lib/admin';
-import { tenantDocument } from './lib/v3-transform';
+import { parsePlatforms, tenantDocument } from './lib/v3-transform';
 
 const { values } = parseArgs({
   options: {
@@ -22,6 +27,7 @@ const { values } = parseArgs({
     tenant: { type: 'string' },
     role: { type: 'string' },
     'tenant-name': { type: 'string' },
+    platforms: { type: 'string' },
     project: { type: 'string' },
   },
 });
@@ -32,6 +38,13 @@ if (!email || !tenantId || (role !== 'admin' && role !== 'user')) {
 }
 if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(tenantId)) {
   fail('The tenant id is lowercase letters, digits and hyphens, 2 to 63 characters.');
+}
+
+let platforms: string[] | undefined;
+try {
+  platforms = values.platforms === undefined ? undefined : parsePlatforms(values.platforms);
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
 
 const projectId = values.project ?? defaultProjectId();
@@ -45,9 +58,13 @@ async function provision(): Promise<void> {
   const now = new Date().toISOString();
   if (!tenantSnapshot.exists) {
     if (!values['tenant-name']) fail(`Tenant "${tenantId}" does not exist. Run the migration for the first tenant, or pass --tenant-name "<name>" to create an empty one.`);
-    const tenant: Tenant = tenantDocument(tenantId!, values['tenant-name'], [], now);
+    const tenant: Tenant = tenantDocument(tenantId!, values['tenant-name'], [], now, platforms ?? []);
     await tenantRef.set(tenant);
-    console.log(`Created tenant "${tenantId}" (${tenant.name}) with no allowed datasets yet.`);
+    console.log(`Created tenant "${tenantId}" (${tenant.name}) with no allowed datasets yet; platforms [${tenant.config.platforms.join(', ')}].`);
+  } else if (platforms) {
+    const current = tenantSnapshot.data() as Tenant;
+    await tenantRef.set({ ...current, config: { ...current.config, platforms }, updatedAt: now });
+    console.log(`Tenant "${tenantId}" platforms set to [${platforms.join(', ')}].`);
   }
 
   const previous = (user.customClaims ?? {}) as { tenantId?: string; role?: string };

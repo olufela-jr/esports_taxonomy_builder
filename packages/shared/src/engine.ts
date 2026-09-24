@@ -41,8 +41,31 @@ export type Source = {
   };
 };
 
+// The product's fixed platform list (v3 O12). A Rule's `tags.platform`, a
+// tenant's `config.platforms` and a definition's platform scope all use these
+// ids, so the three can never disagree on spelling. `name` is for display.
+export const PLATFORMS = [
+  { id: "google", name: "Google Ads" },
+  { id: "microsoft", name: "Microsoft Ads" },
+  { id: "meta", name: "Meta" },
+  { id: "tiktok", name: "TikTok" },
+  { id: "linkedin", name: "LinkedIn" },
+  { id: "pinterest", name: "Pinterest" },
+  { id: "snapchat", name: "Snapchat" },
+  { id: "dv360", name: "Display & Video 360" },
+  { id: "amazon", name: "Amazon Ads" },
+];
+
+export function isPlatform(value: string): boolean {
+  return PLATFORMS.some((platform) => platform.id === value);
+}
+
+export function platformName(id: string): string {
+  return PLATFORMS.find((platform) => platform.id === id)?.name ?? id;
+}
+
 export type Tags = {
-  platform?: string;
+  platform?: string; // a PLATFORMS id; checkRule refuses anything else
   entityType?: string;
 };
 
@@ -210,6 +233,12 @@ export function checkRule(rule: Rule): string[] {
       errors.push(`${label} needs a maximum length of at least 1.`);
     }
   });
+
+  if (rule.tags?.platform && !isPlatform(rule.tags.platform)) {
+    errors.push(
+      `Platform "${rule.tags.platform}" is not one of the known platforms: ${PLATFORMS.map((platform) => platform.id).join(", ")}.`,
+    );
+  }
 
   if (!rule.source.dataset.trim() || !rule.source.table.trim() || !rule.source.nameColumn.trim()) {
     errors.push("The source needs a dataset, table, and name column.");

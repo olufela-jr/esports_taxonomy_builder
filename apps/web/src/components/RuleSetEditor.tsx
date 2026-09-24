@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { checkRuleSet, entriesFromCodes, entryFromCode, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
+import { checkRuleSet, entriesFromCodes, entryFromCode, isPlatform, PLATFORMS, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
 import type { RuleSet, RuleSetDraft, RuleSetStore } from '@/data/store';
 import { newId } from '@/lib/ids';
 import { buttonDanger, buttonPrimary, buttonQuiet, iconButton, inputClass } from './styles';
@@ -184,7 +184,7 @@ export function RuleSetEditor({ existing, readOnly = false, storeKind, justCreat
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-           <label className="text-[13px] font-bold text-foreground">Platform: <span className="font-normal text-muted-foreground ml-1">(optional)</span><input className={`${inputClass} mt-2`} value={rule.tags?.platform ?? ''} onChange={(event) => updateTags(ruleIndex, { platform: event.target.value })} placeholder="e.g. meta, google" data-testid={`input-rule-platform-${ruleIndex}`} /></label>
+           <label className="text-[13px] font-bold text-foreground">Platform: <span className="font-normal text-muted-foreground ml-1">(optional)</span><select className={`${inputClass} mt-2`} value={rule.tags?.platform ?? ''} onChange={(event) => updateTags(ruleIndex, { platform: event.target.value })} data-testid={`input-rule-platform-${ruleIndex}`}><option value="">None</option>{rule.tags?.platform && !isPlatform(rule.tags.platform) ? <option value={rule.tags.platform}>{rule.tags.platform} (not a known platform)</option> : null}{PLATFORMS.map((platform) => <option key={platform.id} value={platform.id}>{platform.name}</option>)}</select></label>
            <label className="text-[13px] font-bold text-foreground">Entity type: <span className="font-normal text-muted-foreground ml-1">(optional)</span><input className={`${inputClass} mt-2`} value={rule.tags?.entityType ?? ''} onChange={(event) => updateTags(ruleIndex, { entityType: event.target.value })} placeholder="e.g. campaign, ad_set" data-testid={`input-rule-entity-type-${ruleIndex}`} /></label>
         </div>
 

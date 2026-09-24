@@ -154,6 +154,7 @@ v3 Gate G0 passed 2026-09-24, record under the decisions log in `docs/spec-v3.md
 hold codes, inputs show labels (D48). Point-in-time recovery and delete protection were
 enabled on the production database on 2026-09-24 (D43). Build in this order:
 1. Platform list in `@taxo/shared` (O12) and a `--platforms` flag on provisioning (D38).
+   Done 2026-09-24 (`v3/phase-2.md`).
 2. Definitions: type, `tenants/{id}/definitions` in `store.ts` and the Security Rules,
    `checkDefinition` sharing one entry-list check with `checkRule` (O14).
 3. `definitionId` enum segments; `resolveRule(rule, ruleSet, definitions)` resolving parents

@@ -4,6 +4,9 @@ import {
   checkRule,
   checkRuleSet,
   compose,
+  isPlatform,
+  platformName,
+  PLATFORMS,
   entriesFromCodes,
   resolveRule,
   rollup,
@@ -532,5 +535,27 @@ describe("resolveRule", () => {
       ruleSet,
       'Parent "Ad Group" cannot be resolved: The delimiter "-" must match parent "Campaign", which uses "_".',
     );
+  });
+});
+
+// ---- platforms -------------------------------------------------------------------
+
+describe("platforms", () => {
+  it("knows the fixed product list by id", () => {
+    expect(PLATFORMS.map((platform) => platform.id)).toContain("google");
+    expect(new Set(PLATFORMS.map((platform) => platform.id)).size).toBe(PLATFORMS.length);
+    expect(isPlatform("meta")).toBe(true);
+    expect(isPlatform("Google")).toBe(false);
+    expect(isPlatform("")).toBe(false);
+    expect(platformName("dv360")).toBe("Display & Video 360");
+    expect(platformName("unknown")).toBe("unknown");
+  });
+
+  it("accepts a known platform tag or none, and refuses anything else", () => {
+    expect(checkRule({ ...campaignRule, tags: { platform: "google" } })).toEqual([]);
+    expect(checkRule({ ...campaignRule, tags: { entityType: "campaign" } })).toEqual([]);
+    expect(checkRule({ ...campaignRule, tags: { platform: "Google" } })).toEqual([
+      `Platform "Google" is not one of the known platforms: ${PLATFORMS.map((platform) => platform.id).join(", ")}.`,
+    ]);
   });
 });

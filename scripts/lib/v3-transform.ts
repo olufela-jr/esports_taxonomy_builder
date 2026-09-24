@@ -1,7 +1,7 @@
 // The pure half of the v3 migration: what a pre-v3 /rulesets document becomes
 // under tenants/{tenantId}/rulesets. No Firestore here, so it is unit tested
 // without an emulator; scripts/migrate-v3.ts does the reading and writing.
-import { checkRuleSet, entryFromCode, type EnumEntry, type EnumSegment, type FreeformSegment, type Rule, type Segment } from '@taxo/shared';
+import { checkRuleSet, entryFromCode, isPlatform, PLATFORMS, type EnumEntry, type EnumSegment, type FreeformSegment, type Rule, type Segment } from '@taxo/shared';
 import type { RuleSet, Tenant } from '../../apps/web/src/data/types';
 
 // A pre-v3 document: ownerId instead of createdBy and updatedBy, and enum
@@ -53,14 +53,25 @@ export function collectDatasets(ruleSets: Array<{ rules: Array<{ source: { datas
   return [...datasets].sort();
 }
 
-export function tenantDocument(id: string, name: string, allowedDatasets: string[], now: string): Tenant {
+export function tenantDocument(id: string, name: string, allowedDatasets: string[], now: string, platforms: string[] = []): Tenant {
   return {
     id,
     name,
-    config: { allowedDatasets, platforms: [] },
+    config: { allowedDatasets, platforms },
     createdAt: now,
     updatedAt: now,
   };
+}
+
+// A comma-separated `--platforms` value as the tenant's platform ids (D38):
+// trimmed, lowercased, deduplicated, every one a known platform or an error.
+export function parsePlatforms(value: string): string[] {
+  const ids = [...new Set(value.split(',').map((item) => item.trim().toLowerCase()).filter(Boolean))];
+  const unknown = ids.filter((id) => !isPlatform(id));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown platform(s): ${unknown.join(', ')}. Known: ${PLATFORMS.map((platform) => platform.id).join(', ')}.`);
+  }
+  return ids;
 }
 
 // Problems with a document as stored under the tenant, for the dry run and

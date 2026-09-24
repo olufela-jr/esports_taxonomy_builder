@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectDatasets, tenantDocument, transformRuleSet, verifyRuleSet, type LegacyRuleSet } from './v3-transform';
+import { collectDatasets, parsePlatforms, tenantDocument, transformRuleSet, verifyRuleSet, type LegacyRuleSet } from './v3-transform';
 
 const legacy: LegacyRuleSet = {
   id: 'rs-1',
@@ -82,6 +82,19 @@ describe('collectDatasets and tenantDocument', () => {
   it('lists every dataset once, sorted, ignoring blanks', () => {
     const blank = { rules: [{ source: { dataset: '  ' } }, { source: { dataset: 'marketing' } }] };
     expect(collectDatasets([legacy, blank])).toEqual(['marketing', 'marketing_dw']);
+  });
+
+  it('builds the tenant document with the platforms given', () => {
+    expect(tenantDocument('acme', 'Acme', ['marketing'], '2026-09-24T00:00:00.000Z', ['google', 'meta']).config).toEqual({
+      allowedDatasets: ['marketing'],
+      platforms: ['google', 'meta'],
+    });
+  });
+
+  it('parses a --platforms value into known ids and refuses unknown ones', () => {
+    expect(parsePlatforms(' Google, meta ,google,')).toEqual(['google', 'meta']);
+    expect(parsePlatforms('')).toEqual([]);
+    expect(() => parsePlatforms('google, facebook')).toThrow('Unknown platform(s): facebook.');
   });
 
   it('builds the tenant document with the datasets and no platforms yet', () => {

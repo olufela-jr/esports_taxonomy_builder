@@ -32,7 +32,9 @@ test('Rule Set and Rule fields keep focus and value while typing', async ({ page
 
   await typeAndCheck(page, page.getByTestId('input-rule-delimiter-0'), '_');
 
-  await typeAndCheck(page, page.getByTestId('input-rule-platform-0'), 'google');
+  // Platform is a select over the product's fixed list, not free text.
+  await page.getByTestId('input-rule-platform-0').selectOption('google');
+  await expect(page.getByTestId('input-rule-platform-0')).toHaveValue('google');
   await typeAndCheck(page, page.getByTestId('input-rule-entity-type-0'), 'campaign');
 
   await typeAndCheck(page, page.getByTestId('input-source-dataset-0'), 'marketing_dw');
