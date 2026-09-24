@@ -61,7 +61,7 @@ function sampleName(rule: Rule, variant: 'valid' | 'badValue' | 'short'): string
   const required = rule.segments.filter((segment) => segment.required);
   const tokens = required.map((segment, index) => {
     const spoil = variant === 'badValue' && index === 0;
-    if (segment.kind === 'enum') return spoil ? 'xx' : (segment.allowedValues[0] ?? 'value');
+    if (segment.kind === 'enum') return spoil ? 'xx' : (segment.allowedValues[0]?.code ?? 'value');
     return spoil ? 'bad value' : 'sample';
   });
   if (variant === 'short') tokens.pop();

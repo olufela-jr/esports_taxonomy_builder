@@ -79,7 +79,8 @@ export function Builder({ ruleSet, rule }: { ruleSet: RuleSet | undefined; rule:
                     data-testid={`select-build-${segment.key}`}
                   >
                     <option value="">Select {segment.label.toLowerCase()}</option>
-                    {segment.allowedValues.map((value) => <option key={value} value={value}>{value}</option>)}
+                    {/* The label is what the builder sees; the code is what goes into the name. */}
+                    {segment.allowedValues.map((entry) => <option key={entry.code} value={entry.code}>{entry.label === entry.code ? entry.label : `${entry.label} (${entry.code})`}</option>)}
                   </select>
                 ) : (
                   <input

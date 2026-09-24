@@ -57,11 +57,16 @@ test('Segment fields keep focus and value while typing, trailing comma included'
   await page.getByTestId('select-segment-kind-0-0').selectOption('enum');
   await typeAndCheck(page, page.getByTestId('input-segment-values-0-0'), 'NA, emea, Apac,');
 
-  // The stored values keep their case and drop only the empty trailing entry.
+  // The stored entries keep their case, use the typed code as the label, and
+  // drop only the empty trailing entry.
   await page.getByTestId('button-save-ruleset').click();
   await expect(page.getByText('Saved locally')).toBeVisible();
   const saved = await readRuleSets(page);
-  expect(saved[0].rules[0].segments[0].allowedValues).toEqual(['NA', 'emea', 'Apac']);
+  expect(saved[0].rules[0].segments[0].allowedValues).toEqual([
+    { label: 'NA', code: 'NA' },
+    { label: 'emea', code: 'emea' },
+    { label: 'Apac', code: 'Apac' },
+  ]);
 });
 
 test('adding and reordering segments keeps every field editable', async ({ page }) => {

@@ -1,3 +1,4 @@
+import { entriesFromCodes } from '@taxo/shared';
 import type { RuleSet } from './types';
 
 // Demo data for the in-memory store (development and tests). Never written to
@@ -18,10 +19,10 @@ export const seedRuleSets: RuleSet[] = [
         delimiter: '-',
         source: { dataset: 'marketing_dw', table: 'initiatives', nameColumn: 'initiative_id' },
         segments: [
-          { id: 'seg-region', kind: 'enum', key: 'region', label: 'Region', required: true, allowedValues: ['na', 'emea', 'apac', 'latam'] },
-          { id: 'seg-channel', kind: 'enum', key: 'channel', label: 'Channel', required: true, allowedValues: ['paid_search', 'paid_social', 'email', 'display', 'partner'] },
+          { id: 'seg-region', kind: 'enum', key: 'region', label: 'Region', required: true, allowedValues: entriesFromCodes(['na', 'emea', 'apac', 'latam']) },
+          { id: 'seg-channel', kind: 'enum', key: 'channel', label: 'Channel', required: true, allowedValues: entriesFromCodes(['paid_search', 'paid_social', 'email', 'display', 'partner']) },
           { id: 'seg-initiative', kind: 'freeform', key: 'initiative', label: 'Initiative', required: true, maxLength: 32, illegalChars: [' ', '/', '?', '#', '&'] },
-          { id: 'seg-quarter', kind: 'enum', key: 'quarter', label: 'Quarter', required: true, allowedValues: ['q1', 'q2', 'q3', 'q4'] },
+          { id: 'seg-quarter', kind: 'enum', key: 'quarter', label: 'Quarter', required: true, allowedValues: entriesFromCodes(['q1', 'q2', 'q3', 'q4']) },
         ],
       },
     ],

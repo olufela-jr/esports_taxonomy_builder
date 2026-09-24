@@ -4,6 +4,7 @@ import {
   checkRule,
   checkRuleSet,
   compose,
+  entriesFromCodes,
   resolveRule,
   rollup,
   validate,
@@ -20,7 +21,7 @@ const typeSegment: EnumSegment = {
   key: "campaign_type",
   label: "Campaign Type",
   required: true,
-  allowedValues: ["brand", "perf", "rtg"],
+  allowedValues: entriesFromCodes(["brand", "perf", "rtg"]),
 };
 
 const marketSegment: EnumSegment = {
@@ -29,7 +30,7 @@ const marketSegment: EnumSegment = {
   key: "market",
   label: "Market",
   required: true,
-  allowedValues: ["uk", "us", "de"],
+  allowedValues: entriesFromCodes(["uk", "us", "de"]),
 };
 
 const customSegment: FreeformSegment = {
@@ -90,13 +91,35 @@ describe("naming rule engine", () => {
     const upperRule: Rule = {
       ...campaignRule,
       segments: [
-        { ...marketSegment, allowedValues: ["UK", "US"] },
+        { ...marketSegment, allowedValues: entriesFromCodes(["UK", "US"]) },
       ],
     };
 
     expect(validate(upperRule, "UK").valid).toBe(true);
     expect(validate(upperRule, "uk").valid).toBe(false);
     expect(validate(upperRule, "uk").violations[0]?.reason).toContain("allowed list");
+  });
+
+  it("writes and matches codes, never labels", () => {
+    const labelledRule: Rule = {
+      ...campaignRule,
+      segments: [
+        { ...typeSegment, allowedValues: [{ label: "Awareness", code: "AWA" }, { label: "Performance", code: "PRF" }] },
+        marketSegment,
+      ],
+    };
+
+    const composed = compose(labelledRule, { campaign_type: "AWA", market: "uk" });
+    expect(composed.errors).toEqual([]);
+    expect(composed.name).toBe("AWA_uk");
+    expect(validate(labelledRule, composed.name).valid).toBe(true);
+
+    // The label is display only: it is not accepted in a name or a selection.
+    expect(validate(labelledRule, "Awareness_uk").valid).toBe(false);
+    expect(compose(labelledRule, { campaign_type: "Awareness", market: "uk" }).errors).toContain(
+      "Campaign Type: Value is not in the allowed list.",
+    );
+    expect(validate(labelledRule, "AWB_uk").violations[0]?.suggestion).toBe('Did you mean "AWA"?');
   });
 
   it("rejects the delimiter inside a value without the author listing it", () => {
@@ -164,7 +187,7 @@ describe("authoring checks", () => {
       delimiter: "--",
       segments: [
         { ...typeSegment, allowedValues: [] },
-        { ...marketSegment, allowedValues: ["uk", "u--s"] },
+        { ...marketSegment, allowedValues: entriesFromCodes(["uk", "u--s"]) },
         { ...customSegment, key: "", label: "", maxLength: 0 },
       ],
       source: { dataset: "", table: "campaigns", nameColumn: "campaign_name" },
@@ -178,6 +201,30 @@ describe("authoring checks", () => {
     expect(errors).toContain("Segment 3 needs a key and a label.");
     expect(errors).toContain("Segment 3 needs a maximum length of at least 1.");
     expect(errors).toContain("The source needs a dataset, table, and name column.");
+  });
+
+  it("requires unique codes and labels with nothing blank in an enum list", () => {
+    const duplicates: Rule = {
+      ...campaignRule,
+      segments: [
+        {
+          ...typeSegment,
+          allowedValues: [
+            { label: "Awareness", code: "AWA" },
+            { label: "Awareness again", code: "AWA" },
+            { label: "Awareness", code: "AW2" },
+            { label: "", code: " " },
+          ],
+        },
+      ],
+    };
+
+    const errors = checkRule(duplicates);
+    expect(errors).toContain('Campaign Type has the code "AWA" more than once.');
+    expect(errors).toContain('Campaign Type has the label "Awareness" more than once.');
+    expect(errors).toContain("Campaign Type has an allowed value without a code or a label.");
+    // The label may differ from the code without being an error.
+    expect(checkRule({ ...campaignRule, segments: [{ ...typeSegment, allowedValues: [{ label: "Awareness", code: "AWA" }] }] })).toEqual([]);
   });
 
   it("requires at least one segment and a rule set name", () => {
@@ -258,7 +305,7 @@ const targetingSegment: EnumSegment = {
   key: "targeting",
   label: "Targeting",
   required: true,
-  allowedValues: ["broad", "exact"],
+  allowedValues: entriesFromCodes(["broad", "exact"]),
 };
 
 const audienceSegment: FreeformSegment = {
@@ -277,7 +324,7 @@ const formatSegment: EnumSegment = {
   key: "format",
   label: "Format",
   required: true,
-  allowedValues: ["video", "image"],
+  allowedValues: entriesFromCodes(["video", "image"]),
 };
 
 const adGroupRule: Rule = {

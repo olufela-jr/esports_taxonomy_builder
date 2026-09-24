@@ -1,12 +1,15 @@
-import type { Rule, Segment, Source, Tags } from '@taxo/shared';
+import { entriesFromCodes, entryFromCode, type EnumEntry, type Rule, type Segment, type Source, type Tags } from '@taxo/shared';
 import { newId } from '@/lib/ids';
 import type { RuleSet } from './types';
 
 // localStorage keys, newest first. Only the in-memory store (development) reads
 // these; Firestore users never had browser-local data.
 //
-// v2: Rules and Segments carry immutable ids, Rules have `name` and `tags`.
-export const LOCAL_STORAGE_KEY = 'campaign-naming-rulesets-v2';
+// v3: enum values are { label, code } entries (v3 phase 1).
+export const LOCAL_STORAGE_KEY = 'campaign-naming-rulesets-v3';
+// v2: Rules and Segments carry immutable ids, Rules have `name` and `tags`;
+// enum values were flat strings.
+const V2_STORAGE_KEY = 'campaign-naming-rulesets-v2';
 // v1: no ids, Rules had `label` plus flat `platform` / `entityType`, and the
 // delimiter was copied into every freeform segment's illegalChars.
 const V1_STORAGE_KEY = 'campaign-naming-rulesets-v1';
@@ -36,6 +39,12 @@ type V1Rule = {
 type V1RuleSet = Omit<RuleSet, 'rules'> & { rules: V1Rule[] };
 type V0RuleSet = Omit<RuleSet, 'rules'> & { levels: V1Rule[] };
 
+// A v2 document is the current shape except that an enum segment's values may
+// be flat strings. An entry that is already an object passes through.
+type V2Segment = Omit<Segment, 'allowedValues'> & { allowedValues?: Array<string | EnumEntry> };
+type V2Rule = Omit<Rule, 'segments'> & { segments: V2Segment[] };
+type V2RuleSet = Omit<RuleSet, 'rules'> & { rules: V2Rule[] };
+
 function migrateV1Segment(segment: V1Segment, delimiter: string): Segment {
   if (segment.kind === 'enum') {
     return {
@@ -44,7 +53,7 @@ function migrateV1Segment(segment: V1Segment, delimiter: string): Segment {
       key: segment.key,
       label: segment.label,
       required: segment.required,
-      allowedValues: segment.allowedValues ?? [],
+      allowedValues: entriesFromCodes(segment.allowedValues ?? []),
     };
   }
   return {
@@ -89,6 +98,22 @@ function migrateV0RuleSet(old: V0RuleSet): RuleSet {
   return migrateV1RuleSet({ ...rest, id: old.id.replace('taxonomy-', 'ruleset-'), rules: levels });
 }
 
+function migrateV2Segment(segment: V2Segment): Segment {
+  if (segment.kind !== 'enum') return segment as Segment;
+  const allowedValues = (segment.allowedValues ?? []).map((value) => (typeof value === 'string' ? entryFromCode(value) : value));
+  return { ...segment, kind: 'enum', allowedValues } as Segment;
+}
+
+// Flat string values become label = code entries. Exported so the same step
+// can be checked in isolation; the Firestore migration script uses the engine's
+// entryFromCode directly.
+export function migrateV2RuleSet(ruleSet: V2RuleSet): RuleSet {
+  return {
+    ...ruleSet,
+    rules: ruleSet.rules.map((rule) => ({ ...rule, segments: rule.segments.map(migrateV2Segment) })),
+  };
+}
+
 // Returns the browser-local Rule Sets in the current shape, or null when the
 // browser has never stored any.
 export function readLocalRuleSets(): RuleSet[] | null {
@@ -97,6 +122,12 @@ export function readLocalRuleSets(): RuleSet[] | null {
     if (current) {
       const parsed: unknown = JSON.parse(current);
       return Array.isArray(parsed) ? (parsed as RuleSet[]) : null;
+    }
+
+    const v2 = window.localStorage.getItem(V2_STORAGE_KEY);
+    if (v2) {
+      const parsed: unknown = JSON.parse(v2);
+      if (Array.isArray(parsed)) return (parsed as V2RuleSet[]).map(migrateV2RuleSet);
     }
 
     const v1 = window.localStorage.getItem(V1_STORAGE_KEY);

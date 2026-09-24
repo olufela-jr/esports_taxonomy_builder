@@ -1,13 +1,21 @@
 // These types double as the Firestore document contract. Keep them plain.
 // `id` is immutable identity (React keys, references); `key` is the editable slug.
 
+// One allowed value of an enum segment: the label is what people see in a
+// dropdown, the code is what the engine writes into the name and the checker
+// matches (exact, case-sensitive). Codes and labels are unique within a list.
+export type EnumEntry = {
+  label: string;
+  code: string;
+};
+
 export type EnumSegment = {
   id: string;
   kind: "enum";
   key: string;
   label: string;
   required: boolean;
-  allowedValues: string[]; // exact, case-sensitive match
+  allowedValues: EnumEntry[];
 };
 
 export type FreeformSegment = {
@@ -113,6 +121,16 @@ export const UNTAGGED = "untagged";
 
 const NAME_VIOLATION_KEY = "__name__";
 
+// An entry whose label is its code: the shape a flat value list migrates to,
+// and what the Author editor writes until labels get their own control.
+export function entryFromCode(code: string): EnumEntry {
+  return { label: code, code };
+}
+
+export function entriesFromCodes(codes: string[]): EnumEntry[] {
+  return codes.map(entryFromCode);
+}
+
 function getRuleErrors(rule: Rule): string[] {
   const errors: string[] = [];
 
@@ -170,8 +188,23 @@ export function checkRule(rule: Rule): string[] {
       if (segment.allowedValues.length === 0) {
         errors.push(`${label} needs at least one allowed value.`);
       }
-      if (rule.delimiter && segment.allowedValues.some((value) => value.includes(rule.delimiter))) {
+      if (segment.allowedValues.some((entry) => !entry.code.trim() || !entry.label.trim())) {
+        errors.push(`${label} has an allowed value without a code or a label.`);
+      }
+      if (rule.delimiter && segment.allowedValues.some((entry) => entry.code.includes(rule.delimiter))) {
         errors.push(`${label} has an allowed value containing the "${rule.delimiter}" delimiter.`);
+      }
+      const codes = new Set<string>();
+      const labels = new Set<string>();
+      for (const entry of segment.allowedValues) {
+        if (codes.has(entry.code)) {
+          errors.push(`${label} has the code "${entry.code}" more than once.`);
+        }
+        if (labels.has(entry.label)) {
+          errors.push(`${label} has the label "${entry.label}" more than once.`);
+        }
+        codes.add(entry.code);
+        labels.add(entry.label);
       }
     } else if (segment.maxLength < 1) {
       errors.push(`${label} needs a maximum length of at least 1.`);
@@ -204,7 +237,7 @@ export function checkRuleSet(ruleSet: RuleSet): string[] {
 
 function copySegment(segment: Segment): Segment {
   if (segment.kind === "enum") {
-    return { ...segment, allowedValues: [...segment.allowedValues] };
+    return { ...segment, allowedValues: segment.allowedValues.map((entry) => ({ ...entry })) };
   }
   return { ...segment, illegalChars: [...segment.illegalChars] };
 }
@@ -322,8 +355,10 @@ function valueViolations(
   }
 
   if (segment.kind === "enum") {
-    if (!segment.allowedValues.includes(token)) {
-      const suggestion = findSuggestion(token, segment.allowedValues);
+    // Names carry codes, never labels.
+    const codes = segment.allowedValues.map((entry) => entry.code);
+    if (!codes.includes(token)) {
+      const suggestion = findSuggestion(token, codes);
       violations.push({
         segmentKey: segment.key,
         token,

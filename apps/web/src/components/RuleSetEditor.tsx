@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { checkRuleSet, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
+import { checkRuleSet, entriesFromCodes, entryFromCode, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
 import type { RuleSet, RuleSetDraft, RuleSetStore } from '@/data/store';
 import { newId } from '@/lib/ids';
 import { buttonDanger, buttonPrimary, buttonQuiet, iconButton, inputClass } from './styles';
@@ -45,6 +45,13 @@ function parseList(text: string): string[] {
   return text.split(',').map((value) => value.trim()).filter(Boolean);
 }
 
+// The editor still takes enum values as one comma list of codes. A code that
+// already has an entry keeps its label; a new code gets itself as its label.
+// Labels get their own control with the shared definitions (v3 phase 2).
+function entriesFromCodeList(codes: string[], existing: EnumEntry[]): EnumEntry[] {
+  return codes.map((code) => existing.find((entry) => entry.code === code) ?? entryFromCode(code));
+}
+
 // A comma-separated list bound to a string[] in state. Keeps its own text while
 // the user types so a trailing comma or space survives the next render; only
 // resyncs from the list when the list changed by other means (a kind switch).
@@ -67,13 +74,13 @@ function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, onChang
       onChange({ label: newLabel, key: slugify(newLabel) || `segment_${segmentIndex + 1}` });
     }} data-testid={`input-segment-label-${ruleIndex}-${segmentIndex}`} /></label>
     <label className="text-[13px] font-bold text-foreground">Key:<input className={`${inputClass} mt-2 font-mono`} value={segment.key} onChange={(event) => onChange({ key: event.target.value.toLowerCase().replaceAll(' ', '_') })} data-testid={`input-segment-key-${ruleIndex}-${segmentIndex}`} /></label>
-    <label className="text-[13px] font-bold text-foreground">Type:<select className={`${inputClass} mt-2`} value={segment.kind} onChange={(event) => onChange(event.target.value === 'enum' ? { kind: 'enum', allowedValues: segment.kind === 'enum' ? segment.allowedValues : ['value'] } : { kind: 'freeform', maxLength: segment.kind === 'freeform' ? segment.maxLength : 32, illegalChars: segment.kind === 'freeform' ? segment.illegalChars : [' ', '/', '?', '#', '&'] })} data-testid={`select-segment-kind-${ruleIndex}-${segmentIndex}`}><option value="enum">Allowed values</option><option value="freeform">Freeform</option></select></label>
+    <label className="text-[13px] font-bold text-foreground">Type:<select className={`${inputClass} mt-2`} value={segment.kind} onChange={(event) => onChange(event.target.value === 'enum' ? { kind: 'enum', allowedValues: segment.kind === 'enum' ? segment.allowedValues : entriesFromCodes(['value']) } : { kind: 'freeform', maxLength: segment.kind === 'freeform' ? segment.maxLength : 32, illegalChars: segment.kind === 'freeform' ? segment.illegalChars : [' ', '/', '?', '#', '&'] })} data-testid={`select-segment-kind-${ruleIndex}-${segmentIndex}`}><option value="enum">Allowed values</option><option value="freeform">Freeform</option></select></label>
     <div className="mb-0.5 flex items-center gap-1">
       <button type="button" className={iconButton} onClick={() => onMove(-1)} disabled={segmentIndex === 0} aria-label="Move segment up" data-testid={`button-move-segment-up-${ruleIndex}-${segmentIndex}`}><ArrowUp className="h-4 w-4" /></button>
       <button type="button" className={iconButton} onClick={() => onMove(1)} disabled={segmentIndex === segmentCount - 1} aria-label="Move segment down" data-testid={`button-move-segment-down-${ruleIndex}-${segmentIndex}`}><ArrowDown className="h-4 w-4" /></button>
       <button type="button" className="rounded-md p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive" onClick={onRemove} aria-label="Remove segment" data-testid={`button-remove-segment-${ruleIndex}-${segmentIndex}`}><Trash2 className="h-4 w-4" /></button>
     </div></div>
-     <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end">{segment.kind === 'enum' ? <label className="flex-1 text-[13px] font-bold text-foreground">Allowed values: <span className="font-normal text-muted-foreground ml-1">(comma separated, matched exactly)</span><CommaListInput className={`${inputClass} mt-2 font-mono`} value={segment.allowedValues} onChange={(allowedValues) => onChange({ allowedValues })} placeholder="na, emea, apac" testId={`input-segment-values-${ruleIndex}-${segmentIndex}`} /></label> : <><label className="flex-1 text-[13px] font-bold text-foreground">Max characters:<input type="number" min="1" max="200" className={`${inputClass} mt-2`} value={segment.maxLength || ''} onChange={(event) => onChange({ maxLength: event.target.value === '' ? 0 : Number(event.target.value) })} data-testid={`input-segment-max-length-${ruleIndex}-${segmentIndex}`} /></label><label className="flex-1 text-[13px] font-bold text-foreground">Illegal characters: <span className="font-normal text-muted-foreground ml-1">(the delimiter is always illegal)</span><input className={`${inputClass} mt-2 font-mono`} value={segment.illegalChars.join('')} onChange={(event) => onChange({ illegalChars: Array.from(new Set([...event.target.value])) })} data-testid={`input-segment-illegal-chars-${ruleIndex}-${segmentIndex}`} /></label></>}<label className="flex items-center gap-2 pb-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={segment.required} onChange={(event) => onChange({ required: event.target.checked })} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary bg-[#EAE8E3]" data-testid={`checkbox-segment-required-${ruleIndex}-${segmentIndex}`} /> Required</label></div>
+     <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end">{segment.kind === 'enum' ? <label className="flex-1 text-[13px] font-bold text-foreground">Allowed values: <span className="font-normal text-muted-foreground ml-1">(comma separated, matched exactly)</span><CommaListInput className={`${inputClass} mt-2 font-mono`} value={segment.allowedValues.map((entry) => entry.code)} onChange={(codes) => onChange({ allowedValues: entriesFromCodeList(codes, segment.allowedValues) })} placeholder="na, emea, apac" testId={`input-segment-values-${ruleIndex}-${segmentIndex}`} /></label> : <><label className="flex-1 text-[13px] font-bold text-foreground">Max characters:<input type="number" min="1" max="200" className={`${inputClass} mt-2`} value={segment.maxLength || ''} onChange={(event) => onChange({ maxLength: event.target.value === '' ? 0 : Number(event.target.value) })} data-testid={`input-segment-max-length-${ruleIndex}-${segmentIndex}`} /></label><label className="flex-1 text-[13px] font-bold text-foreground">Illegal characters: <span className="font-normal text-muted-foreground ml-1">(the delimiter is always illegal)</span><input className={`${inputClass} mt-2 font-mono`} value={segment.illegalChars.join('')} onChange={(event) => onChange({ illegalChars: Array.from(new Set([...event.target.value])) })} data-testid={`input-segment-illegal-chars-${ruleIndex}-${segmentIndex}`} /></label></>}<label className="flex items-center gap-2 pb-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={segment.required} onChange={(event) => onChange({ required: event.target.checked })} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary bg-[#EAE8E3]" data-testid={`checkbox-segment-required-${ruleIndex}-${segmentIndex}`} /> Required</label></div>
   </div>;
 }
 

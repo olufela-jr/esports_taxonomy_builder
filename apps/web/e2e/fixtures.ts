@@ -22,8 +22,8 @@ export const paidMediaRuleSet = {
       delimiter: '_',
       source: { dataset: 'marketing', table: 'campaigns', nameColumn: 'campaign_name' },
       segments: [
-        { id: 'seg-type', kind: 'enum', key: 'campaign_type', label: 'Campaign Type', required: true, allowedValues: ['brand', 'perf'] },
-        { id: 'seg-market', kind: 'enum', key: 'market', label: 'Market', required: true, allowedValues: ['uk', 'us'] },
+        { id: 'seg-type', kind: 'enum', key: 'campaign_type', label: 'Campaign Type', required: true, allowedValues: [{ label: 'brand', code: 'brand' }, { label: 'perf', code: 'perf' }] },
+        { id: 'seg-market', kind: 'enum', key: 'market', label: 'Market', required: true, allowedValues: [{ label: 'uk', code: 'uk' }, { label: 'us', code: 'us' }] },
       ],
     },
     {
@@ -34,7 +34,7 @@ export const paidMediaRuleSet = {
       delimiter: '_',
       source: { dataset: 'marketing', table: 'ad_sets', nameColumn: 'ad_set_name' },
       segments: [
-        { id: 'seg-targeting', kind: 'enum', key: 'targeting', label: 'Targeting', required: true, allowedValues: ['broad', 'exact'] },
+        { id: 'seg-targeting', kind: 'enum', key: 'targeting', label: 'Targeting', required: true, allowedValues: [{ label: 'broad', code: 'broad' }, { label: 'exact', code: 'exact' }] },
         { id: 'seg-audience', kind: 'freeform', key: 'audience', label: 'Audience', required: true, maxLength: 20, illegalChars: [' '] },
       ],
     },
@@ -56,7 +56,7 @@ export const globalRuleSet = {
       delimiter: '-',
       source: { dataset: 'marketing_dw', table: 'initiatives', nameColumn: 'initiative_id' },
       segments: [
-        { id: 'seg-region', kind: 'enum', key: 'region', label: 'Region', required: true, allowedValues: ['na', 'emea'] },
+        { id: 'seg-region', kind: 'enum', key: 'region', label: 'Region', required: true, allowedValues: [{ label: 'na', code: 'na' }, { label: 'emea', code: 'emea' }] },
         { id: 'seg-initiative', kind: 'freeform', key: 'initiative', label: 'Initiative', required: true, maxLength: 32, illegalChars: [' '] },
       ],
     },
@@ -74,7 +74,7 @@ export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaR
 }
 
 // The Rule Sets as the app currently holds them, read back through the store.
-export async function readRuleSets(page: Page): Promise<Array<{ id: string; name: string; updatedAt: string; rules: Array<{ id: string; segments: Array<{ allowedValues?: string[] }> }> }>> {
+export async function readRuleSets(page: Page): Promise<Array<{ id: string; name: string; updatedAt: string; rules: Array<{ id: string; segments: Array<{ allowedValues?: Array<{ label: string; code: string }> }> }> }>> {
   return page.evaluate(() => {
     const store = window.__taxoStore;
     if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
