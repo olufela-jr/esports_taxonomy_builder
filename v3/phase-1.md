@@ -344,6 +344,7 @@ Steps 1 to 5 of the sequence above, run with explicit approval at each step:
 | Deploy | `firebase deploy --only firestore:rules,hosting`: rules released, Hosting serving bundle `index-jcBvm3u6.js`, the same hash as the local build |
 | Outside check | Unauthenticated REST reads of `tenants/esports/rulesets`, `tenants/esports` and the legacy `rulesets` all return 403 |
 
-Still pending: `pnpm migrate:v3 --tenant esports --delete-legacy` (the legacy document is still
-in `/rulesets`, unreadable under the new rules, backed up twice under `backups/`), and the
-first sign-out and sign-in by the admin to pick up the claims.
+Step 6, `pnpm migrate:v3 --tenant esports --delete-legacy`, ran on the same day with
+approval: a third backup was written, the one legacy document was confirmed present under
+the tenant, then deleted from `/rulesets`. Phase 1 is complete on every count; the admin's
+first sign-out and sign-in picks up the claims.

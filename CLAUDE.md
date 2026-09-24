@@ -101,8 +101,8 @@ file per phase. Commits C1 to C7 on `main`:
   and `scripts/provision-user.ts` (claims plus the users mirror).
 Run live on 2026-09-24: the first tenant is `esports` ("Esports", `allowedDatasets:
 ["marketing"]`), the one v2 Rule Set migrated and verified, misterfela@gmail.com is its admin,
-rules and hosting deployed together. Still pending, with explicit approval:
-`pnpm migrate:v3 --tenant esports --delete-legacy`. Phase 2 (the repository: definitions,
+rules and hosting deployed together, the legacy `/rulesets` collection deleted after a
+backup. Phase 2 (the repository: definitions,
 `definitionId` segments, `checkDefinition`, platform scoping) is next; nothing of it is
 started.
 
