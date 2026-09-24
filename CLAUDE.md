@@ -147,27 +147,31 @@ https://media-taxonomy-tool.web.app. Stage 2 and the v2 build order come next. I
 7. Confirm `pnpm -r test`, the browser regression tests, and the full TypeScript check
    all pass. Then proceed to Stage 2.
 
-## v2 build order (after the checklist, before Stage 2)
-The v2 work is browser-only and depends on Firestore and the `id` fields from checklist
-steps 2 and 4. Full contract in `docs/spec.md`; Gate G0 passed 2026-09-24 and its record
-sits under the decisions log there. Build in this order:
-1. Engine types and `resolveRule` with tests.
-2. Runtime guard: `compose` and `validate` refuse a Rule with `parent` set as an error
-   result, never a throw.
-3. `checkRuleSet` extensions and `dependentsOf`; its return shape changes from a flat
-   string list to issues per Rule (one caller, the Author editor).
-4. Author parent UI.
-5. Build parent step and chaining, including the `parse` change: selections keyed by
-   `key`, failing on an invalid name (today it is a plain split).
-6. UTM types, `buildTrackingUrl`, `validateUtmValue` and tests, plus the `checkRuleSet`
-   UTM checks (literals, enum values and delimiters under the mapping's policy).
-7. Author UTM panel.
-8. Build URL output.
+## v3 phase 2 build order (repository, hierarchy and UTMs on codes)
+v2 step 1 (`resolveRule`, log in `v2/`) is done; the rest of the v2 order continues here,
+re-based on label/code entries (D39, D40) and tenants. Engine contract in `docs/spec.md`;
+v3 Gate G0 passed 2026-09-24, record under the decisions log in `docs/spec-v3.md`. Exports
+hold codes, inputs show labels (D48). Point-in-time recovery and delete protection were
+enabled on the production database on 2026-09-24 (D43). Build in this order:
+1. Platform list in `@taxo/shared` (O12) and a `--platforms` flag on provisioning (D38).
+2. Definitions: type, `tenants/{id}/definitions` in `store.ts` and the Security Rules,
+   `checkDefinition` sharing one entry-list check with `checkRule` (O14).
+3. `definitionId` enum segments; `resolveRule(rule, ruleSet, definitions)` resolving parents
+   and definitions in one call (D46) with the platform guard (D47); the runtime guard on
+   `compose` and `validate` (D25: error result, never a throw).
+4. `checkRuleSet` per Rule and `dependentsOf` (return shape changes from a flat string list
+   to issues per Rule; one caller, the Author editor).
+5. Author: definitions screen with the label control (D39), definition picker on enum
+   segments filtered by platform, parent UI. Code edits save with a plain warning until
+   phase 4 (D44).
+6. Build parent step and chaining; `parse` returns selections by code, failing on an
+   invalid name (today it is a plain split).
+7. UTM types, `buildTrackingUrl`, `validateUtmValue` and tests, plus the `checkRuleSet`
+   UTM checks (literals, codes and delimiters under the mapping's policy).
+8. Author UTM panel; Build URL output.
 9. Playwright additions.
-Batch build (`enumerate`, `countCombinations`) follows as its own release once P12 is
-answered. `updatedBy` plus the database backup switches (D31) are a separate small step;
-enabling point-in-time recovery is a live GCP change, do it only with explicit approval.
-Stage 2 then follows as specified, with the `resolveRule` change.
+Phase 3 is batch (`enumerate`, `countCombinations`, then the D34 child batch in
+`docs/features/`); phase 4 the BigQuery scan and the impact preview; phase 5 requests.
 
 ## Stage 2 (only after the checklist)
 Callable Cloud Function `scanCampaigns` in `functions/`, importing `@taxo/shared`. The

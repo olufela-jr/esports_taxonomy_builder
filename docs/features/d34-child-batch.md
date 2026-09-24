@@ -1,6 +1,6 @@
 # Feature spec: D34 Child batch across parents
 
-Status: Settled (Fela, 24 Sep 2026)
+Status: Settled (Fela, 24 Sep 2026). v3 note: this is v3 phase 3; enum values are label/code entries (D39) and every export holds codes (D48).
 Location in repo: `docs/features/d34-child-batch.md`
 Authority: this sheet is the source of truth for D34. Where it conflicts with `docs/spec.md` or the v2 product spec on anything inside this feature's scope, this sheet wins. Outside that scope it changes nothing.
 
@@ -15,10 +15,11 @@ Single mode is unchanged and keeps its one-parent step. Top-level Rules (no pare
 This feature builds on the following, which must already exist in `@taxo/shared`. Verify each against the code before starting. If any are missing or differ in shape from what is described here, stop and report. Do not implement or adapt them as part of this feature.
 
 - `resolveRule`: returns a resolved Rule with inheritance flattened; `parent` no longer set.
-- `parse(resolvedRule, name)`: returns segment selections for a valid name.
+- `parse(resolvedRule, name)`: returns segment selections, holding codes, for a valid name.
 - `compose(resolvedRule, selections)`: returns a name.
 - `validate(resolvedRule, name)`: returns a result with violations.
-- `BatchChoices`: `Record<string, string[]>`, segment key to values; `""` means omit for an optional segment.
+- `EnumEntry` `{ label, code }` on every enum segment, with a resolved Rule carrying inline entries for definition-backed segments (D46).
+- `BatchChoices`: `Record<string, string[]>`, segment key to codes; `""` means omit for an optional segment.
 - `countCombinations(rule, choices)` and `enumerate(rule, choices)`: existing single-Rule batch functions. Both reject an unresolved Rule.
 - `buildTrackingUrl`: builds the tracking URL from a row's selections and ancestor names.
 
@@ -63,7 +64,7 @@ function* enumerateUnderParents(child: Rule, parentRule: Rule, input: ParentBatc
   - Carry: a "Build children under these names" action on the parent batch output, with checkboxes to take a subset.
   - Paste: one parent per line; extra tab-separated columns are ancestor names, in the column order of the batch CSV.
 - Parent check: run `checkParents` on every change. Failing lines are listed with their violations and a remove action; valid lines stay.
-- Child controls: shared across all parents. Inherited controls are locked and show the value per parent.
+- Child controls: shared across all parents; they show labels and submit codes (D40). Inherited controls are locked and show the value per parent. The parent Rule and the child Rule share a platform (D47).
 - Narrowing: each parent row expands to untick child values for that parent only. Narrowing can only remove.
 - Count: total shown live, plus a count per parent. The existing 50,000 row cap applies to the total.
 - Output: preview of the first 500 rows grouped by parent; CSV streamed to a Blob, never held whole in React state.
@@ -81,7 +82,7 @@ function* enumerateUnderParents(child: Rule, parentRule: Rule, input: ParentBatc
 
 ## 7. CSV output
 
-Columns, in order: `parent_name`, any ancestor names the mapping uses (one column each, named by Rule), one column per child segment, `name`, `tracking_url` (only when the child Rule has a UTM mapping). Tracking URLs use each row's own parent and ancestors, so `utm_campaign` is correct per row.
+Columns, in order: `parent_name`, any ancestor names the mapping uses (one column each, named by Rule), one column per child segment, `name`, `tracking_url` (only when the child Rule has a UTM mapping). Every cell holds the code, never the label (D48); labels appear only in inputs. Tracking URLs use each row's own parent and ancestors, so `utm_campaign` is correct per row.
 
 ## 8. Acceptance criteria
 

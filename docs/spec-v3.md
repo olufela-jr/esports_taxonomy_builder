@@ -112,7 +112,7 @@ An enum segment on a Rule has one of two forms: `{ kind: "enum", definitionId }`
 
 ### Shared engine
 
-`compose` takes selections by code and emits the name. `validate` splits on the delimiter and matches each enum segment against the codes of its resolved entries. Both functions receive the resolved entries as input, so the engine has no Firestore dependency and the round-trip property holds: the codes the builder writes are exactly the codes the checker accepts. Resolution of `definitionId` to entries happens in the app layer before calling the engine.
+`compose` takes selections by code and emits the name. `validate` splits on the delimiter and matches each enum segment against the codes of its resolved entries. Both functions receive the resolved entries as input, so the engine has no Firestore dependency and the round-trip property holds: the codes the builder writes are exactly the codes the checker accepts. Resolution happens in one engine call (D46): `resolveRule(rule, ruleSet, definitions)` resolves parent links and `definitionId` references together and returns a self-contained Rule with inline entries, so no caller has to remember two steps. The engine still has no Firestore dependency; the caller passes the tenant's definitions.
 
 Uniqueness is enforced on write: a definition cannot hold two entries with the same code or the same label, and an inline list is held to the same rule.
 
@@ -145,8 +145,24 @@ v3 decisions continue the v2 numbering. v2 decisions not listed here stand unles
 | D43 | 24 Sep 2026 | Editing a shared value is hard: the current definition is the only truth and any non-matching name is non-compliant regardless of history. No versioning, no retired codes |
 | D44 | 24 Sep 2026 | Admins see an impact preview (count of live names that would fail) before a code change saves |
 | D45 | 24 Sep 2026 | The spec is renamed v3 with a subtitle to mark a new product shape rather than a revision of v2 |
+| D46 | 24 Sep 2026 | One resolution call: `resolveRule(rule, ruleSet, definitions)` resolves parent links and definition references together and returns a Rule with inline entries; `compose`, `validate`, `parse` and the batch functions see entries only |
+| D47 | 24 Sep 2026 | A child Rule's platform must equal its parent's, both set or both unset; `resolveRule` refuses the link otherwise, alongside the leading-run and delimiter guards |
+| D48 | 24 Sep 2026 | Every export (batch CSV, scan results, any file) holds the code, never the label; labels appear only in inputs such as dropdowns and pickers |
 
 Superseded from v2: D4 and D5's flat string enum values (D39 makes every entry a label/code pair); D12's owner-only writes (D35 and D36 replace ownership with tenant plus role); D14's deferral of roles and approvals (both now in scope) and of versioning (now rejected outright by D43). Inline enum lists on Rules remain available alongside shared definitions (O14).
+
+### Gate G0 record (24 September 2026)
+
+Reviewed against the phase 1 code as deployed. No conflicts between the code and D35 to D45 were found; the amendments below close gaps the review surfaced. Rulings by Fela, accepting the recommendations in full.
+
+- D35, D36, D37, D40, D41 accepted as written. The rules, the store path and the Function guard all key on the claims; codes are what `compose`, `validate`, Build and the CSV sample use.
+- D38 amended: the tenant's platform list is set by `provision-user.ts` with a `--platforms` flag, or by a small config script, before phase 2 scoping is used. Today the scripts write an empty list and the tenant document is never client-writable, so nothing can set it.
+- D39 amended: codes are unique exactly; labels are unique ignoring case. The Author label control ships in phase 2 and is an acceptance criterion there; every live entry has label equal to code until then.
+- D42 amended: a user is blocked on an enum segment backed by a shared definition while a request is pending. Freeform segments are never blocked. A missing value in an inline list has no request path; Build shows a message naming the Rule and the admin role.
+- D43 amended: point-in-time recovery and delete protection are enabled on the production database before the first shared definition is authored, since D43 leaves them as the only undo. Enabled on 24 September 2026.
+- D44 amended: until phase 4, editing or removing a code in a shared definition saves after a plain confirmation that names carrying the old code will fail Check. The count arrives with the scan in phase 4.
+- D45 accepted; the v2 G0 range corrected to D24 to D33.
+- D46, D47 and D48 added, the first two raised by the review, the third a ruling by Fela on the batch export question.
 
 ## Pending questions
 
@@ -154,19 +170,19 @@ Numbering continues from v2's O1 to O10. v2 items still open (O2 environments, O
 
 | # | Question | Blocks | Recommendation |
 | --- | --- | --- | --- |
-| O11 | Who creates a tenant and its first admin: a superadmin outside any tenant, or a manual step by Fela? | Phase 1 | Manual provisioning by Fela in v3; superadmin only if a third tenant arrives |
-| O12 | Is the platform list fixed by the product or configured per tenant? | Definition scoping | Fixed product list, tenants pick a subset in config |
-| O13 | Does a Rule carry exactly one platform, or can one Rule serve several? | Author filter on definitions | One platform per Rule, using the existing optional tags.platform and making it required where a scoped definition is referenced |
-| O14 | Keep inline enum lists on Rules, or require every enum to come from the repository? | Author UI, engine input shape | Keep inline for v3 as a compatibility path; revisit once the repository is in use |
-| O15 | Migrate v2 Rule Sets into a first tenant with label = code, or start v3 empty? | Phase 1, G4 | Migrate into one tenant; the paper dry run (G2) validates the result |
+| O11 | Who creates a tenant and its first admin: a superadmin outside any tenant, or a manual step by Fela? | Phase 1 | Closed 24 Sep 2026: manual provisioning by Fela through `scripts/provision-user.ts`; superadmin only if a third tenant arrives |
+| O12 | Is the platform list fixed by the product or configured per tenant? | Definition scoping | Accepted 24 Sep 2026: a fixed product list held in `@taxo/shared`, tenants pick a subset in config; Rules, definitions and the config share that one vocabulary (today `tags.platform` and `config.platforms` are free strings) |
+| O13 | Does a Rule carry exactly one platform, or can one Rule serve several? | Author filter on definitions | Accepted 24 Sep 2026: one platform per Rule, using the existing optional tags.platform and making it required where a scoped definition is referenced; a child's platform equals its parent's (D47) |
+| O14 | Keep inline enum lists on Rules, or require every enum to come from the repository? | Author UI, engine input shape | Accepted 24 Sep 2026: keep inline for v3 as a compatibility path; one entry-list check shared by `checkRule` and `checkDefinition`, not two |
+| O15 | Migrate v2 Rule Sets into a first tenant with label = code, or start v3 empty? | Phase 1, G4 | Closed 24 Sep 2026: migrated into tenant `esports` in the phase 1 live run; the paper dry run (G2) validates the result |
 | O16 | Impact preview runs a scan per referencing Rule: synchronous confirm, or background estimate? | Phase 3 | Synchronous with a timeout; fall back to a count from the last completed scan |
 | O17 | Request notifications: email, in-app, or both? | Phase 4 | In-app first; email once a mail provider is chosen |
 | O18 | Cross-level validation stayed out of scope in v2. Does that still hold with shared definitions in play? | Scope | Yes; inherited segments already share values by reference |
-| O19 | Optional structured tags on Rules for dimensional rollups (open since v1) | Check rollups | Platform on the Rule (O13) covers the first dimension; defer the rest |
+| O19 | Optional structured tags on Rules for dimensional rollups (open since v1) | Check rollups | Accepted 24 Sep 2026: `rollup` already groups by the platform and entity type tags; defer further dimensions |
 
 ## Planning phase and gates
 
-No code until the gates pass, in order. The gates keep v2's names and shape; their exit criteria are re-based on v3 scope. G0 in v2 (accept D24 to D34) is treated as done by this spec's carry-forward.
+No code until the gates pass, in order. The gates keep v2's names and shape; their exit criteria are re-based on v3 scope. G0 in v2 (accept D24 to D33) is treated as done by this spec's carry-forward. G0 for v3 passed on 24 September 2026; the record sits under the decisions log.
 
 | Gate | Exit criteria | Evidence | Owner |
 | --- | --- | --- | --- |

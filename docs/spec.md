@@ -37,7 +37,7 @@ The one rule that must never break still holds: all naming logic, and now all UT
 | --- | --- | --- |
 | `compose(rule, selections)` | Settled, now requires a resolved Rule | Build a name from segment selections |
 | `validate(rule, name)` | Settled, now requires a resolved Rule | Check a name positionally |
-| `parse(rule, name)` | Settled, changes in v2 | Split a valid name into selections keyed by segment `key`, failing on an invalid name; used by the parent step. The v1 function is a plain split that cannot fail, so this is engine work in build step 5 |
+| `parse(rule, name)` | Settled, changes in v2 | Split a valid name into selections keyed by segment `key`, each holding the code found in the name (D40), failing on an invalid name; used by the parent step. The v1 function is a plain split that cannot fail, so this is engine work in build step 5 |
 | `rollup(perRuleResults)` | Settled (migration step 1) | Pooled All Rules figure |
 | `resolveRule(rule, ruleSet)` | New (brief) | Flatten a child Rule into a self-contained Rule |
 | `checkRuleSet(ruleSet)` | Extended (Settled at G0) | Authoring-time structural checks across Rules, including parent guards and UTM checks. Exists in v1 returning a flat string list; the return shape changes to issues per Rule (one caller, the Author editor) |
@@ -70,7 +70,7 @@ type ParentLink = {
 
 type UtmSource =
   | { kind: "ruleName"; ruleId: string }   // built name of this Rule or an ancestor
-  | { kind: "segment"; segmentId: string } // one value in this Rule's resolved segments
+  | { kind: "segment"; segmentId: string } // the code of one entry in this Rule's resolved segments (D40)
   | { kind: "tag"; ruleId: string; tag: "platform" | "entityType" }
   | { kind: "literal"; value: string };    // fixed text, e.g. "cpc"
 
@@ -108,7 +108,7 @@ Example fragment of a child Rule as stored:
   "parent": { "ruleId": "r_01", "inheritSegmentIds": ["s_01", "s_02"] },
   "segments": [
     { "id": "s_10", "kind": "enum", "key": "targeting", "label": "Targeting",
-      "required": true, "allowedValues": ["broad", "exact"] }
+      "required": true, "allowedValues": [{ "label": "Broad", "code": "broad" }, { "label": "Exact", "code": "exact" }] }
   ],
   "source": { "dataset": "marketing", "table": "ad_groups", "nameColumn": "ad_group_name" },
   "utm": {
@@ -123,7 +123,7 @@ Example fragment of a child Rule as stored:
 
 ### Four departures from the brief, with trade-offs
 
-Segment references by id, not key (Settled at G0). The brief names the field `inheritSegmentKeys`. In v1, `key` is an editable slug auto-derived from the label, so relabelling a parent segment silently changes its key and breaks every child that references it. That is exactly the drift inheritance by reference was meant to prevent. Using the immutable `id` costs nothing and removes the failure. The same applies to UTM `segment` sources. `compose` selections stay keyed by `key` at runtime, which is fine because they are never stored.
+Segment references by id, not key (Settled at G0). The brief names the field `inheritSegmentKeys`. In v1, `key` is an editable slug auto-derived from the label, so relabelling a parent segment silently changes its key and breaks every child that references it. That is exactly the drift inheritance by reference was meant to prevent. Using the immutable `id` costs nothing and removes the failure. The same applies to UTM `segment` sources. `compose` selections stay keyed by `key` at runtime and hold codes (D40), which is fine because they are never stored.
 
 UTM mapping per Rule, not per Rule Set with overrides (Settled at G0). A Rule Set default sounds less repetitive, but a Rule Set typically holds several platform chains, and a source such as "the campaign's built name" points at a different Rule in each chain. A shared default would need relative references ("root ancestor", "parent") that are harder to explain and to validate. Per-Rule mappings with explicit `ruleId`s are verbose but unambiguous. A "copy mapping from another Rule" action in Author would offset the repetition; it is a follow-up once more than one Rule per Rule Set carries a mapping, not a v2 acceptance item (amended at G0). Revisit if the client confirms one mapping genuinely applies across a whole Rule Set.
 
@@ -139,7 +139,7 @@ Parent links and UTM mappings live inline in the same document, so the whole Rul
 
 #### resolveRule
 
-`resolveRule(rule, ruleSet)` returns `{ rule: Rule; errors: string[] }`, where the returned Rule has no `parent` and its `segments` are the inherited parent segments followed by the child's own. It works recursively, so a grandchild resolves its parent first and can inherit segments the parent itself inherited. The steps, in order:
+`resolveRule(rule, ruleSet)` returns `{ rule: Rule; errors: string[] }` (v3 D46 adds a `definitions` argument so definition-backed segments resolve to inline entries in the same call; D47 adds a platform guard, child equals parent), where the returned Rule has no `parent` and its `segments` are the inherited parent segments followed by the child's own. It works recursively, so a grandchild resolves its parent first and can inherit segments the parent itself inherited. The steps, in order:
 
 1. No `parent`: return a copy of the Rule unchanged.
 2. Track visited Rule ids; meeting one twice is a cycle error (brief guard). This covers a Rule naming itself.
@@ -162,7 +162,7 @@ Inherited segments must be required (Settled at G0, sharpens the brief's guard).
 
 #### Parent step
 
-The web app calls `parse(resolvedParent, parentName)`. A failed parse surfaces the parent's violations and stops. A successful parse yields selections keyed by segment `key`; the app copies the inherited ones into the child's selections and renders those controls locked. `compose` on the resolved child then produces the name. Nothing about this touches `validate`, which is why the checker needs no change beyond resolving first.
+The web app calls `parse(resolvedParent, parentName)`. A failed parse surfaces the parent's violations and stops. A successful parse yields selections keyed by segment `key`, each holding a code; the app copies the inherited ones into the child's selections and renders those controls locked. `compose` on the resolved child then produces the name. Nothing about this touches `validate`, which is why the checker needs no change beyond resolving first.
 
 Override of inherited values defaults to not allowed (Proposed default, Pending (client)). Allowing override breaks the property that a child's leading tokens always match its parent, and it lets `utm_campaign` (the real campaign) disagree with the prefix of `utm_content` (the ad group). If the client needs it, it should be an explicit per-Rule flag, logged in the UI as an override.
 
@@ -196,7 +196,7 @@ Base URL rules (Settled at G0): absolute `https` or `http` URL; existing non-UTM
 Batch build is two pure functions in `@taxo/shared`, so the round-trip guarantee covers it without a new test class: every row is produced by `compose`, so every row passes `validate`.
 
 ```ts
-type BatchChoices = Record<string, string[]>; // segment key -> values to use
+type BatchChoices = Record<string, string[]>; // segment key -> codes to use (labels are display only, D40)
 // For an optional segment, include the empty string "" to mean "omit".
 
 function countCombinations(rule: Rule, choices: BatchChoices): number;
@@ -215,6 +215,7 @@ Rules of the functions:
 - `enumerate` is a generator that walks the product in segment order (first segment slowest). It holds one row at a time, so memory is bounded by whatever the caller keeps; the CSV writer streams rows into a Blob and never holds the full array in React state.
 - Inherited segments on a child Rule always have exactly one value, the one parsed from the parent name; the UI passes them as single-item lists and locks the controls.
 - The tracking URL per row is `buildTrackingUrl` applied to each row's selections, unchanged.
+- Every CSV cell holds a code, never a label (D48). Labels appear only in the Batch controls.
 
 Ordering is deterministic, so the same choices always produce the same file; a test asserts this and the count. The cap is enforced in the web app, not the engine, so the Stage 2 Function could reuse `enumerate` at a different limit if ever needed.
 
@@ -253,7 +254,7 @@ The v1 spec defined no empty, loading or error states. This table closes that ga
 | Check | Stage 2 scan truncated | Exact counts shown, list marked truncated, export offered (Settled) |
 | Check | Live scan before Stage 2 | Disabled placeholder (Settled) |
 
-### Storage and auth (Settled, with one v2 addition)
+### Storage and auth (historical: superseded by v3 tenancy, D35 and D36; see the note at the top of Part B)
 
 All storage calls stay behind `apps/web/src/data/store.ts`, with Firestore via the Firebase Web SDK, configuration from environment variables, and an in-memory fallback when no config is present. Firebase Auth with Google sign-in. Firestore Security Rules: authenticated users read all Rule Sets; create and update only where `ownerId == request.auth.uid`.
 
