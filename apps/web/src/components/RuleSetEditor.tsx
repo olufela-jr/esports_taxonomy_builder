@@ -87,6 +87,10 @@ export function RuleSetEditor({ existing, readOnly = false, storeKind, justCreat
   // Creating a Rule Set remounts this editor under the new id, so the
   // "saved" flash for a create arrives through justCreated.
   const [saved, setSaved] = useState(Boolean(justCreated));
+  // A save against Firestore can take seconds on a cold connection; while one
+  // is in flight the form stays put and Save is disabled, so a second click
+  // cannot create a duplicate Rule Set.
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -116,7 +120,7 @@ export function RuleSetEditor({ existing, readOnly = false, storeKind, justCreat
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    if (readOnly) return;
+    if (readOnly || saving) return;
     const draft = { name: name.trim(), rules };
     const errors = checkRuleSet({ id: existing?.id ?? '', ...draft });
     if (errors.length > 0) {
@@ -125,6 +129,7 @@ export function RuleSetEditor({ existing, readOnly = false, storeKind, justCreat
     }
 
     setError('');
+    setSaving(true);
     try {
       if (isNew) {
         const created = await onCreate(draft);
@@ -135,11 +140,13 @@ export function RuleSetEditor({ existing, readOnly = false, storeKind, justCreat
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Saving failed.');
+    } finally {
+      setSaving(false);
     }
   };
 
   return <form onSubmit={onSubmit}>
-    <div className="mb-8 flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between"><div><button type="button" onClick={onClose} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:text-foreground" data-testid="button-back-overview"><ArrowLeft className="h-3.5 w-3.5" /> Overview</button><div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Rule Set' : 'Edit Rule Set'}</div><h1 className="mt-2 font-display text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{isNew ? 'Create Rule Set' : 'Edit Rule Set'}</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">Define naming rules and required segments for campaigns.</p></div><div className="flex items-center gap-3">{readOnly ? <span className="inline-flex items-center gap-2 rounded-[4px] border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground" data-testid="text-read-only"><Lock className="h-3.5 w-3.5" /> Read only: another user owns this Rule Set. Build and Check still work.</span> : <>{saved ? <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary" data-testid="text-save-confirmation"><CheckCircle2 className="h-4 w-4" /> {storeKind === 'firestore' ? 'Saved' : 'Saved locally'}</span> :isDirty ? <span className="mr-2 text-xs font-semibold text-muted-foreground">Unsaved — save to use in Build</span> : null}{!isNew && <button type="button" className={buttonDanger} onClick={() => { if (window.confirm('Delete this Rule Set?')) { void onDelete(existing.id); onClose(); } }} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}<button type="submit" className={buttonPrimary} data-testid="button-save-ruleset"><Check className="h-4 w-4" /> Save Rule Set</button></>}</div></div>
+    <div className="mb-8 flex flex-col gap-5 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between"><div><button type="button" onClick={onClose} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition hover:text-foreground" data-testid="button-back-overview"><ArrowLeft className="h-3.5 w-3.5" /> Overview</button><div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Rule Set' : 'Edit Rule Set'}</div><h1 className="mt-2 font-display text-3xl font-medium tracking-tight text-foreground sm:text-4xl">{isNew ? 'Create Rule Set' : 'Edit Rule Set'}</h1><p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">Define naming rules and required segments for campaigns.</p></div><div className="flex items-center gap-3">{readOnly ? <span className="inline-flex items-center gap-2 rounded-[4px] border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground" data-testid="text-read-only"><Lock className="h-3.5 w-3.5" /> Read only: another user owns this Rule Set. Build and Check still work.</span> : <>{saved ? <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary" data-testid="text-save-confirmation"><CheckCircle2 className="h-4 w-4" /> {storeKind === 'firestore' ? 'Saved' : 'Saved locally'}</span> :isDirty ? <span className="mr-2 text-xs font-semibold text-muted-foreground">Unsaved — save to use in Build</span> : null}{!isNew && <button type="button" className={buttonDanger} disabled={saving} onClick={() => { if (window.confirm('Delete this Rule Set?')) { void onDelete(existing.id); onClose(); } }} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}<button type="submit" className={buttonPrimary} disabled={saving} data-testid="button-save-ruleset"><Check className="h-4 w-4" /> {saving ? 'Saving' : 'Save Rule Set'}</button></>}</div></div>
     <fieldset disabled={readOnly} className="mx-auto min-w-0 max-w-4xl">
       {error && <div className="mb-6 flex items-center gap-3 rounded-[4px] border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm font-medium text-destructive" role="alert" data-testid="status-ruleset-error"><AlertCircle className="h-5 w-5 shrink-0" /> {error}</div>}
       <section className="mb-8 rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="mb-6 flex items-start justify-between"><div className="flex flex-col"><h2 className="font-display text-2xl font-medium text-foreground">General information</h2><p className="text-xs font-bold text-muted-foreground mt-1">Name this Rule Set to identify it in the workspace.</p></div><div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><BookOpen className="h-3 w-3" /></div></div><label className="block text-[13px] font-bold text-foreground">Rule Set name:<input value={name} onChange={(event) => setName(event.target.value)} className={`${inputClass} mt-2 font-display text-lg`} placeholder="e.g. Regional paid media" data-testid="input-ruleset-name" /></label></section>

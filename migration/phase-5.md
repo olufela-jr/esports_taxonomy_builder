@@ -48,9 +48,13 @@ The Firebase project is `media-taxonomy-tool`, set up from the CLI on 2026-09-24
 - `firestore.rules` deployed and verified from outside: an unauthenticated REST list of `/rulesets` is refused.
 - `apps/web/.env.local` (gitignored) carries the web app config; the dev server runs against the real project and the live sign-in gate was smoke-tested headlessly ("Sign in with Google", no console errors).
 
-## Leftovers
+## Live verification and the defect it found
 
-- Google sign-in itself and the Firestore store with real data are verified only up to the sign-in screen: the Google provider must be enabled by hand in the Firebase console (no CLI), and the OAuth popup cannot be driven headlessly. The user signs in once and creates a Rule Set; that closes the live-verification item carried since Phase 4a.
+The user enabled the Google provider in the console, signed in at localhost:5173 and created a Rule Set. Read back with owner credentials through the Firestore REST API: documents present, `ownerId` is a real Firebase uid, timestamps and inline Rules intact. That closes the live-verification item carried since Phase 4a.
+
+It also surfaced a defect: two documents with the same name 21 seconds apart, the second being the first plus one more Rule. A cold Firestore connection makes the first browser write slow (the SDK falls back from WebChannel to long polling after a timeout), and Save had no pending state, so the "new" editor stayed mounted and a second Save created again instead of updating. Fix: the editor tracks `saving`, disables Save and Delete while a save is in flight, ignores a keyboard submit meanwhile, and labels the button "Saving". `editor-save.spec.ts` slows the test store's `create` by 1.5 s, clicks Save then presses Enter, and asserts one Rule Set. The test fails against the editor without the fix.
+
+## Leftovers
 - The emulator needs Java. It is installed keg-only through Homebrew, so `pnpm test:rules` needs `PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"`. Document in the root README in Phase 6.
 - `pnpm install` reports ignored build scripts for `@firebase/util` and `protobufjs`; neither is needed at runtime, and `onlyBuiltDependencies` stays at `esbuild`.
 - Wiring `connectFirestoreEmulator` and `connectAuthEmulator` behind an env flag would let the app itself run against the emulator for a fully local end-to-end check. Not in the plan; worth considering in Phase 7 if the live project is slow to arrive.
