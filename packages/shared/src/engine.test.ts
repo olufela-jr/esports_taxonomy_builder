@@ -466,11 +466,14 @@ describe("resolveRule", () => {
     expectFailure(childOf(ruleSet, "r_ad_group"), ruleSet, 'Segment ids must be unique: "s_market".');
   });
 
-  it("rejects a parent link that inherits nothing", () => {
+  it("resolves a parent link that inherits nothing to the child's own segments", () => {
     const child: Rule = { ...adGroupRule, parent: { ruleId: "r_campaign", inheritSegmentIds: [] } };
     const ruleSet = ruleSetOf(campaignRule, child);
+    const result = resolveRule(childOf(ruleSet, "r_ad_group"), ruleSet);
 
-    expectFailure(childOf(ruleSet, "r_ad_group"), ruleSet, "A parent link must inherit at least one segment.");
+    expect(result.errors).toEqual([]);
+    expect(result.rule.parent).toBeUndefined();
+    expect(result.rule.segments.map((segment) => segment.id)).toEqual(["s_targeting", "s_audience"]);
   });
 
   it("reports a broken parent from the grandchild, naming the parent", () => {

@@ -229,10 +229,6 @@ function resolveWithin(rule: Rule, ruleSet: RuleSet, visited: Set<string>): Reso
   const fail = (...errors: string[]): ResolveResult => ({ rule, errors });
   const { ruleId, inheritSegmentIds } = rule.parent;
 
-  if (inheritSegmentIds.length === 0) {
-    return fail("A parent link must inherit at least one segment.");
-  }
-
   const parent = ruleSet.rules.find((candidate) => candidate.id === ruleId);
   if (!parent) {
     return fail("The parent Rule no longer exists in this Rule Set.");
