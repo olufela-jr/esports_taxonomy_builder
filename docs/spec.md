@@ -29,13 +29,13 @@ The one rule that must never break still holds: all naming logic, and now all UT
 | --- | --- | --- |
 | `compose(rule, selections)` | Settled, now requires a resolved Rule | Build a name from segment selections |
 | `validate(rule, name)` | Settled, now requires a resolved Rule | Check a name positionally |
-| `parse(rule, name)` | Settled | Split a valid name into selections; used by the parent step |
+| `parse(rule, name)` | Settled, changes in v2 | Split a valid name into selections keyed by segment `key`, failing on an invalid name; used by the parent step. The v1 function is a plain split that cannot fail, so this is engine work in build step 5 |
 | `rollup(perRuleResults)` | Settled (migration step 1) | Pooled All Rules figure |
 | `resolveRule(rule, ruleSet)` | New (brief) | Flatten a child Rule into a self-contained Rule |
-| `checkRuleSet(ruleSet)` | New (Proposed) | Authoring-time structural checks across Rules, including parent guards |
+| `checkRuleSet(ruleSet)` | Extended (Settled at G0) | Authoring-time structural checks across Rules, including parent guards and UTM checks. Exists in v1 returning a flat string list; the return shape changes to issues per Rule (one caller, the Author editor) |
 | `buildTrackingUrl(resolvedRule, context)` | New (brief, name Proposed) | Produce UTM values and the full URL |
 | `validateUtmValue(param, value, policy)` | New (brief, name Proposed) | Per-value UTM checks |
-| enumerate(rule, choices) and countCombinations(rule, choices) | New (Proposed, 22 Sep) | Batch build: stream every combination of chosen values through compose |
+| enumerate(rule, choices) and countCombinations(rule, choices) | New (Settled at G0, release R2) | Batch build: stream every combination of chosen values through compose |
 
 ### Round-trip guarantees
 
@@ -46,9 +46,9 @@ The name guarantee is unchanged in meaning: for any Rule R in a valid Rule Set, 
 
 All three are Vitest property-style tests over small generated fixtures, alongside the existing per-violation tests. The suite must stay green after every change (Settled).
 
-### Why a runtime guard on unresolved Rules (Proposed, departs from brief)
+### Why a runtime guard on unresolved Rules (Settled at G0, departs from brief)
 
-The brief says `compose` and `validate` are otherwise unchanged and operate on the resolved Rule. That leaves a silent failure: any caller that forgets `resolveRule` will validate an ad group name against the child's own segments only, and every correct name will fail on token count. The fix is one line in each function: if `rule.parent` is set, return an error (`compose`) or throw (`validate`) stating the Rule must be resolved first. The alternative, a separate `ResolvedRule` type, catches it at compile time but adds a second near-identical type the team must keep in step. Given the plain-TypeScript constraint, the runtime guard plus a test is the better trade.
+The brief says `compose` and `validate` are otherwise unchanged and operate on the resolved Rule. That leaves a silent failure: any caller that forgets `resolveRule` will validate an ad group name against the child's own segments only, and every correct name will fail on token count. The fix is one check in each function: if `rule.parent` is set, `compose` reports it in `errors` and `validate` returns `valid: false` with one violation on the name, each stating the Rule must be resolved first. Neither throws (amended at G0): the CSV checker calls `validate` once per row with no error handling, so a throw would end the whole check instead of reporting one Rule. `enumerate` and `countCombinations` apply the same guard and return the same error. The alternative, a separate `ResolvedRule` type, catches it at compile time but adds a second near-identical type the team must keep in step. Given the plain-TypeScript constraint, the runtime guard plus a test is the better trade.
 
 ### Data model
 
@@ -115,13 +115,13 @@ Example fragment of a child Rule as stored:
 
 ### Four departures from the brief, with trade-offs
 
-Segment references by id, not key (Proposed). The brief names the field `inheritSegmentKeys`. In v1, `key` is an editable slug auto-derived from the label, so relabelling a parent segment silently changes its key and breaks every child that references it. That is exactly the drift inheritance by reference was meant to prevent. Using the immutable `id` costs nothing and removes the failure. The same applies to UTM `segment` sources. `compose` selections stay keyed by `key` at runtime, which is fine because they are never stored.
+Segment references by id, not key (Settled at G0). The brief names the field `inheritSegmentKeys`. In v1, `key` is an editable slug auto-derived from the label, so relabelling a parent segment silently changes its key and breaks every child that references it. That is exactly the drift inheritance by reference was meant to prevent. Using the immutable `id` costs nothing and removes the failure. The same applies to UTM `segment` sources. `compose` selections stay keyed by `key` at runtime, which is fine because they are never stored.
 
-UTM mapping per Rule, not per Rule Set with overrides (Proposed). A Rule Set default sounds less repetitive, but a Rule Set typically holds several platform chains, and a source such as "the campaign's built name" points at a different Rule in each chain. A shared default would need relative references ("root ancestor", "parent") that are harder to explain and to validate. Per-Rule mappings with explicit `ruleId`s are verbose but unambiguous. Authoring offers "copy mapping from another Rule" to offset the repetition. Revisit if the client confirms one mapping genuinely applies across a whole Rule Set.
+UTM mapping per Rule, not per Rule Set with overrides (Settled at G0). A Rule Set default sounds less repetitive, but a Rule Set typically holds several platform chains, and a source such as "the campaign's built name" points at a different Rule in each chain. A shared default would need relative references ("root ancestor", "parent") that are harder to explain and to validate. Per-Rule mappings with explicit `ruleId`s are verbose but unambiguous. A "copy mapping from another Rule" action in Author would offset the repetition; it is a follow-up once more than one Rule per Rule Set carries a mapping, not a v2 acceptance item (amended at G0). Revisit if the client confirms one mapping genuinely applies across a whole Rule Set.
 
-A `literal` source (Proposed). The brief lists built names, segments and tags as sources. `utm_medium` is almost always a fixed value such as `cpc` or `paid_social`, which none of those supply without inventing a single-value enum segment that would then appear in the name. A literal source is the honest representation. Whether source and medium come from a literal, a segment or the Platform tag is still Pending (client); the model supports all three.
+A `literal` source (Settled at G0). The brief lists built names, segments and tags as sources. `utm_medium` is almost always a fixed value such as `cpc` or `paid_social`, which none of those supply without inventing a single-value enum segment that would then appear in the name. A literal source is the honest representation. `checkRuleSet` runs `validateUtmValue` on every literal under its mapping's case policy, so a bad literal is refused at save rather than at every build (amended at G0). Whether source and medium come from a literal, a segment or the Platform tag is still Pending (client); the model supports all three.
 
-Runtime guard on unresolved Rules (Proposed), explained in the engine contract above.
+Runtime guard on unresolved Rules (Settled at G0), explained in the engine contract above.
 
 ### Firestore implications
 
@@ -146,11 +146,11 @@ The returned `source`, `tags` and `utm` are the child's own. The function is pur
 
 #### Three guard choices the brief leaves open
 
-Inherited segments form a leading run (Proposed). The brief says "inherited leading segments" but the data shape allows any subset. Restricting to the first N parent segments keeps the child name a literal prefix-by-tokens of the parent, which makes the future cross-level check a simple token comparison and makes names easy to read. The cost is flexibility: a client who wants to inherit `type` and `objective` but skip `market` cannot. Pending (client) through the "which levels and segments" question; relaxing it later is a guard change, not a data migration.
+Inherited segments form a leading run (Settled at G0). The brief says "inherited leading segments" but the data shape allows any subset. Restricting to the first N parent segments keeps the child name a literal prefix-by-tokens of the parent, which makes the future cross-level check a simple token comparison and makes names easy to read. The cost is flexibility: a client who wants to inherit `type` and `objective` but skip `market` cannot. Pending (client) through the "which levels and segments" question; relaxing it later is a guard change, not a data migration.
 
-Delimiters must match (Proposed). A resolved Rule has one delimiter and parses positionally, so a campaign using `_` and an ad group using `|` cannot combine without a second parsing mode. Some teams do separate levels with a different character (for example `perf_uk_sales | broad_runners`). Supporting that means a per-join delimiter in the resolved Rule and changes to `validate`, which is real engine work. Recommend matching delimiters for v2 and asking the client.
+Delimiters must match (Settled at G0). A resolved Rule has one delimiter and parses positionally, so a campaign using `_` and an ad group using `|` cannot combine without a second parsing mode. Some teams do separate levels with a different character (for example `perf_uk_sales | broad_runners`). Supporting that means a per-join delimiter in the resolved Rule and changes to `validate`, which is real engine work. Recommend matching delimiters for v2 and asking the client.
 
-Inherited segments must be required (Proposed, sharpens the brief's guard). The brief says a parent cannot be optional-before-required once combined. Since optional segments may only sit at the end of the parent, inheriting one and then adding any child segment always produces optional-before-required. Stating the rule as "only required parent segments can be inherited" is equivalent in practice and far easier for an author to understand.
+Inherited segments must be required (Settled at G0, sharpens the brief's guard). The brief says a parent cannot be optional-before-required once combined. Since optional segments may only sit at the end of the parent, inheriting one and then adding any child segment always produces optional-before-required. Stating the rule as "only required parent segments can be inherited" is equivalent in practice and far easier for an author to understand.
 
 #### Parent step
 
@@ -169,20 +169,21 @@ This is a gap in the brief. For a two-level chain the parent step already holds 
 
 `buildTrackingUrl(resolvedRule, context)` takes the resolved Rule, the built names of the Rule and its ancestors keyed by Rule id, the selections, the Rule Set (for tags) and the base URL. It resolves each mapped source to a string, validates each value, and builds the URL with the standard `URL` and `URLSearchParams` APIs. It never transforms a value: if a value breaks the case policy, the result is an error, not a silently lowercased value, because a transformed `utm_campaign` would no longer equal the campaign name (brief requirement).
 
-Value rules (Proposed definitions of the brief's "URL-safe, no spaces, consistent case"):
+Value rules (Settled at G0, defining the brief's "URL-safe, no spaces, consistent case"):
 
 - Non-empty after resolution; a missing optional parameter is omitted, not sent blank.
 - Characters limited to the RFC 3986 unreserved set: letters, digits, `-`, `.`, `_`, `~`. With this set no percent-encoding ever happens, so the value in the URL is byte-identical to the name. The cost is that names using `|`, `+`, `&` or spaces cannot feed a UTM. Pending (client) through a question on current delimiters.
 - `casePolicy: "lower"` fails on any uppercase letter; `"asIs"` accepts mixed case. Analytics tools treat case as distinct, so `lower` is the recommended default.
 - `utm_campaign` must come from a `ruleName` source whose `ruleId` is the Rule itself or an ancestor. Equality with the built campaign name then holds by construction, and a test asserts it.
+- Authoring-time check (amended at G0): `checkRuleSet` checks the delimiter and every enum value and literal of each Rule a mapping references against that mapping's character set and case policy. A convention that can never produce a URL, for example an uppercase enum value under `lower` or a pipe delimiter, is refused in Author rather than at every build. Freeform values are still checked at build.
 
-Base URL rules (Proposed): absolute `https` or `http` URL; existing non-UTM query parameters and any `#fragment` are preserved; a base URL that already contains any `utm_` parameter is rejected rather than merged, because silently replacing a hand-set UTM is worse than asking.
+Base URL rules (Settled at G0): absolute `https` or `http` URL; existing non-UTM query parameters and any `#fragment` are preserved; a base URL that already contains any `utm_` parameter is rejected rather than merged, because silently replacing a hand-set UTM is worse than asking.
 
 #### checkRuleSet
 
 `checkRuleSet(ruleSet)` runs before every save and returns issues per Rule: the v1 authoring checks, `resolveRule` errors for every Rule, and UTM mapping checks (required parameters present, every referenced `ruleId` is self or an ancestor, every `segmentId` exists on the resolved Rule, campaign source kind is `ruleName`). A helper `dependentsOf(ruleSet, ruleId, segmentId?)` powers the Author screen's delete protection. Putting these in `@taxo/shared` rather than the editor keeps the Stage 2 Function able to reject a malformed Rule Set with the same logic.
 
-#### enumerate and countCombinations (Proposed, added 22 Sep 2026)
+#### enumerate and countCombinations (Settled at G0, added 22 Sep 2026)
 
 Batch build is two pure functions in `@taxo/shared`, so the round-trip guarantee covers it without a new test class: every row is produced by `compose`, so every row passes `validate`.
 
@@ -200,7 +201,9 @@ Rules of the functions:
 
 - Both require a resolved Rule and reject one with `parent` set, like `compose` and `validate`.
 - Every required segment must have at least one value in `choices`; every value is validated against its segment before generation starts (enum membership, freeform length and characters), so one bad freeform line fails fast rather than on row 40,000.
-- `countCombinations` is the product of the list lengths and runs in constant time; the UI calls it on every change for the live count and for the cap check.
+- `countCombinations` is the product of the list lengths, less the omitted-optional combinations described below, and runs in constant time; the UI calls it on every change for the live count and for the cap check.
+- Optional segments (amended at G0): an omitted value for an optional segment in one row implies every later optional segment is omitted in that row, matching the optional-gap rule in `compose`. `countCombinations` and `enumerate` both exclude the other combinations, so the live count equals the rows generated and every row passes `validate`.
+- Release (amended at G0): batch ships as release R2 after P12 is answered. The engine functions may land earlier, but nothing in release R1 depends on them. The 50,000-row cap is a web-app constant, revisited under P13.
 - `enumerate` is a generator that walks the product in segment order (first segment slowest). It holds one row at a time, so memory is bounded by whatever the caller keeps; the CSV writer streams rows into a Blob and never holds the full array in React state.
 - Inherited segments on a child Rule always have exactly one value, the one parsed from the parent name; the UI passes them as single-item lists and locks the controls.
 - The tracking URL per row is `buildTrackingUrl` applied to each row's selections, unchanged.
@@ -231,7 +234,7 @@ The v1 spec defined no empty, loading or error states. This table closes that ga
 | Author | Empty Rule Set | Prompt to add the first Rule |
 | Author | Save blocked by `checkRuleSet` | Issues listed per Rule with a link to each; save disabled |
 | Author | Delete blocked by dependents | Dialog naming dependent Rules and the segments or mappings involved |
-| Author | Save conflict (someone else saved first) | Open question: v1 has no concurrency handling; see decisions pending |
+| Author | Save conflict (someone else saved first) | Save refused with a message to reload and reapply; delivered in migration Phase 6 |
 | Build | Rule has no segments | Message pointing to Author |
 | Build | Rule fails `resolveRule` (broken parent) | Resolution errors shown; building disabled |
 | Build | Pasted parent fails validation | Parent's violations listed; child controls hidden |
@@ -248,7 +251,7 @@ All storage calls stay behind `apps/web/src/data/store.ts`, with Firestore via t
 
 Security Rules can only check coarse shape on write, because the rules language cannot loop over list elements: `rules` is a list under a size cap, `ownerId` is unchanged on update, timestamps are present. Everything about individual Rules, including parent links and UTM mappings, stays in `checkRuleSet`, for the reason given under Firestore implications.
 
-Concurrent edits (Open). A Rule Set is one document, so two people saving different Rules in the same Rule Set overwrite each other, last write wins. Parent links make this more harmful, since one person can remove a segment another's child just started inheriting. v1 ownership (only the owner writes) limits it to one person in two tabs. The cheap fix is a transaction that rejects a save when `updatedAt` has changed since load. Recommend adding it now; it is about twenty lines in `store.ts`.
+Concurrent edits (Settled, delivered in migration Phase 6). A Rule Set is one document, so two people saving different Rules in the same Rule Set would overwrite each other, last write wins. Parent links make this more harmful, since one person can remove a segment another's child just started inheriting. v1 ownership (only the owner writes) limits it to one person in two tabs. The fix is in place: `store.ts` updates inside a transaction that refuses the save when `updatedAt` has changed since load, and a Playwright test covers the conflict.
 
 ### Stage 2 scan (Settled, with v2 implications)
 
@@ -277,8 +280,8 @@ None of this section is decided in the source files; everything here is Proposed
 ### Operations
 
 - Environments (Open): v1 assumes BigQuery in the same GCP project as the app. A separate dev Firebase project would have no BigQuery data, or a copy of it. Decide between one project with a dev hosting channel, or two projects with a sample dataset in dev.
-- Backups (Proposed): enable Firestore point-in-time recovery. Rule Sets are small, high-value configuration, and versioning is deferred, so recovery is the only undo for a bad edit.
-- Audit trail (Proposed): write `updatedBy` alongside `updatedAt` on every save. This is not versioning, which stays deferred, but it answers "who changed the campaign Rule" once parent edits start affecting child compliance.
+- Backups (Settled at G0): enable Firestore point-in-time recovery and delete protection on the production database. Rule Sets are small, high-value configuration, and versioning is deferred, so recovery is the only undo for a bad edit. Both were disabled on 24 September 2026; switching them on is a live GCP change made in its own step with explicit approval.
+- Audit trail (Settled at G0): write `updatedBy` alongside `updatedAt` on every save, enforced in Security Rules as the caller's uid. This is not versioning, which stays deferred, but it answers "who changed the campaign Rule" once parent edits start affecting child compliance.
 - Monitoring (Proposed): Cloud Logging and error alerting on `scanCampaigns`; web errors logged to the console only in v2, to avoid a new dependency.
 - Ownership and support (Open): who deploys, who fixes, who answers user questions once the build team hands over.
 
@@ -327,7 +330,7 @@ The v1 list (from spec v1, item 9 updated for the decision to keep Tailwind) and
 
 ## Decisions log
 
-Thirty-three decisions are recorded: 21 Settled, 2 Reversed, 10 Proposed. Proposed items become Settled unless someone objects at review.
+Thirty-three decisions are recorded: 31 Settled, 2 Reversed. D24 to D33 were Proposed by this spec and settled at Gate G0 on 24 September 2026: D24, D28 and D29 as written, the rest with the amendments in the Gate G0 record below.
 
 | # | Decision | Status | Source |
 | --- | --- | --- | --- |
@@ -354,18 +357,37 @@ Thirty-three decisions are recorded: 21 Settled, 2 Reversed, 10 Proposed. Propos
 | D21 | Rule Sets may contain parent links; independence no longer a system rule | Reversed | Brief |
 | D22 | Checker unchanged apart from resolving child Rules first | Settled | Brief |
 | D23 | All UTM logic lives in `@taxo/shared` and has its own round-trip test | Settled | Follows from D1 |
-| D24 | Parent links and UTM sources reference segment `id`, not `key` | Proposed | This spec (departs from brief) |
-| D25 | `compose` and `validate` reject Rules with `parent` set (runtime guard) | Proposed | This spec |
-| D26 | UTM mapping per Rule with explicit `ruleId`s, plus "copy mapping" in Author | Proposed | This spec (departs from brief) |
-| D27 | `literal` UTM source type | Proposed | This spec (extends brief) |
-| D28 | Inherited segments are the first N required segments of the parent | Proposed | This spec |
-| D29 | Child delimiter must equal parent delimiter | Proposed | This spec |
-| D30 | UTM values: unreserved characters only, no transformation, case policy per mapping, base URL with `utm_` rejected | Proposed | This spec |
-| D31 | `updatedBy`, point-in-time recovery and an `updatedAt` save check added now | Proposed | This spec |
-| D32 | Batch mode in Build: Cartesian product of chosen values per segment, streamed by enumerate in @taxo/shared, CSV output, 50,000 row cap in the web app | Proposed | Fela, 22 Sep; this spec |
-| D33 | Freeform segments in a batch take a user-supplied value list; optional segments offer include, omit or both; a child batch runs under one parent name | Proposed | This spec |
+| D24 | Parent links and UTM sources reference segment `id`, not `key` | Settled | G0, 24 Sep 2026 (departs from brief) |
+| D25 | `compose`, `validate`, `enumerate` and `countCombinations` refuse a Rule with `parent` set as an error result; none of them throws | Settled | G0, 24 Sep 2026, amended (departs from brief) |
+| D26 | UTM mapping per Rule with explicit `ruleId`s; a "copy mapping" action in Author is a follow-up, not a v2 acceptance item | Settled | G0, 24 Sep 2026, amended (departs from brief) |
+| D27 | `literal` UTM source type; `checkRuleSet` validates every literal under its mapping's case policy at save | Settled | G0, 24 Sep 2026, amended (extends brief) |
+| D28 | Inherited segments are the first N required segments of the parent | Settled | G0, 24 Sep 2026; P6 may relax it |
+| D29 | Child delimiter must equal parent delimiter | Settled | G0, 24 Sep 2026; P7 may relax it |
+| D30 | UTM values: unreserved characters only, no transformation, case policy per mapping, base URL with `utm_` rejected; `checkRuleSet` refuses at save a delimiter, enum value or literal that the mapping's policy could never emit | Settled | G0, 24 Sep 2026, amended |
+| D31 | `updatedAt` save check delivered in migration Phase 6; v2 adds `updatedBy` enforced in Security Rules, and enables point-in-time recovery and delete protection on the production database | Settled | G0, 24 Sep 2026, amended |
+| D32 | Batch mode in Build: Cartesian product of chosen values per segment, streamed by enumerate in @taxo/shared, CSV output, 50,000 row cap in the web app; ships as release R2 after P12, cap revisited under P13 | Settled | Fela, 22 Sep; G0, 24 Sep 2026, amended |
+| D33 | Freeform segments in a batch take a user-supplied value list; optional segments offer include, omit or both, where an omitted optional implies every later optional is omitted in that row and the count excludes the rest; a child batch runs under one parent name | Settled | G0, 24 Sep 2026, amended |
 
 The two Reversed entries replace the v1 statement "Rules are independent: no inheritance, no cross-Rule validation". Only the first half is reversed; cross-Rule validation remains out of scope.
+
+### Gate G0 record (24 September 2026)
+
+Reviewed against the code as deployed after migration Phase 7. Each decision was checked for what it forecloses and whether the code conflicts with it; no code conflicts were found with any of the ten, and the amendments below close gaps the review surfaced. Rulings by Fela.
+
+- D24 accepted. The Author editor rewrites a segment's `key` on every label keystroke, so key-based references would break on any relabel. CLAUDE.md already records id-based references.
+- D25 amended. Error results instead of a throw, because `validate` has never thrown and the CSV checker calls it per row with no error handling. The same guard covers `enumerate` and `countCombinations`.
+- D26 amended. The "copy mapping" Author action is deferred to a follow-up.
+- D27 amended. Literals are validated by `checkRuleSet` at save under the mapping's case policy.
+- D28 accepted. Every Rule must have at least one own segment, so "required only" is equivalent to the brief's guard. Keeping the id array rather than a count makes a parent reorder a detectable error.
+- D29 accepted. Author must lock the child's delimiter to the parent's; today each Rule chooses freely.
+- D30 amended. Enum values are case-sensitive and no transformation is allowed, so an uppercase enum value under `lower`, or a delimiter outside the unreserved set, would make every build fail; `checkRuleSet` refuses such a convention at save.
+- D31 amended. The `updatedAt` check is already done. `updatedBy` is absent from the types, the store and the rules; point-in-time recovery and delete protection are both disabled on the production database, verified with gcloud on 24 September 2026. Enabling them is a live change done in its own step.
+- D32 amended. Bound to release R2 after P12, matching the CLAUDE.md build order; the cap is a web constant under P13.
+- D33 amended. "Both" on an optional segment collided with the optional-gap rule in `compose`; an omitted optional now implies every later optional is omitted, and the count excludes the rest.
+
+The four departures from the scope-change brief are acknowledged: segment references by `id` rather than `key` (D24), the runtime guard on unresolved Rules (D25), UTM mappings per Rule rather than per Rule Set (D26), and the `literal` UTM source (D27).
+
+Two engine changes outside the ten, recorded here for the build order: `parse` today is a plain split that cannot fail, and the parent step needs one that returns selections keyed by `key` and reports violations (build step 5); `checkRuleSet` exists already returning a flat string list, and build step 3 changes it to issues per Rule. Proposed labels outside D24 to D33 (the UX states table, non-functional targets, CI and monitoring) were not gated by G0 and keep their status.
 
 ## Decisions pending
 
@@ -398,7 +420,7 @@ Thirteen questions need the client and ten need an internal decision. Each has a
 | O3 | Which CI host? | CI setup | GitHub Actions |
 | O4 | Who owns deployment and support after handover? | Operations | Name an owner before Stage 2 |
 | O5 | Monthly GCP budget and the `maximumBytesBilled` value per scan | Stage 2 cost controls | Set from the largest name table's column size plus headroom |
-| O6 | Adopt the `updatedAt` save check now or defer? | Store module | Adopt now (D31) |
+| O6 | Adopt the `updatedAt` save check now or defer? | Store module | Done in migration Phase 6 (D31) |
 | O7 | May any Rule carry a UTM mapping, or only leaf Rules? | Author UI | Any Rule; platforms set URLs at different levels |
 | O8 | Is a maximum UTM value length needed? | UTM validation | No limit in v2; add once the client names their analytics tool's limits |
 | O9 | Should a child batch span many parent names at once (ad groups across many campaigns)? | Batch parent step | One parent per batch in v2; multi-parent as a second pass once P12 is answered |
