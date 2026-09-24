@@ -55,3 +55,53 @@ Firestore, so the engine and the app must accept it before the data moves.
 ### Leftovers
 
 - Labels cannot be edited in Author yet; every entry saved from the UI has label = code.
+
+## C2: Auth claims and the two roles
+
+D35 and D36: a user belongs to one tenant and holds one role in it, both carried as custom
+claims on the ID token. The app reads them and never guesses; setting them is server-side
+(the provisioning script in C6).
+
+### What changed
+
+- `apps/web/src/data/mode.ts` (new): `detectMode()` decides `memory` or `firestore` once,
+  before sign-in, with the same four cases `createStore` used to hold (test seed, Firebase
+  configured, development fallback, production refusal). The session and the store both
+  follow it, so `createAuth` no longer depends on the store.
+- `apps/web/src/data/auth.ts`: `Role = 'admin' | 'user'`; `User` gains `tenantId` and `role`,
+  read from `getIdTokenResult()` claims (`tenantId` must be a non-empty string, `role` one of
+  the two values, anything else reads as null). `refreshClaims()` fetches a fresh token so a
+  user provisioned after signing in does not have to sign out. Memory mode: the local user is
+  admin in tenant `local`, or a standard user when a Playwright fixture sets
+  `window.__taxoTestRole`.
+- `apps/web/src/data/store.ts`: `createStore(mode)`; the selection logic moved to `mode.ts`.
+- `apps/web/src/App.tsx`: mode first, then auth and store from it. A signed-in user without
+  a tenant or role sees the new `NoWorkspace` screen (Retry re-reads the claims, or sign out)
+  and the store listener does not start, since the Security Rules would refuse every read.
+  `canEdit = role === 'admin'` drives the editor's `readOnly`, the create flow and the list.
+- `apps/web/src/components/SignIn.tsx`: role-aware copy and the `NoWorkspace` component.
+- `apps/web/src/components/RuleSetList.tsx`: the ownership badge and "Owned by" caption are
+  gone; "New Rule Set" and the create copy show only to admins.
+- `apps/web/src/components/RuleSetEditor.tsx`: the read-only hint names the admin role.
+- `apps/web/src/components/AppShell.tsx`: the role under the user's name (`text-user-role`).
+- `apps/web/e2e/fixtures.ts`: `seedRuleSets(page, ruleSets, role)` sets the role hook.
+  `apps/web/e2e/auth.spec.ts`: sign-out and sign-in still restore the context; a standard
+  user sees everything read only, has no create button and still builds a name; an admin
+  edits a Rule Set created by someone else.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test` | 32 of 32 |
+| `pnpm test:e2e` | 17 of 17 (auth.spec rewritten, 3 tests) |
+| `pnpm build` | Clean |
+
+### Decisions not spelled out in the plan
+
+- `ownerId` stays on the document in this commit; C3 renames it with the tenant path so the
+  document shape changes once. Ownership no longer affects the UI anywhere.
+- The `NoWorkspace` screen keeps the persisted workspace context untouched, so a user who is
+  provisioned and retries lands where they were.
+- `AuthSession.kind` is the `Mode` type rather than its own union, so the two cannot drift.

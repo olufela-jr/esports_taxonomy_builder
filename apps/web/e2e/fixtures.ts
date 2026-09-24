@@ -67,10 +67,12 @@ export const globalRuleSet = {
 // stays in localStorage; one test asserts on it directly.
 export const UI_STATE_KEY = 'campaign-tool-ui-state-v4';
 
-export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaRuleSet, globalRuleSet]) {
-  await page.addInitScript((seed) => {
+// role: the local user is an admin unless a test asks for a standard user.
+export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaRuleSet, globalRuleSet], role: 'admin' | 'user' = 'admin') {
+  await page.addInitScript(({ seed, role }) => {
     window.__taxoTestSeed = seed;
-  }, ruleSets as never);
+    window.__taxoTestRole = role;
+  }, { seed: ruleSets as never, role });
 }
 
 // The Rule Sets as the app currently holds them, read back through the store.

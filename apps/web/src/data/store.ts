@@ -4,9 +4,9 @@
 // Rule Sets.
 import { collection, deleteDoc, doc, onSnapshot, runTransaction, setDoc, type Firestore } from 'firebase/firestore';
 import { newId } from '@/lib/ids';
-import { getFirebase, isFirebaseConfigured } from '@/lib/firebase';
-import { ConfigurationError } from '@/lib/config-error';
+import { getFirebase } from '@/lib/firebase';
 import { readLocalRuleSets, writeLocalRuleSets } from './migrations';
+import type { Mode } from './mode';
 import { seedRuleSets } from './seeds';
 import type { RuleSet, RuleSetDraft } from './types';
 
@@ -15,7 +15,7 @@ export type { RuleSet, RuleSetDraft } from './types';
 type Listener = (ruleSets: RuleSet[]) => void;
 
 export type RuleSetStore = {
-  kind: 'memory' | 'firestore';
+  kind: Mode;
   // The current list; [] until Firestore delivers its first snapshot.
   getSnapshot(): RuleSet[];
   // Calls the listener immediately with the current list, then on every change.
@@ -173,31 +173,17 @@ export function createFirestoreStore(db: Firestore): RuleSetStore {
 
 // ---- Selection -----------------------------------------------------------------
 
-// Picks the store for this runtime:
-// 1. A test seed on window: in-memory, no persistence (Playwright).
-// 2. Firebase configured (and not overridden by VITE_STORE=memory): Firestore.
-// 3. Development without Firebase: in-memory, hydrated from and persisted to
-//    localStorage so local work survives a refresh.
-// 4. Production without Firebase: refuse to start.
-export function createStore(): RuleSetStore {
-  if (window.__taxoTestSeed) {
-    const store = createMemoryStore(window.__taxoTestSeed);
-    window.__taxoStore = store;
-    return store;
-  }
-
-  const forceMemory = import.meta.env.VITE_STORE === 'memory';
-  if (isFirebaseConfigured() && !forceMemory) {
+// The store for the mode decided in mode.ts. In memory mode a Playwright test
+// seed wins over browser-local data, and neither persists past the session
+// except the local development data, which round-trips through localStorage.
+export function createStore(mode: Mode): RuleSetStore {
+  if (mode === 'firestore') {
     return createFirestoreStore(getFirebase().db);
   }
 
-  if (import.meta.env.PROD) {
-    throw new ConfigurationError(
-      'Firebase is not configured for this production build. Set the VITE_FIREBASE_* variables at build time; the in-memory store is for development and tests only.',
-    );
-  }
-
-  const store = createMemoryStore(readLocalRuleSets() ?? seedRuleSets, writeLocalRuleSets);
+  const store = window.__taxoTestSeed
+    ? createMemoryStore(window.__taxoTestSeed)
+    : createMemoryStore(readLocalRuleSets() ?? seedRuleSets, writeLocalRuleSets);
   window.__taxoStore = store;
   return store;
 }

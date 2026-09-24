@@ -115,7 +115,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           </div>
           <div className="flex items-center gap-3 border-t border-sidebar-border px-2 pt-4">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-primary text-xs font-semibold text-primary-foreground" aria-hidden="true">{initials(user.name)}</div>
-            <div className="min-w-0"><div className="truncate text-xs font-semibold" data-testid="text-user-name">{user.name}</div>{user.email && <div className="truncate text-[11px] text-sidebar-foreground/60">{user.email}</div>}</div>
+            <div className="min-w-0"><div className="truncate text-xs font-semibold" data-testid="text-user-name">{user.name}</div>{user.email && <div className="truncate text-[11px] text-sidebar-foreground/60">{user.email}</div>}<div className="text-[11px] text-sidebar-foreground/60" data-testid="text-user-role">{user.role === 'admin' ? 'Admin' : 'User'}</div></div>
             <button type="button" className="ml-auto rounded-md p-1.5 text-sidebar-foreground/55 transition hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => void onSignOut()} aria-label="Sign out" title="Sign out" data-testid="button-sign-out"><LogOut className="h-4 w-4" /></button>
           </div>
         </div>
