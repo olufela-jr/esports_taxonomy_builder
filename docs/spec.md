@@ -13,6 +13,14 @@ and batch build. The product view (Part A, with the user journeys and worked exa
 planning phase and gates stay in `docs/spec-v2.md`, the exported copy of the source-of-truth
 Claude Doc.
 
+> v3 note (24 September 2026). `docs/spec-v3.md` supersedes this file where the two differ:
+> every document now lives under `tenants/{tenantId}/`, access is tenant membership plus an
+> `admin` or `user` role carried as Auth custom claims (replacing D12's owner-only writes), Rule
+> Set documents carry `createdBy` and `updatedBy` instead of `ownerId`, and enum
+> `allowedValues` are `{ label, code }` entries with the code in the name (D39, D40, replacing
+> the flat strings of D4 and D5). The engine contract, hierarchy, UTM and batch sections below
+> stand. The "Storage and auth" section and D12 are historical.
+
 ## Part B: Technical detail
 
 ### Architecture (Settled, extended)

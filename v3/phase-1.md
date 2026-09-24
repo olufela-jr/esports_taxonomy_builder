@@ -298,3 +298,35 @@ step (see "Live run" at the end of this file).
   datasets, so a manual edit to the config between runs is not lost.
 - Backups are plain JSON in the repo folder, gitignored. A Firestore export would need a
   Cloud Storage bucket; for a handful of documents a local file is the honest equivalent.
+
+## C7: docs
+
+- `CLAUDE.md`: tenancy and roles under the stack, the tenant path and `EnumEntry` shape under
+  the data model, a "v3 phase 1 done" record, the Stage 2 section rebased on the guard, and
+  the "Do not" list updated (roles done, requests are phase 5, no versioning or retired codes).
+- `README.md`: tenant-aware description, layout with `functions/` and `scripts/`, the check
+  table, and a Firebase section with the provisioning and migration commands.
+- `docs/spec.md`: a note at the top of Part B saying where `docs/spec-v3.md` supersedes it.
+
+## Phase 1 status
+
+Everything on the code side of spec v3 phase 1 is committed and green. Left to run live, in
+this order, each with explicit approval:
+
+1. `gcloud auth application-default login` as misterfela@gmail.com (the ADC file on this
+   machine is of unknown account).
+2. `pnpm migrate:v3 --tenant <id> --name "<client name>" --dry-run`: read-only against
+   Firestore, writes the backup file, prints the plan. Pick the tenant id first (a short
+   lowercase slug for the originating client).
+3. `pnpm migrate:v3 --tenant <id> --name "<client name>"`: writes the tenant document and
+   the Rule Sets, then verifies.
+4. `pnpm provision:user --email misterfela@gmail.com --tenant <id> --role admin`, then any
+   other members.
+5. `pnpm build` and `firebase deploy --only firestore:rules,hosting`, together, because the
+   deployed app reads the tenant path and the deployed rules deny the old one. Sign out and
+   in once.
+6. Later: `pnpm migrate:v3 --tenant <id> --delete-legacy`.
+
+Not in this phase: deploying the Function (Blaze plan, deploy-time manifest), point-in-time
+recovery and delete protection (D31, live change), the label control in Author, and
+everything in phase 2 onward.

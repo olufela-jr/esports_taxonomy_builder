@@ -1,29 +1,35 @@
 # Campaign Naming Rule Set Tool
 
-An internal marketing-operations tool for campaign naming conventions. Convention owners
-author Rule Sets (each holding one or more Rules, one per target such as "Google Campaigns"),
-builders compose names that are correct by construction, and analysts check names already in
-use against a Rule, from a CSV now and from BigQuery in Stage 2.
+An internal marketing-operations tool for campaign naming conventions. Each client is a
+tenant with its own workspace. Admins author Rule Sets (each holding one or more Rules, one
+per target such as "Google Campaigns"), everyone in the workspace composes names that are
+correct by construction and checks names already in use against a Rule, from a CSV now and
+from BigQuery in Stage 2.
 
 - `CLAUDE.md`: the short, always-loaded working agreement.
-- `docs/spec.md`: the technical contract (from spec v2).
+- `docs/spec-v3.md`: the v3 spec (multi-tenancy, roles, shared definitions); supersedes the
+  storage and auth parts of the v2 contract.
+- `docs/spec.md`: the technical contract from spec v2 (engine, hierarchy, UTMs, batch).
 - `docs/spec-v2.md`: the full v2 spec, including the product view and the planning phase.
 - `migration/`: the log of moving the prototype to this codebase, one file per phase.
+- `v2/`, `v3/`: the build logs for the v2 and v3 work, one file per step or phase.
 
 ## Layout
 
 pnpm workspaces monorepo. All naming logic lives in one package and is never duplicated.
 
 ```
-packages/shared/         @taxo/shared: the engine (compose, validate, parse, rollup, checkRuleSet) and its Vitest suite
+packages/shared/         @taxo/shared: the engine (compose, validate, parse, resolveRule, rollup, checkRuleSet) and its Vitest suite
 apps/web/                React + Vite app
-  src/data/store.ts      every Firestore or in-memory storage call
-  src/data/auth.ts       every sign-in call (Google through Firebase Auth, or a local user)
+  src/data/mode.ts       decides memory or Firestore once, before sign-in
+  src/data/store.ts      every Firestore or in-memory storage call, scoped to the signed-in tenant
+  src/data/auth.ts       every sign-in call (Google through Firebase Auth, or a local user) and the tenant and role claims
   src/components/        RuleSetList, RuleSetEditor (Author), Builder (Build), CsvChecker (Check), AppShell, SignIn
   e2e/                   Playwright browser regressions
-functions/               Stage 2 only: the scanCampaigns Callable Cloud Function (not yet present)
+functions/               @taxo/functions: the scanCampaigns Callable with the tenant guard (BigQuery body is Stage 2)
+scripts/                 one-off Admin SDK scripts: migrate-v3 (data into the first tenant) and provision-user (claims)
 firestore.rules          Security Rules, tested on the emulator by firestore.rules.test.ts
-firebase.json            Firestore rules path, Hosting, emulator ports
+firebase.json            Firestore rules path, Hosting, Functions, emulator ports
 ```
 
 ## Prerequisites
@@ -58,7 +64,7 @@ file forces the in-memory store even when Firebase is configured.
 | Command | What it runs |
 |---|---|
 | `pnpm typecheck` | TypeScript across every package |
-| `pnpm test` | The engine's Vitest suite, including the compose and validate round-trip |
+| `pnpm test` | The Vitest suites: the engine (including the compose and validate round-trip), the Function's tenant guard, and the migration transform |
 | `pnpm test:e2e` | Playwright browser regressions (starts or reuses `pnpm dev`; first run needs `pnpm exec playwright install chromium`) |
 | `pnpm test:rules` | The Security Rules against the Firestore emulator (needs Java, no Firebase project needed) |
 | `pnpm build` | Typecheck, then a production build to `apps/web/dist` |
@@ -69,12 +75,45 @@ guarantee.
 ## Firebase
 
 Project `media-taxonomy-tool` (`.firebaserc`), Firestore in `asia-south1`, Google sign-in,
-deployed at https://media-taxonomy-tool.web.app. Signed-in users read every Rule Set; only
-the owner can change one. The app checks this in the UI and `firestore.rules` enforces it.
+deployed at https://media-taxonomy-tool.web.app.
+
+Every document lives under `tenants/{tenantId}/`. A signed-in account carries `tenantId` and
+`role` (`admin` or `user`) as custom claims; without them the app shows "No workspace yet".
+Members read every Rule Set in their tenant; only admins change them. The UI follows the
+role and `firestore.rules` enforces it, refusing any read or write whose path does not match
+the caller's tenant.
 
 - Deploy rules: `firebase deploy --only firestore:rules`.
 - Deploy the app: `pnpm build` then `firebase deploy --only hosting` (Hosting serves
-  `apps/web/dist` with a single-page rewrite).
+  `apps/web/dist` with a single-page rewrite). Deploy rules and hosting together when the
+  data shape changes.
+- The Function is built (`pnpm --filter @taxo/functions build`) but not deployed yet: it
+  needs the Blaze plan and a deploy-time manifest without the `workspace:*` dependency.
+
+### Provisioning and migration (Admin SDK scripts)
+
+Both scripts use Application Default Credentials for the project owner: run
+`gcloud auth application-default login` with that account first. The person being
+provisioned must have signed in to the app once so their Auth account exists.
+
+```
+pnpm provision:user --email someone@example.com --tenant <id> --role admin
+pnpm provision:user --email someone@example.com --tenant <id> --role user
+pnpm provision:user --email someone@example.com --tenant <id> --role admin --tenant-name "New client"   # creates the tenant document
+```
+
+The v3 migration moves the pre-v3 `/rulesets` collection into one first tenant, rewriting
+flat enum values as label = code entries. Every run writes a JSON backup under `backups/`
+first; the legacy collection stays until deleted explicitly.
+
+```
+pnpm migrate:v3 --tenant <id> --name "Client name" --dry-run   # backup, transform, verify, write nothing
+pnpm migrate:v3 --tenant <id> --name "Client name"             # write the tenant and its Rule Sets, then verify
+pnpm migrate:v3 --tenant <id> --delete-legacy                  # later, once everything is verified live
+```
+
+After provisioning, the user signs out and in (or presses Retry on the "No workspace yet"
+screen) so the token carries the claims.
 
 Do not run `firebase deploy` against a project that has no Firestore database yet: the deploy
 creates one in a default location, and a database's location is permanent.
