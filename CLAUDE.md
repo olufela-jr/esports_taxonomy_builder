@@ -99,10 +99,12 @@ file per phase. Commits C1 to C7 on `main`:
   deployed (Blaze plan and a deploy-time manifest without `workspace:*` still needed).
 - `scripts/migrate-v3.ts` (backup, transform, dry run, verify, explicit `--delete-legacy`)
   and `scripts/provision-user.ts` (claims plus the users mirror).
-Still to run live, each with explicit approval: the migration dry run and write, provisioning
-the first admin, deploying rules and hosting together, and later deleting `/rulesets`. Phase 2
-(the repository: definitions, `definitionId` segments, `checkDefinition`, platform scoping)
-is next; nothing of it is started.
+Run live on 2026-09-24: the first tenant is `esports` ("Esports", `allowedDatasets:
+["marketing"]`), the one v2 Rule Set migrated and verified, misterfela@gmail.com is its admin,
+rules and hosting deployed together. Still pending, with explicit approval:
+`pnpm migrate:v3 --tenant esports --delete-legacy`. Phase 2 (the repository: definitions,
+`definitionId` segments, `checkDefinition`, platform scoping) is next; nothing of it is
+started.
 
 ## Migration complete (2026-09-24)
 The Replit prototype has been migrated to this codebase; the log is in `migration/`, one

@@ -330,3 +330,20 @@ this order, each with explicit approval:
 Not in this phase: deploying the Function (Blaze plan, deploy-time manifest), point-in-time
 recovery and delete protection (D31, live change), the label control in Author, and
 everything in phase 2 onward.
+
+## Live run (24 September 2026)
+
+Steps 1 to 5 of the sequence above, run with explicit approval at each step:
+
+| Step | Result |
+|---|---|
+| Credentials | Owner ADC in a separate gcloud config directory (`CLOUDSDK_CONFIG=~/.config/gcloud-media-taxonomy`), pointed at by the gitignored `.env.scripts`; the machine's default ADC (another account, another project) untouched. The first login attempt failed because the consent page was closed without the cloud-platform scope; the second succeeded |
+| Dry run | 1 Rule Set read from `/rulesets` ("Test rule set", 1 Rule, 7 enum values), backup written, tenant `esports` planned with `allowedDatasets: ["marketing"]` |
+| Write | `tenants/esports` and `tenants/esports/rulesets/0fdaffe9-96fa-4994-97e0-56166dac4296` written; re-read verified every enum value is a label/code entry and `checkRuleSet` passes |
+| Provisioning | misterfela@gmail.com (uid `a5QDt3VEJlhFrZJ394RqgryeW7a2`, the same uid as the Rule Set's `createdBy`) is admin of `esports`; users mirror written |
+| Deploy | `firebase deploy --only firestore:rules,hosting`: rules released, Hosting serving bundle `index-jcBvm3u6.js`, the same hash as the local build |
+| Outside check | Unauthenticated REST reads of `tenants/esports/rulesets`, `tenants/esports` and the legacy `rulesets` all return 403 |
+
+Still pending: `pnpm migrate:v3 --tenant esports --delete-legacy` (the legacy document is still
+in `/rulesets`, unreadable under the new rules, backed up twice under `backups/`), and the
+first sign-out and sign-in by the admin to pick up the claims.
