@@ -1,17 +1,27 @@
 rules_version = '2';
 
-// Rule Sets: any signed-in user reads every one; only the owner creates, updates
-// or deletes, and ownership never moves. The rules language cannot loop over the
-// inline Rules, so anything about their content is checked by checkRuleSet in
-// @taxo/shared before every save; here we only check the coarse shape.
+// v3 tenancy. Every document lives under tenants/{tenantId}; the caller's
+// tenantId claim must match the path for any read or write, and only the
+// admin role writes Rule Sets. The tenant document and the users mirror are
+// written by the provisioning scripts only. Nothing outside tenants/ matches,
+// so the legacy /rulesets collection and every other path are denied.
+//
+// The rules language cannot loop over the inline Rules, so anything about
+// their content is checked by checkRuleSet in @taxo/shared before every save;
+// here we only check the coarse shape and the audit fields.
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() {
       return request.auth != null;
     }
 
-    function ownedByCaller(data) {
-      return signedIn() && data.ownerId == request.auth.uid;
+    // Membership comes from the custom claims on the token, never from data.
+    function inTenant(tenantId) {
+      return signedIn() && request.auth.token.tenantId == tenantId;
+    }
+
+    function isAdmin(tenantId) {
+      return inTenant(tenantId) && request.auth.token.role == 'admin';
     }
 
     function wellFormed(data) {
@@ -19,18 +29,41 @@ service cloud.firestore {
         && data.name is string
         && data.rules is list
         && data.createdAt is string
-        && data.updatedAt is string;
+        && data.updatedAt is string
+        && data.createdBy is string
+        && data.updatedBy is string;
     }
 
-    match /rulesets/{ruleSetId} {
-      allow read: if signedIn();
-      allow create: if ownedByCaller(request.resource.data)
-        && wellFormed(request.resource.data)
-        && request.resource.data.id == ruleSetId;
-      allow update: if ownedByCaller(resource.data)
-        && request.resource.data.ownerId == resource.data.ownerId
-        && wellFormed(request.resource.data);
-      allow delete: if ownedByCaller(resource.data);
+    // Every write records who made it (D31).
+    function stampedByCaller(data) {
+      return data.updatedBy == request.auth.uid;
+    }
+
+    match /tenants/{tenantId} {
+      // The tenant document: name and config (allowed datasets, platforms).
+      allow read: if inTenant(tenantId);
+      allow write: if false;
+
+      // A readable mirror of the claims; the claims are the truth.
+      match /users/{uid} {
+        allow read: if inTenant(tenantId) && (request.auth.uid == uid || isAdmin(tenantId));
+        allow write: if false;
+      }
+
+      match /rulesets/{ruleSetId} {
+        allow read: if inTenant(tenantId);
+        allow create: if isAdmin(tenantId)
+          && wellFormed(request.resource.data)
+          && request.resource.data.id == ruleSetId
+          && request.resource.data.createdBy == request.auth.uid
+          && stampedByCaller(request.resource.data);
+        allow update: if isAdmin(tenantId)
+          && wellFormed(request.resource.data)
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.createdBy == resource.data.createdBy
+          && stampedByCaller(request.resource.data);
+        allow delete: if isAdmin(tenantId);
+      }
     }
   }
 }

@@ -147,3 +147,40 @@ one document, Rules inline). Ownership is replaced by audit fields.
 - `readUiState` runs before the store exists and gets an empty list. The only thing it used
   the list for was resolving a Rule key from the two oldest UI-state formats; in Firestore
   mode the snapshot was empty at mount before this change too, so nothing regresses.
+
+## C4: Security Rules on the tenant path
+
+### What changed
+
+- `firestore.rules`: everything sits under `match /tenants/{tenantId}`. `inTenant(tenantId)`
+  compares the caller's `tenantId` claim with the path; `isAdmin` adds `role == 'admin'`.
+  The tenant document is readable by members and never writable from a client. The users
+  mirror is readable by the user themselves or an admin, never writable. Rule Sets: any
+  member reads; only an admin creates, updates or deletes; create needs `id == documentId`,
+  `createdBy == uid` and `updatedBy == uid`; update keeps `id` and `createdBy` and needs
+  `updatedBy == uid`. The coarse `wellFormed` shape check from v2 stays, with the two audit
+  fields added. No other path matches, so the legacy `/rulesets` collection and everything
+  else are denied to everyone.
+- `firestore.rules.test.ts`: rewritten for two tenants (acme with admins alice and carol and
+  user uma; other with admin bob), a signed-in account with no claims, and no sign-in.
+  Eight cases: member reads and every outsider denied (including a collection list); the
+  legacy collection and an arbitrary path denied even to an admin; the tenant document
+  readable by members only and never writable (config included); the users mirror readable
+  by self or admin and never writable; admin-only well-formed create stamped as self, with
+  every wrong stamp, mismatched id, malformed shape and missing field refused; admin-only
+  update where a second admin must stamp themselves and `createdBy` and `id` cannot move;
+  the read-then-write transaction the store uses; admin-only delete.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" pnpm test:rules` | 8 of 8 on the Firestore emulator |
+
+### Decisions not spelled out in the plan
+
+- `id` is also frozen on update, alongside `createdBy`; the id is the document id and
+  moving it would leave a document that no longer matches its path.
+- The users mirror is not writable by admins either. An admin changing a role there would
+  not change the claims, and a mirror that can disagree with the truth is worse than none;
+  the provisioning script writes both.
