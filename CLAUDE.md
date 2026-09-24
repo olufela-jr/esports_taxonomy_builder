@@ -32,12 +32,18 @@ round-trip and every violation type; keep it green after every change.
   to npm workspaces. Do not add Turborepo or Nx.
 - `packages/shared` = `@taxo/shared` engine. `apps/web` = React app. `functions/` =
   Cloud Functions (Stage 2 only).
-- Routing: Wouter. CSV: PapaParse. Tests: Vitest.
+- Routing: Wouter. CSV: PapaParse. Tests: Vitest for the engine, Playwright for browser
+  regressions (`apps/web/e2e`), `@firebase/rules-unit-testing` on the emulator for the
+  Security Rules (`pnpm test:rules`, needs Java).
 - State: React `useState` only. No Redux, Context, reducers, or data-fetching libraries.
-- No CSS framework, no component library. Native HTML elements, one small stylesheet,
-  restrained internal-console styling.
-- Firebase: Hosting, Auth, Firestore. One Callable Cloud Function for BigQuery,
-  read-only, same GCP project.
+- Tailwind (v4, kept from the prototype by decision), no component library. Native HTML
+  elements, shared class strings in `components/styles.ts`, restrained internal-console
+  styling.
+- Firebase: Hosting, Auth (Google sign-in), Firestore. Project `media-taxonomy-tool`,
+  Firestore in `asia-south1`. One Callable Cloud Function for BigQuery, read-only, same
+  GCP project. All storage calls go through `apps/web/src/data/store.ts`, all sign-in
+  calls through `apps/web/src/data/auth.ts`; an update carries the `updatedAt` it loaded
+  and is refused if the document moved on.
 - Docs style: no em dashes; colons for bullet lead-ins; commas or connecting words in prose.
 
 ## Data model essentials
@@ -61,17 +67,22 @@ are persistent context carried across all three. Switching action must NOT reset
 (Implemented in the prototype, including restore across refresh. Preserve it through
 migration; the browser regression test in checklist step 3 guards it.)
 
-## Already done in the Replit prototype (do not redo)
-- Renamed throughout to Rule Set / Rule / Segment: types, labels, routes (`/author`,
-  `/build`, `/check`), storage keys, tests. Old local "taxonomy" data auto-migrates.
-- Action-first shell with persistent Rule Set and Rule context, restored across actions
-  and browser refresh.
-- Optional `tags` (Platform, Entity type) on Rules.
-- Check screen: disabled "Live scan (Stage 2)" placeholder and an "All Rules" mode
-  (see step 1: its semantics need reconciling).
-- Source mapping fields present and labelled as Stage 2 configuration.
+## Migration complete (2026-09-24)
+The Replit prototype has been migrated to this codebase; the log is in `migration/`, one
+file per phase. Checklist steps 1 to 6 below are done; step 7 (final verification and the
+first Hosting deploy) is next. In place now:
+- Rule Set / Rule / Segment naming throughout, with immutable `id`s and editable `key`s.
+  Old local "taxonomy" data still auto-migrates in `apps/web/src/data/migrations.ts`.
+- Action-first shell with persistent Rule Set and Rule context across actions, refresh,
+  and sign-out and sign-in.
+- Pooled "All Rules" `rollup` in the engine, with the strict per-row view secondary.
+- Firestore behind `store.ts`, Google sign-in behind `auth.ts`, owner-only editing,
+  Security Rules with an emulator test, an `updatedAt` conflict check on every update.
+- Playwright coverage for editor typing, shared context, All Rules, the sign-in gate,
+  ownership, slow saves and save conflicts.
+- Stage 2 configuration (per-Rule `source`) stored and labelled, not yet scanned.
 
-## Migration checklist (do in this order on arrival)
+## Migration checklist (steps 1 to 6 done, 7 next)
 1. Reconcile "All Rules" semantics. The prototype computes combined compliance as
    rows that pass EVERY Rule, each Rule reading its own mapped CSV column (a per-row
    conjunction). Make the PRIMARY Rule-Set-wide figure a POOLED rollup instead: run each

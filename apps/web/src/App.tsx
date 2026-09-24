@@ -77,7 +77,7 @@ function App() {
         onLocationChange={setLastAction}
         onSignOut={auth.signOut}
         onCreate={(draft) => store.create(draft, user.uid)}
-        onUpdate={(id, draft) => store.update(id, draft)}
+        onUpdate={(id, draft, baseUpdatedAt) => store.update(id, draft, baseUpdatedAt)}
         onDelete={(id) => store.remove(id)}
       />
     </WouterRouter>
@@ -97,7 +97,7 @@ type WorkspaceProps = {
   onLocationChange: (path: string) => void;
   onSignOut: () => Promise<void>;
   onCreate: (draft: RuleSetDraft) => Promise<RuleSet>;
-  onUpdate: (id: string, draft: RuleSetDraft) => Promise<void>;
+  onUpdate: (id: string, draft: RuleSetDraft, baseUpdatedAt: string) => Promise<string>;
   onDelete: (id: string) => Promise<void>;
 };
 

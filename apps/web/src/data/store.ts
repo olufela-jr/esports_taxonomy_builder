@@ -2,7 +2,7 @@
 // interface: Firestore (the real thing) and an in-memory store for development
 // and tests. Nothing else in the app touches Firestore or localStorage for
 // Rule Sets.
-import { collection, deleteDoc, doc, onSnapshot, setDoc, updateDoc, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, runTransaction, setDoc, type Firestore } from 'firebase/firestore';
 import { newId } from '@/lib/ids';
 import { getFirebase, isFirebaseConfigured } from '@/lib/firebase';
 import { ConfigurationError } from '@/lib/config-error';
@@ -21,9 +21,24 @@ export type RuleSetStore = {
   // Calls the listener immediately with the current list, then on every change.
   subscribe(listener: Listener): () => void;
   create(draft: RuleSetDraft, ownerId: string): Promise<RuleSet>;
-  update(id: string, draft: RuleSetDraft): Promise<void>;
+  // baseUpdatedAt is the updatedAt the editor loaded. If the stored document
+  // has moved on since (someone else saved first), the update is refused with
+  // a ConflictError instead of overwriting their work. Resolves to the new
+  // updatedAt so the editor can carry on from it.
+  update(id: string, draft: RuleSetDraft, baseUpdatedAt: string): Promise<string>;
   remove(id: string): Promise<void>;
 };
+
+// A save was refused because the stored Rule Set is not the one the editor loaded.
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConflictError';
+  }
+}
+
+const CHANGED_MESSAGE = 'This Rule Set changed since you opened it. Reload it to see the latest version, then reapply your edits.';
+const DELETED_MESSAGE = 'This Rule Set was deleted since you opened it.';
 
 // Test and debug hooks. A Playwright fixture sets __taxoTestSeed before the app
 // loads to get an in-memory store with exactly that data and no persistence;
@@ -67,8 +82,13 @@ export function createMemoryStore(initial: RuleSet[], persist?: (ruleSets: RuleS
       commit([ruleSet, ...ruleSets]);
       return ruleSet;
     },
-    async update(id, draft) {
-      commit(ruleSets.map((item) => (item.id === id ? { ...item, ...draft, updatedAt: stamp() } : item)));
+    async update(id, draft, baseUpdatedAt) {
+      const current = ruleSets.find((item) => item.id === id);
+      if (!current) throw new ConflictError(DELETED_MESSAGE);
+      if (current.updatedAt !== baseUpdatedAt) throw new ConflictError(CHANGED_MESSAGE);
+      const updatedAt = stamp();
+      commit(ruleSets.map((item) => (item.id === id ? { ...item, ...draft, updatedAt } : item)));
+      return updatedAt;
     },
     async remove(id) {
       commit(ruleSets.filter((item) => item.id !== id));
@@ -133,8 +153,17 @@ export function createFirestoreStore(db: Firestore): RuleSetStore {
       await setDoc(doc(db, COLLECTION, ruleSet.id), ruleSet);
       return ruleSet;
     },
-    async update(id, draft) {
-      await updateDoc(doc(db, COLLECTION, id), { ...draft, updatedAt: stamp() });
+    async update(id, draft, baseUpdatedAt) {
+      // A transaction so the check and the write are one atomic step on the server.
+      const ref = doc(db, COLLECTION, id);
+      const updatedAt = stamp();
+      await runTransaction(db, async (transaction) => {
+        const current = await transaction.get(ref);
+        if (!current.exists()) throw new ConflictError(DELETED_MESSAGE);
+        if ((current.data() as RuleSet).updatedAt !== baseUpdatedAt) throw new ConflictError(CHANGED_MESSAGE);
+        transaction.update(ref, { ...draft, updatedAt });
+      });
+      return updatedAt;
     },
     async remove(id) {
       await deleteDoc(doc(db, COLLECTION, id));

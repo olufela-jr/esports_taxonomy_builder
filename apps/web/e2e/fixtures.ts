@@ -74,7 +74,7 @@ export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaR
 }
 
 // The Rule Sets as the app currently holds them, read back through the store.
-export async function readRuleSets(page: Page): Promise<Array<{ id: string; name: string; rules: Array<{ id: string; segments: Array<{ allowedValues?: string[] }> }> }>> {
+export async function readRuleSets(page: Page): Promise<Array<{ id: string; name: string; updatedAt: string; rules: Array<{ id: string; segments: Array<{ allowedValues?: string[] }> }> }>> {
   return page.evaluate(() => {
     const store = window.__taxoStore;
     if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');

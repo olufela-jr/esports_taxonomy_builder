@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, runTransaction, setDoc, updateDoc } from 'firebase/firestore';
 
 // The Security Rules are the app's only access control, so they get their own
 // test against the Firestore emulator: `pnpm test:rules` (the emulator needs Java).
@@ -61,6 +61,20 @@ describe('rulesets security rules', () => {
     await assertFails(updateDoc(doc(bob(), 'rulesets/rs-1'), { name: 'Hijacked' }));
     await assertFails(updateDoc(doc(alice(), 'rulesets/rs-1'), { ownerId: 'bob' }));
     await assertFails(updateDoc(doc(anonymous(), 'rulesets/rs-1'), { name: 'Anonymous' }));
+  });
+
+  it('lets the owner update through a read-then-write transaction, as the store does', async () => {
+    const asOwner = alice();
+    await assertSucceeds(runTransaction(asOwner, async (transaction) => {
+      const current = await transaction.get(doc(asOwner, 'rulesets/rs-1'));
+      expect(current.exists()).toBe(true);
+      transaction.update(doc(asOwner, 'rulesets/rs-1'), { name: 'Transactional', updatedAt: '2026-01-03T00:00:00.000Z' });
+    }));
+    const asOther = bob();
+    await assertFails(runTransaction(asOther, async (transaction) => {
+      await transaction.get(doc(asOther, 'rulesets/rs-1'));
+      transaction.update(doc(asOther, 'rulesets/rs-1'), { name: 'Hijacked' });
+    }));
   });
 
   it('lets only the owner delete', async () => {
