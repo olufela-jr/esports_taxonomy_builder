@@ -39,9 +39,18 @@ Commit: `8af738e`. CLAUDE.md checklist step 5.
 - The read-only state keeps Build and Check fully working; only Author's controls are disabled. Reading is the whole point of "authenticated users read all Rule Sets".
 - The emulator runs under `--project demo-taxo`, so `pnpm test:rules` needs no real project and no `.firebaserc`.
 
+## Project setup (after the phase commit)
+
+The Firebase project is `media-taxonomy-tool`, set up from the CLI on 2026-09-24 (commit `62e48e4` adds `.firebaserc`):
+
+- Firebase added to the existing GCP project; web app "Campaign Naming"; Cloud Firestore and Identity Toolkit APIs enabled (through `gcloud`, which needs `--account misterfela@gmail.com` on this machine).
+- Firestore Native database `(default)` in `asia-south1` (Mumbai), the user's choice. A first database was created in `nam5` as a side effect of `firebase deploy --only firestore:rules` running before the explicit create had propagated; it was empty, deleted with the user's approval, and recreated in Mumbai after the id was released (about five minutes). Lesson: never deploy against a project with no database, the deploy creates one in a default location.
+- `firestore.rules` deployed and verified from outside: an unauthenticated REST list of `/rulesets` is refused.
+- `apps/web/.env.local` (gitignored) carries the web app config; the dev server runs against the real project and the live sign-in gate was smoke-tested headlessly ("Sign in with Google", no console errors).
+
 ## Leftovers
 
-- Live verification against a real Firebase project is still pending, now for two things: the Firestore store (carried since Phase 4a) and Google sign-in. Needs the project id in `.firebaserc` and `apps/web/.env.local`, plus the Google provider enabled in the Firebase console. The Firebase CLI's login had expired on this machine; the user is re-authenticating.
+- Google sign-in itself and the Firestore store with real data are verified only up to the sign-in screen: the Google provider must be enabled by hand in the Firebase console (no CLI), and the OAuth popup cannot be driven headlessly. The user signs in once and creates a Rule Set; that closes the live-verification item carried since Phase 4a.
 - The emulator needs Java. It is installed keg-only through Homebrew, so `pnpm test:rules` needs `PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH"`. Document in the root README in Phase 6.
 - `pnpm install` reports ignored build scripts for `@firebase/util` and `protobufjs`; neither is needed at runtime, and `onlyBuiltDependencies` stays at `esbuild`.
 - Wiring `connectFirestoreEmulator` and `connectAuthEmulator` behind an env flag would let the app itself run against the emulator for a fully local end-to-end check. Not in the plan; worth considering in Phase 7 if the live project is slow to arrive.
