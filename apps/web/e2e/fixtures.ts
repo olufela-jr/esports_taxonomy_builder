@@ -10,7 +10,8 @@ import type { Page } from '@playwright/test';
 export const paidMediaRuleSet = {
   id: 'ruleset-paid',
   name: 'Paid media (test)',
-  ownerId: 'you',
+  createdBy: 'you',
+  updatedBy: 'you',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   rules: [
@@ -41,11 +42,14 @@ export const paidMediaRuleSet = {
   ],
 };
 
-// A second, single-Rule set so tests can switch Rule Sets and watch the Rule fall back.
+// A second, single-Rule set created by someone else, so tests can switch Rule
+// Sets, watch the Rule fall back, and prove the role rather than the creator
+// decides who edits.
 export const globalRuleSet = {
   id: 'ruleset-global',
   name: 'Global campaign standard',
-  ownerId: 'maya',
+  createdBy: 'maya',
+  updatedBy: 'maya',
   createdAt: '2026-09-01T09:00:00.000Z',
   updatedAt: '2026-09-01T15:42:00.000Z',
   rules: [

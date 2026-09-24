@@ -40,10 +40,16 @@ type V1RuleSet = Omit<RuleSet, 'rules'> & { rules: V1Rule[] };
 type V0RuleSet = Omit<RuleSet, 'rules'> & { levels: V1Rule[] };
 
 // A v2 document is the current shape except that an enum segment's values may
-// be flat strings. An entry that is already an object passes through.
+// be flat strings (an entry that is already an object passes through) and the
+// audit field was a single ownerId.
 type V2Segment = Omit<Segment, 'allowedValues'> & { allowedValues?: Array<string | EnumEntry> };
 type V2Rule = Omit<Rule, 'segments'> & { segments: V2Segment[] };
-type V2RuleSet = Omit<RuleSet, 'rules'> & { rules: V2Rule[] };
+type V2RuleSet = Omit<RuleSet, 'rules' | 'createdBy' | 'updatedBy'> & {
+  rules: V2Rule[];
+  ownerId?: string;
+  createdBy?: string;
+  updatedBy?: string;
+};
 
 function migrateV1Segment(segment: V1Segment, delimiter: string): Segment {
   if (segment.kind === 'enum') {
@@ -104,12 +110,16 @@ function migrateV2Segment(segment: V2Segment): Segment {
   return { ...segment, kind: 'enum', allowedValues } as Segment;
 }
 
-// Flat string values become label = code entries. Exported so the same step
-// can be checked in isolation; the Firestore migration script uses the engine's
-// entryFromCode directly.
+// Flat string values become label = code entries and ownerId becomes createdBy
+// and updatedBy. The Firestore migration script (scripts/) does the same to the
+// live data with the engine's entryFromCode.
 export function migrateV2RuleSet(ruleSet: V2RuleSet): RuleSet {
+  const { ownerId, ...rest } = ruleSet;
+  const createdBy = rest.createdBy ?? ownerId ?? 'you';
   return {
-    ...ruleSet,
+    ...rest,
+    createdBy,
+    updatedBy: rest.updatedBy ?? createdBy,
     rules: ruleSet.rules.map((rule) => ({ ...rule, segments: rule.segments.map(migrateV2Segment) })),
   };
 }

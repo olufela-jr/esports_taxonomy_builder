@@ -21,21 +21,22 @@ function App() {
   // The mode is decided once; the session and the store both follow it.
   const mode = useMemo(detectMode, []);
   const auth = useMemo(() => createAuth(mode), [mode]);
-  const store = useMemo(() => createStore(mode), [mode]);
   const [user, setUser] = useState<User | null | undefined>(() => auth.getUser());
   useEffect(() => auth.subscribe(setUser), [auth]);
 
-  // Rule Sets are read only while a workspace member is signed in; the store
-  // listener starts on sign-in and stops on sign-out.
-  const uid = user?.tenantId ? user.uid : undefined;
-  const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store.getSnapshot());
+  // The store belongs to the signed-in tenant, so it exists only while a
+  // workspace member is signed in; its listener starts then and stops on sign-out.
+  const tenantId = user?.tenantId ?? null;
+  const uid = user?.uid ?? null;
+  const store = useMemo(() => (tenantId && uid ? createStore(mode, { tenantId, uid }) : null), [mode, tenantId, uid]);
+  const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store?.getSnapshot() ?? []);
   useEffect(() => {
-    if (!uid) {
+    if (!store) {
       setRuleSets([]);
       return;
     }
     return store.subscribe(setRuleSets);
-  }, [store, uid]);
+  }, [store]);
 
   // The workspace context is per browser, not per user, so it survives sign-out and sign-in.
   const [ui, setUi] = useState<UiState>(() => readUiState(ruleSets));
@@ -65,7 +66,7 @@ function App() {
     return <SignIn kind={auth.kind} onSignIn={auth.signIn} />;
   }
   // Signed in without a tenant or role claim: nothing is readable yet.
-  if (!user.tenantId || !user.role) {
+  if (!user.tenantId || !user.role || !store) {
     return <NoWorkspace user={user} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
   }
 
@@ -84,7 +85,7 @@ function App() {
         onCheckModeChange={setCheckMode}
         onLocationChange={setLastAction}
         onSignOut={auth.signOut}
-        onCreate={(draft) => store.create(draft, user.uid)}
+        onCreate={(draft) => store.create(draft)}
         onUpdate={(id, draft, baseUpdatedAt) => store.update(id, draft, baseUpdatedAt)}
         onDelete={(id) => store.remove(id)}
       />

@@ -16,9 +16,9 @@ test('a slow create disables Save and never creates twice', async ({ page }) => 
     const store = window.__taxoStore;
     if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
     const create = store.create.bind(store);
-    store.create = async (draft, ownerId) => {
+    store.create = async (draft) => {
       await new Promise((resolve) => setTimeout(resolve, 1500));
-      return create(draft, ownerId);
+      return create(draft);
     };
   });
 

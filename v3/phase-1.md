@@ -105,3 +105,45 @@ claims on the ID token. The app reads them and never guesses; setting them is se
 - The `NoWorkspace` screen keeps the persisted workspace context untouched, so a user who is
   provisioned and retries lands where they were.
 - `AuthSession.kind` is the `Mode` type rather than its own union, so the two cannot drift.
+
+## C3: the tenant path in the store, `createdBy` and `updatedBy`
+
+Every Rule Set now lives at `tenants/{tenantId}/rulesets/{id}` (spec v3 data model, D5 kept:
+one document, Rules inline). Ownership is replaced by audit fields.
+
+### What changed
+
+- `apps/web/src/data/types.ts`: `ownerId` becomes `createdBy` (never changes) plus
+  `updatedBy` (D31). New `Tenant`, `TenantConfig` and `TenantUser` types document the tenant
+  document and the users mirror; the app does not read them yet, the scripts (C6) write them
+  and the Function (C5) reads the config.
+- `apps/web/src/data/store.ts`: `createStore(mode, { tenantId, uid })`. The Firestore
+  collection is `ruleSetsPath(tenantId)`; `create` stamps `createdBy` and `updatedBy`, `update`
+  stamps `updatedBy` inside the existing `updatedAt` transaction. Stores are cached per mode,
+  tenant and uid for the page's lifetime, so signing out and back in reuses the same instance
+  (memory mode keeps its data across that, and a Firestore listener is never opened twice).
+- `apps/web/src/App.tsx`: the store is built from the mode and the user's claims with
+  `useMemo`, so it exists only while a workspace member is signed in; `store.create(draft)`
+  takes no uid. The user-facing flow is unchanged.
+- `apps/web/src/data/migrations.ts`: the browser-local v2 step also maps `ownerId` to
+  `createdBy` and `updatedBy`.
+- `apps/web/src/data/seeds.ts`, `apps/web/e2e/fixtures.ts`: `createdBy` and `updatedBy`;
+  `apps/web/e2e/editor-save.spec.ts`: the slow-create patch takes only the draft.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test` | 32 of 32 |
+| `pnpm test:e2e` | 17 of 17 (one run had a single failure while an edit reloaded the dev server mid-test; clean on the rerun) |
+| `pnpm build` | Clean |
+| Context walk | `context-persistence.spec.ts` unchanged and green against the session-bound store |
+
+### Decisions not spelled out in the plan
+
+- The store cache key includes the uid as well as the tenant, so two accounts in one browser
+  session never share an instance that stamps the wrong `updatedBy`.
+- `readUiState` runs before the store exists and gets an empty list. The only thing it used
+  the list for was resolving a Rule key from the two oldest UI-state formats; in Firestore
+  mode the snapshot was empty at mount before this change too, so nothing regresses.
