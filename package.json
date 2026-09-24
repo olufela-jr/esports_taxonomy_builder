@@ -2,6 +2,7 @@
   "name": "campaign-naming-tool",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "license": "MIT",
   "packageManager": "pnpm@10.34.5",
   "engines": {
@@ -10,15 +11,22 @@
   "scripts": {
     "dev": "pnpm --filter @taxo/web dev",
     "build": "pnpm run typecheck && pnpm --filter @taxo/web build",
-    "test": "pnpm -r --if-present test",
+    "test": "pnpm -r --if-present test && pnpm test:scripts",
+    "test:scripts": "vitest run --config vitest.scripts.config.ts",
     "test:e2e": "playwright test",
     "test:rules": "firebase emulators:exec --only firestore --project demo-taxo \"vitest run --config vitest.rules.config.ts\"",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "pnpm -r --if-present typecheck && tsc -p tsconfig.scripts.json --noEmit",
+    "migrate:v3": "tsx scripts/migrate-v3.ts",
+    "provision:user": "tsx scripts/provision-user.ts"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
     "@playwright/test": "^1.63.0",
+    "@taxo/shared": "workspace:*",
+    "@types/node": "^25.3.3",
     "firebase": "^12.18.0",
+    "firebase-admin": "^14.0.0",
+    "tsx": "^4.0.0",
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   }

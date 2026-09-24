@@ -11,6 +11,9 @@ functions/lib/
 .env.*
 !.env.example
 
+# Migration backups (JSON dumps of live data)
+backups/
+
 # Firebase
 .firebase/
 firebase-debug.log

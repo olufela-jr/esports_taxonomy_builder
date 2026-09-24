@@ -235,3 +235,66 @@ runs it end to end before stopping where Stage 2 begins.
 
 - CI runs on Node 24 while the Function declares Node 22; pnpm warns and continues. The
   bundle targets node22, so that is the runtime to match if the warning is ever promoted.
+
+## C6: migration and provisioning scripts
+
+The scripts are committed and unit tested; the live run is a separate, explicitly approved
+step (see "Live run" at the end of this file).
+
+### What changed
+
+- `scripts/lib/v3-transform.ts`: the pure half of the migration. `transformRuleSet` turns a
+  pre-v3 document into the tenant document shape: `ownerId` becomes `createdBy` and
+  `updatedBy`, flat enum values become label = code entries through the engine's
+  `entryFromCode`, everything else (ids, timestamps, tags, parent links, sources) is carried
+  over untouched, and a document with no attribution is refused. Idempotent. `collectDatasets`
+  derives the tenant's first `allowedDatasets` from every Rule's source. `tenantDocument`
+  builds the tenant document. `verifyRuleSet` reports shape problems (flat values, leftover
+  `ownerId`, missing audit fields) and, once the shape is right, the engine's `checkRuleSet`
+  errors.
+- `scripts/lib/v3-transform.test.ts`: eleven cases, including idempotence and the refusal.
+- `scripts/lib/admin.ts`: project id from `.firebaserc`, Admin SDK on Application Default
+  Credentials, `ignoreUndefinedProperties` on.
+- `scripts/migrate-v3.ts`: `--tenant <id> [--name "<display name>"] [--dry-run]
+  [--delete-legacy] [--project <id>]`. Every run backs up `/rulesets` to a JSON file under
+  `backups/` (gitignored) first. Transform and verify everything, print one line per Rule Set
+  and the tenant document, stop on any issue with nothing written. Without `--dry-run`: one
+  batch writes the tenant document (an existing one keeps its name unless `--name` is given
+  and gains the union of allowed datasets) and every Rule Set under
+  `tenants/{id}/rulesets/{sameId}`, then re-reads and verifies. `--delete-legacy` refuses
+  unless every legacy id is present under the tenant, and honours `--dry-run`.
+- `scripts/provision-user.ts`: `--email <address> --tenant <id> --role admin|user
+  [--tenant-name "<name>"]`. Looks the account up by email (the person must have signed in
+  once), sets the custom claims, writes the `tenants/{id}/users/{uid}` mirror, creates the
+  tenant document only when `--tenant-name` is given. Notes when a user moves tenant.
+- Root `package.json`: `"type": "module"` (tsx then loads the scripts as ESM and resolves
+  `@taxo/shared` through its `import` condition); scripts `migrate:v3`, `provision:user`,
+  `test:scripts`; `test` and `typecheck` now include the root (`tsconfig.scripts.json` covers
+  `scripts/` and the rules test); dev dependencies `tsx`, `firebase-admin`, `@types/node` and
+  `@taxo/shared`. `vitest.scripts.config.ts` runs the transform test without an emulator.
+  `.gitignore`: `backups/`.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean in all three packages and the root |
+| `pnpm test` | 32 (engine), 9 (functions), 11 (transform) |
+| `pnpm test:e2e` | 17 of 17 after the root ESM switch |
+| `PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" pnpm test:rules` | 8 of 8 after the root ESM switch |
+| Usage guards | Both scripts refuse missing or malformed arguments before connecting |
+| Live | Not run; needs your go |
+
+### Decisions not spelled out in the plan
+
+- The transform module mirrors the ten-line browser-local step in
+  `apps/web/src/data/migrations.ts` rather than importing it: that module uses the `@/` path
+  alias and `newId`, neither of which a Node script should pull in. Both call the engine's
+  `entryFromCode`, so the entry shape has one definition.
+- `verifyRuleSet` stops at shape problems and only then runs `checkRuleSet`, because the
+  engine assumes well-formed entries. The dry run therefore never crashes on odd data; it
+  reports it.
+- Rerunning the migration keeps the tenant document's existing name and unions the allowed
+  datasets, so a manual edit to the config between runs is not lost.
+- Backups are plain JSON in the repo folder, gitignored. A Firestore export would need a
+  Cloud Storage bucket; for a handful of documents a local file is the honest equivalent.
