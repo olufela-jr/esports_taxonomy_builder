@@ -306,6 +306,25 @@ Hosting, Auth and Firestore costs are negligible at internal-tool scale. Stage 2
 
 Vitest in `@taxo/shared`: `resolveRule` for no parent, one level, two levels, cycle, self-parent, missing parent, missing inherited id, non-leading inherited ids, delimiter mismatch, inherited optional segment, key collision; the runtime guard on unresolved Rules; the parent round-trip; `buildTrackingUrl` for each source kind, missing optional parameter, case policy failure, disallowed character, base URL with existing query, fragment and existing `utm_`; the URL round-trip; `checkRuleSet` UTM mapping checks; `dependentsOf`. Playwright: continuous typing in the new UTM and parent fields (the focus-loss bug class from the prototype), and persistent context across the Build chaining action and refresh.
 
+## Acceptance criteria
+
+The v1 list (from spec v1, item 9 updated for the decision to keep Tailwind) and the five v2 additions from the spec v2 build order. Together they are the definition of done for Stage 1, v2 and Stage 2.
+
+1. A Rule authored in the UI is stored in Firestore and immediately drives the builder and both checker paths with no code change.
+2. The builder cannot produce an invalid name for the selected Rule.
+3. Round-trip: any builder output is marked valid by the checker for that Rule.
+4. CSV validation runs fully client-side with no BQ access.
+5. Switching between Author, Build, and Check keeps the same Rule Set and Rule selected.
+6. On-demand scan reads the selected Rule's `source`, scans `SELECT DISTINCT`, applies the optional filter, validates against that same Rule, and returns exact counts plus a capped annotated list, with identifiers whitelisted and filter values parameterized.
+7. `compose` and `validate` live only in `@taxo/shared`, never duplicated.
+8. Segment keys are unique within a Rule; enum matching is exact and case-sensitive.
+9. pnpm workspaces; Tailwind kept by decision, no component library, no state library; TypeScript used plainly.
+10. A child Rule authored in the UI drives Build and Check with no code change, and its names validate against its resolved segments.
+11. Author rejects cycles, missing inherited segments, non-leading or optional inherited segments, delimiter mismatch and key collisions.
+12. Deleting a parent segment or Rule with dependents is blocked; relabelling is not.
+13. The parent, name and URL round-trip tests pass.
+14. Every built URL's `utm_campaign` equals the built campaign name byte for byte.
+
 ## Decisions log
 
 Thirty-three decisions are recorded: 21 Settled, 2 Reversed, 10 Proposed. Proposed items become Settled unless someone objects at review.
