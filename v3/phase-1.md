@@ -184,3 +184,54 @@ one document, Rules inline). Ownership is replaced by audit fields.
 - The users mirror is not writable by admins either. An admin changing a role there would
   not change the claims, and a mirror that can disagree with the truth is worse than none;
   the provisioning script writes both.
+
+## C5: `functions/` with the tenant guard
+
+Scope item 4 named `scanCampaigns`, which was never built (Stage 2). This commit scaffolds
+the package with the guard the spec requires of every Callable, and a `scanCampaigns` that
+runs it end to end before stopping where Stage 2 begins.
+
+### What changed
+
+- `functions/package.json` (`@taxo/functions`, Node 22 runtime, `firebase-functions` 7 and
+  `firebase-admin` 14 as dependencies; `@taxo/shared`, esbuild, TypeScript and Vitest as dev
+  dependencies), `functions/tsconfig.json`, `functions/build.mjs` (esbuild, ESM, target
+  node22, `@taxo/shared` inlined, the two Firebase SDKs external).
+- `functions/src/tenant.ts`: `tenantFromAuth(request.auth)` returns `{ uid, tenantId, role }`
+  from the token claims or throws `HttpsError` (`unauthenticated` with no sign-in,
+  `permission-denied` with no tenant or an unknown role); `assertDatasetAllowed(config,
+  dataset)` refuses anything not in `config.allowedDatasets`, exactly matched, and refuses
+  everything when the config is missing or empty; `readTenantConfig(db, tenantId)` reads
+  `tenants/{tenantId}` through a two-method `DocumentReader` slice so tests fake it.
+- `functions/src/index.ts`: `scanCampaigns` (`asia-south1`, same region as the database):
+  guard, parse `{ ruleSetId, ruleId }`, load the Rule Set under the caller's tenant (never a
+  tenant from the body), find the Rule, check its `source.dataset` against the config,
+  `resolveRule`, then `unimplemented`. Stage 2 replaces the last line with the query.
+- `functions/src/tenant.test.ts`: nine Vitest cases on the guard.
+- `firebase.json`: a `functions` block (source, `nodejs22`, predeploy build, ignore list).
+  `.gitignore`: `functions/lib/`. `pnpm-lock.yaml` gains the package; the workspace file
+  already listed `functions`, so the recursive `typecheck` and `test` pick it up.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean in all three packages |
+| `pnpm test` | 32 of 32 (engine), 9 of 9 (functions) |
+| `pnpm --filter @taxo/functions build` | `lib/index.js` 6.6 kB with `resolveRule` inlined |
+
+### Decisions not spelled out in the plan
+
+- Dependency ranges are `^14.0.0`, `^7.0.0` and `^0.28.0` rather than pinned to the latest
+  patch: firebase-admin 14.5.0 was published within the 24-hour release-age guard, and a
+  loose range lets pnpm take the newest eligible version (14.4.0 today) without touching the
+  guard.
+- Not deployed. Cloud Functions need the Blaze plan, and `@taxo/shared` as a `workspace:*`
+  dev dependency will not resolve on the deploy server. Before the first deploy either strip
+  dev dependencies from the shipped manifest or run `pnpm deploy`; the bundle itself has no
+  workspace import.
+
+### Leftovers
+
+- CI runs on Node 24 while the Function declares Node 22; pnpm warns and continues. The
+  bundle targets node22, so that is the runtime to match if the warning is ever promoted.
