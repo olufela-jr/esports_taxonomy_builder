@@ -1,0 +1,68 @@
+# The clean-room sequence from migration Phase 7, on every pull request and
+# every push to main: frozen install, TypeScript, the engine suite (which
+# proves the compose and validate round-trip), the Playwright browser
+# regressions, the Security Rules on the Firestore emulator, and the build.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # Version comes from packageManager in package.json.
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+      - name: Browser regressions
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+        # No Firebase config in CI, so the app runs on the in-memory store,
+        # which is what the tests seed anyway.
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Cache the Firestore emulator
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}
+
+      - name: Security Rules on the emulator
+        run: |
+          npm install -g firebase-tools@14
+          pnpm test:rules
+
+      - run: pnpm build
+
+      - name: Keep Playwright traces from failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          if-no-files-found: ignore
