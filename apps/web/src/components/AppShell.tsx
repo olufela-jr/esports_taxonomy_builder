@@ -1,7 +1,13 @@
 import { ReactNode, useState } from 'react';
-import { ShieldCheck, Menu, X, ChevronRight } from 'lucide-react';
+import { ShieldCheck, Menu, X, ChevronRight, LogOut } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
+import type { User } from '@/data/auth';
 import type { RuleSet, RuleSetStore } from '@/data/store';
+
+// Up to two initials for the avatar; falls back to "?" for an empty name.
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('') || '?';
+}
 
 function IconMark() {
   return (
@@ -21,18 +27,20 @@ function NavItem({ href, label, active }: { href: string; label: string; active:
 }
 
 type AppShellProps = {
+  user: User;
   ruleSets: RuleSet[];
   storeKind: RuleSetStore['kind'];
   ruleSetId: string | null;
   ruleId: string | null;
   onSelectRuleSet: (id: string | null) => void;
   onSelectRule: (id: string) => void;
+  onSignOut: () => Promise<void>;
   children: ReactNode;
 };
 
 // The action-first shell: the persistent Rule Set and Rule context, the three
-// actions, and the workspace for the current one.
-export function AppShell({ ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, children }: AppShellProps) {
+// actions, the signed-in user, and the workspace for the current action.
+export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -106,8 +114,9 @@ export function AppShell({ ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleS
             <p className="mt-1.5 text-[11px] leading-relaxed text-sidebar-foreground/60">{storeKind === 'firestore' ? 'Changes are saved to Firestore and visible to everyone in this workspace.' : 'Changes stay in this browser and are not shared.'}</p>
           </div>
           <div className="flex items-center gap-3 border-t border-sidebar-border px-2 pt-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-primary text-xs font-semibold text-primary-foreground">RT</div>
-            <div className="min-w-0"><div className="truncate text-xs font-semibold">Raji Taraby</div><div className="truncate text-[11px] text-sidebar-foreground/60">Marketing Emperor</div></div>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-primary text-xs font-semibold text-primary-foreground" aria-hidden="true">{initials(user.name)}</div>
+            <div className="min-w-0"><div className="truncate text-xs font-semibold" data-testid="text-user-name">{user.name}</div>{user.email && <div className="truncate text-[11px] text-sidebar-foreground/60">{user.email}</div>}</div>
+            <button type="button" className="ml-auto rounded-md p-1.5 text-sidebar-foreground/55 transition hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => void onSignOut()} aria-label="Sign out" title="Sign out" data-testid="button-sign-out"><LogOut className="h-4 w-4" /></button>
           </div>
         </div>
       </aside>
@@ -116,10 +125,7 @@ export function AppShell({ ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleS
         <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur-md sm:px-8">
           <button className="rounded-lg border border-border bg-card p-2 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu className="h-5 w-5" /></button>
           <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><span className="font-mono text-[10px] uppercase tracking-[0.15em]">Workspace</span><ChevronRight className="h-3.5 w-3.5" /><span className="font-semibold text-foreground capitalize">{current}</span></div>
-          <div className="ml-auto flex items-center gap-2 sm:gap-4">
-            <div className="hidden items-center gap-2 rounded border border-border bg-card px-2.5 py-1.5 text-[11px] text-muted-foreground md:flex"><span className="h-1.5 w-1.5 rounded-full bg-accent" /><span>System operational</span></div>
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-primary text-[11px] font-semibold text-primary-foreground sm:hidden">RT</div>
-          </div>
+          <div className="ml-auto flex h-8 w-8 items-center justify-center rounded bg-primary text-[11px] font-semibold text-primary-foreground lg:hidden" title={user.name} aria-hidden="true">{initials(user.name)}</div>
         </header>
         <div className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">{children}</div>
       </main>

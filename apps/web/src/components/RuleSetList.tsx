@@ -5,14 +5,8 @@ import type { RuleSet, RuleSetStore } from '@/data/store';
 import { PageHeading } from './PageHeading';
 import { buttonPrimary, inputClass } from './styles';
 
-const OWNER_NAMES: Record<string, string> = { maya: 'Raji Taraby', you: 'You' };
-
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
-}
-
-function ownerName(ownerId: string) {
-  return OWNER_NAMES[ownerId] ?? ownerId;
 }
 
 function StatCard({ label, value, caption, icon: Icon, status }: { label: string; value: string; caption: string; icon: typeof Layers3; status: string }) {
@@ -33,16 +27,17 @@ function EmptyState({ query }: { query: string }) {
   return <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded bg-muted text-muted-foreground"><Search className="h-5 w-5" /></div><h3 className="mt-4 text-sm font-semibold text-foreground">{query ? 'No matching Rule Sets' : 'No Rule Sets configured'}</h3><p className="mt-1.5 text-xs text-muted-foreground">{query ? 'Try a different search term.' : 'Create a new Rule Set to define naming rules.'}</p></div>;
 }
 
-function RuleSetRow({ ruleSet, index, onSelect }: { ruleSet: RuleSet; index: number; onSelect: () => void }) {
+// owned: the signed-in user owns this Rule Set and can edit it in Author.
+function RuleSetRow({ ruleSet, index, owned, onSelect }: { ruleSet: RuleSet; index: number; owned: boolean; onSelect: () => void }) {
   const segmentCount = ruleSet.rules.reduce((sum: number, rule: Rule) => sum + rule.segments.length, 0);
   return <button onClick={onSelect} className="w-full text-left group flex flex-col gap-4 rounded-xl border border-border/30 bg-card p-5 transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md sm:flex-row sm:items-center sm:justify-between" data-testid={`card-ruleset-${ruleSet.id}`}>
-    <div className="flex min-w-0 items-center gap-4"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted font-mono text-sm text-foreground shadow-inner">{String(index + 1).padStart(2, '0')}</div><div className="min-w-0"><div className="flex items-center gap-2.5"><h3 className="truncate font-display text-xl font-medium text-foreground">{ruleSet.name}</h3><span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">Active</span></div><p className="mt-1.5 text-[13px] font-medium text-muted-foreground">Owned by {ownerName(ruleSet.ownerId)} · Updated {formatDate(ruleSet.updatedAt)}</p></div></div>
+    <div className="flex min-w-0 items-center gap-4"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted font-mono text-sm text-foreground shadow-inner">{String(index + 1).padStart(2, '0')}</div><div className="min-w-0"><div className="flex items-center gap-2.5"><h3 className="truncate font-display text-xl font-medium text-foreground">{ruleSet.name}</h3><span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${owned ? 'border-primary/20 bg-primary/10 text-primary' : 'border-border bg-muted text-muted-foreground'}`} data-testid={`badge-ownership-${ruleSet.id}`}>{owned ? 'Yours' : 'Read only'}</span></div><p className="mt-1.5 text-[13px] font-medium text-muted-foreground">Owned by {owned ? 'you' : 'another user'} · Updated {formatDate(ruleSet.updatedAt)}</p></div></div>
     <div className="flex items-center justify-between gap-5 pl-14 sm:justify-end sm:pl-0"><div className="text-right"><div className="font-display text-2xl font-medium text-foreground">{ruleSet.rules.length}</div><div className="text-[11px] font-bold text-muted-foreground mt-0.5">Rules / {segmentCount} segments</div></div><ArrowRight className="h-5 w-5 text-muted-foreground transition-all group-hover:translate-x-1 group-hover:text-primary" /></div>
   </button>;
 }
 
 // Feature 1, landing view: list, search, and open Rule Sets, or start a new one.
-export function RuleSetList({ ruleSets, storeKind, onOpen, onCreate }: { ruleSets: RuleSet[]; storeKind: RuleSetStore['kind']; onOpen: (id: string) => void; onCreate: () => void }) {
+export function RuleSetList({ ruleSets, userId, storeKind, onOpen, onCreate }: { ruleSets: RuleSet[]; userId: string; storeKind: RuleSetStore['kind']; onOpen: (id: string) => void; onCreate: () => void }) {
   const [query, setQuery] = useState('');
   const filtered = ruleSets.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
   const totalSegments = ruleSets.reduce((sum, ruleSet) => sum + ruleSet.rules.reduce((ruleSum: number, rule: Rule) => ruleSum + rule.segments.length, 0), 0);
@@ -56,7 +51,7 @@ export function RuleSetList({ ruleSets, storeKind, onOpen, onCreate }: { ruleSet
       </div>
       <section id="rulesets">
         <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><h2 className="font-display text-2xl font-medium tracking-tight text-foreground">Configured Rule Sets</h2><p className="mt-1.5 text-sm text-muted-foreground">Select a Rule Set to edit its rules and source mappings.</p></div><div className="relative w-full sm:w-72"><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><input value={query} onChange={(event) => setQuery(event.target.value)} className={`${inputClass} pl-10`} placeholder="Search Rule Sets" aria-label="Search Rule Sets" data-testid="input-search-rulesets" /></div></div>
-        {filtered.length > 0 ? <div className="grid gap-4">{filtered.map((ruleSet, index) => <RuleSetRow key={ruleSet.id} ruleSet={ruleSet} index={index} onSelect={() => onOpen(ruleSet.id)} />)}</div> : <EmptyState query={query} />}
+        {filtered.length > 0 ? <div className="grid gap-4">{filtered.map((ruleSet, index) => <RuleSetRow key={ruleSet.id} ruleSet={ruleSet} index={index} owned={ruleSet.ownerId === userId} onSelect={() => onOpen(ruleSet.id)} />)}</div> : <EmptyState query={query} />}
       </section>
     </div>
   );

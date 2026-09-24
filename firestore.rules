@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// Rule Sets: any signed-in user reads every one; only the owner creates, updates
+// or deletes, and ownership never moves. The rules language cannot loop over the
+// inline Rules, so anything about their content is checked by checkRuleSet in
+// @taxo/shared before every save; here we only check the coarse shape.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownedByCaller(data) {
+      return signedIn() && data.ownerId == request.auth.uid;
+    }
+
+    function wellFormed(data) {
+      return data.id is string
+        && data.name is string
+        && data.rules is list
+        && data.createdAt is string
+        && data.updatedAt is string;
+    }
+
+    match /rulesets/{ruleSetId} {
+      allow read: if signedIn();
+      allow create: if ownedByCaller(request.resource.data)
+        && wellFormed(request.resource.data)
+        && request.resource.data.id == ruleSetId;
+      allow update: if ownedByCaller(resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && wellFormed(request.resource.data);
+      allow delete: if ownedByCaller(resource.data);
+    }
+  }
+}

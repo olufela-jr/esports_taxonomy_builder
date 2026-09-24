@@ -8,19 +8,33 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { NotFound } from '@/components/NotFound';
 import { RuleSetEditor } from '@/components/RuleSetEditor';
 import { RuleSetList } from '@/components/RuleSetList';
+import { SignIn } from '@/components/SignIn';
+import { createAuth, type User } from '@/data/auth';
 import { createStore, type RuleSet, type RuleSetDraft, type RuleSetStore } from '@/data/store';
 import { isActionPath, readUiState, writeUiState, type CheckMode, type UiState } from '@/data/ui-state';
 
-// Until Firebase Auth lands (Phase 5) every locally created Rule Set is owned by "you".
-const LOCAL_OWNER_ID = 'you';
-
-// App owns all shared state with useState: the Rule Sets (from the store) and
-// the persistent workspace context. Everything below receives props.
+// App owns all shared state with useState: the signed-in user, the Rule Sets
+// (from the store) and the persistent workspace context. Everything below
+// receives props.
 function App() {
   const store = useMemo(createStore, []);
-  const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store.getSnapshot());
-  useEffect(() => store.subscribe(setRuleSets), [store]);
+  const auth = useMemo(() => createAuth(store.kind), [store]);
+  const [user, setUser] = useState<User | null | undefined>(() => auth.getUser());
+  useEffect(() => auth.subscribe(setUser), [auth]);
 
+  // Rule Sets are read only while someone is signed in; the store listener
+  // starts on sign-in and stops on sign-out.
+  const uid = user?.uid;
+  const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store.getSnapshot());
+  useEffect(() => {
+    if (!uid) {
+      setRuleSets([]);
+      return;
+    }
+    return store.subscribe(setRuleSets);
+  }, [store, uid]);
+
+  // The workspace context is per browser, not per user, so it survives sign-out and sign-in.
   const [ui, setUi] = useState<UiState>(() => readUiState(ruleSets));
   useEffect(() => writeUiState(ui), [ui]);
 
@@ -41,9 +55,17 @@ function App() {
     if (isActionPath(path)) setUi((state) => (state.lastAction === path ? state : { ...state, lastAction: path }));
   };
 
+  if (user === undefined) {
+    return <div className="flex min-h-[100dvh] items-center justify-center bg-background text-sm font-semibold text-muted-foreground" data-testid="screen-loading">Loading</div>;
+  }
+  if (user === null) {
+    return <SignIn kind={auth.kind} onSignIn={auth.signIn} />;
+  }
+
   return (
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <Workspace
+        user={user}
         ruleSets={ruleSets}
         storeKind={store.kind}
         ui={ui}
@@ -53,7 +75,8 @@ function App() {
         onSelectRule={selectRule}
         onCheckModeChange={setCheckMode}
         onLocationChange={setLastAction}
-        onCreate={(draft) => store.create(draft, LOCAL_OWNER_ID)}
+        onSignOut={auth.signOut}
+        onCreate={(draft) => store.create(draft, user.uid)}
         onUpdate={(id, draft) => store.update(id, draft)}
         onDelete={(id) => store.remove(id)}
       />
@@ -62,6 +85,7 @@ function App() {
 }
 
 type WorkspaceProps = {
+  user: User;
   ruleSets: RuleSet[];
   storeKind: RuleSetStore['kind'];
   ui: UiState;
@@ -71,6 +95,7 @@ type WorkspaceProps = {
   onSelectRule: (id: string) => void;
   onCheckModeChange: (mode: CheckMode) => void;
   onLocationChange: (path: string) => void;
+  onSignOut: () => Promise<void>;
   onCreate: (draft: RuleSetDraft) => Promise<RuleSet>;
   onUpdate: (id: string, draft: RuleSetDraft) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
@@ -79,7 +104,7 @@ type WorkspaceProps = {
 // Inside the router: syncs the last action with the URL, redirects the root to
 // it, and renders the shell plus the three actions.
 function Workspace(props: WorkspaceProps) {
-  const { ruleSets, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onCreate, onUpdate, onDelete } = props;
+  const { user, ruleSets, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete } = props;
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -90,7 +115,8 @@ function Workspace(props: WorkspaceProps) {
     onLocationChange(location);
   }, [location, ui.lastAction, setLocation, onLocationChange]);
 
-  // Author: an open Rule Set edits it; otherwise the list, or a new draft.
+  // Author: an open Rule Set edits it (read only unless the user owns it);
+  // otherwise the list, or a new draft.
   const [creating, setCreating] = useState(false);
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   useEffect(() => {
@@ -99,13 +125,13 @@ function Workspace(props: WorkspaceProps) {
   }, [ui.ruleSetId]);
 
   const author = selectedRuleSet
-    ? <RuleSetEditor key={selectedRuleSet.id} existing={selectedRuleSet} storeKind={storeKind} justCreated={selectedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => onSelectRuleSet(null)} />
+    ? <RuleSetEditor key={selectedRuleSet.id} existing={selectedRuleSet} readOnly={selectedRuleSet.ownerId !== user.uid} storeKind={storeKind} justCreated={selectedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => onSelectRuleSet(null)} />
     : creating
       ? <RuleSetEditor key="new" existing={null} storeKind={storeKind} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setCreating(false); setJustCreatedId(id); onSelectRuleSet(id); }} onClose={() => setCreating(false)} />
-      : <RuleSetList ruleSets={ruleSets} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
+      : <RuleSetList ruleSets={ruleSets} userId={user.uid} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
 
   return (
-    <AppShell ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule}>
+    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut}>
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>

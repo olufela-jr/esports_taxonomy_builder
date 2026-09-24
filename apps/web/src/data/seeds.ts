@@ -1,11 +1,12 @@
 import type { RuleSet } from './types';
 
-// Demo data for the in-memory store (development and tests). Never written to Firestore.
+// Demo data for the in-memory store (development and tests). Never written to
+// Firestore. Owned by the local user so it is editable in development.
 export const seedRuleSets: RuleSet[] = [
   {
     id: 'ruleset-global',
     name: 'Global campaign standard',
-    ownerId: 'maya',
+    ownerId: 'you',
     createdAt: '2024-09-10T09:00:00.000Z',
     updatedAt: '2025-02-21T15:42:00.000Z',
     rules: [

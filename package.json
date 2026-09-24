@@ -12,10 +12,13 @@
     "build": "pnpm run typecheck && pnpm --filter @taxo/web build",
     "test": "pnpm -r --if-present test",
     "test:e2e": "playwright test",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-taxo \"vitest run --config vitest.rules.config.ts\"",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@playwright/test": "^1.63.0",
+    "firebase": "^12.18.0",
     "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   }

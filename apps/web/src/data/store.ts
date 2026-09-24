@@ -82,6 +82,9 @@ function byNewestFirst(a: RuleSet, b: RuleSet): number {
   return b.createdAt.localeCompare(a.createdAt);
 }
 
+// Listening starts with the first subscriber and stops with the last, so nothing
+// is read before sign-in and nothing stays open after sign-out (reads need a
+// signed-in user under the Security Rules).
 export function createFirestoreStore(db: Firestore): RuleSetStore {
   let snapshot: RuleSet[] = [];
   const listeners = new Set<Listener>();
@@ -97,9 +100,19 @@ export function createFirestoreStore(db: Firestore): RuleSetStore {
         listeners.forEach((listener) => listener(snapshot));
       },
       (error) => {
+        // Firestore ends the listener on an error (permission denied after a
+        // sign-out, for example); forget it so the next subscriber starts a new one.
         console.error('Rule Set subscription failed', error);
+        stopListening = null;
       },
     );
+  }
+
+  function stopIfIdle() {
+    if (listeners.size > 0 || !stopListening) return;
+    stopListening();
+    stopListening = null;
+    snapshot = [];
   }
 
   return {
@@ -109,7 +122,10 @@ export function createFirestoreStore(db: Firestore): RuleSetStore {
       listeners.add(listener);
       ensureListening();
       listener(snapshot);
-      return () => { listeners.delete(listener); };
+      return () => {
+        listeners.delete(listener);
+        stopIfIdle();
+      };
     },
     async create(draft, ownerId) {
       const now = stamp();
