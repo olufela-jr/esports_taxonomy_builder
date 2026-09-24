@@ -13,8 +13,9 @@ Working notes for moving the Replit prototype to the target described in `CLAUDE
 | [phase-4b.md](phase-4b.md) | State in App.tsx with useState and props, no Context; screens renamed to the spec's component names |
 | [phase-5.md](phase-5.md) | Firebase Auth with Google sign-in, owner-only editing, Security Rules with an emulator test; project setup on media-taxonomy-tool |
 | [phase-6.md](phase-6.md) | Docs match reality, root README, updatedAt conflict check on saves |
+| [phase-7.md](phase-7.md) | Clean-room verification, smoke runs in both modes, first Hosting deploy |
 
-Phase still to come: 7 (final verification and the first Hosting deploy).
+The migration is complete as of 2026-09-24. Stage 2 and the v2 work follow `docs/spec.md`.
 
 Conventions for the notes files:
 
