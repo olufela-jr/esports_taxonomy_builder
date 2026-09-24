@@ -38,14 +38,23 @@ export type Tags = {
   entityType?: string;
 };
 
+// A child Rule names a parent in the same Rule Set and inherits its leading
+// segments by reference. Segments are referenced by immutable `id`, never by
+// the editable `key`, so relabelling a parent segment cannot break a child.
+export type ParentLink = {
+  ruleId: string;              // immutable id of a Rule in the SAME Rule Set
+  inheritSegmentIds: string[]; // ids on the parent's RESOLVED segments, in parent order
+};
+
 export type Rule = {
   id: string;
   key: string;
   name: string;
   tags?: Tags;
   delimiter: string;
-  segments: Segment[];
+  segments: Segment[]; // the Rule's OWN segments only; see resolveRule
   source: Source;
+  parent?: ParentLink;
 };
 
 export type RuleSet = {
@@ -69,6 +78,11 @@ export type ComposeResult = {
 export type ValidateResult = {
   valid: boolean;
   violations: Violation[];
+};
+
+export type ResolveResult = {
+  rule: Rule;
+  errors: string[];
 };
 
 // One Rule's scan totals, however the names were obtained (CSV rows now,
@@ -186,6 +200,114 @@ export function checkRuleSet(ruleSet: RuleSet): string[] {
   });
 
   return errors;
+}
+
+function copySegment(segment: Segment): Segment {
+  if (segment.kind === "enum") {
+    return { ...segment, allowedValues: [...segment.allowedValues] };
+  }
+  return { ...segment, illegalChars: [...segment.illegalChars] };
+}
+
+// Flattens a child Rule into a self-contained one: the inherited parent
+// segments followed by the child's own, with `parent` removed. Pure and cheap;
+// callers resolve on demand and never store the result. A grandchild resolves
+// its parent first, so it can inherit segments the parent itself inherited.
+//
+// On any error the INPUT Rule comes back unchanged, parent still set, so a
+// caller that ignores `errors` is refused by the compose/validate guard rather
+// than validating names against the wrong segments.
+export function resolveRule(rule: Rule, ruleSet: RuleSet): ResolveResult {
+  return resolveWithin(rule, ruleSet, new Set());
+}
+
+function resolveWithin(rule: Rule, ruleSet: RuleSet, visited: Set<string>): ResolveResult {
+  if (!rule.parent) {
+    return { rule: { ...rule, segments: rule.segments.map(copySegment) }, errors: [] };
+  }
+
+  const fail = (...errors: string[]): ResolveResult => ({ rule, errors });
+  const { ruleId, inheritSegmentIds } = rule.parent;
+
+  if (inheritSegmentIds.length === 0) {
+    return fail("A parent link must inherit at least one segment.");
+  }
+
+  const parent = ruleSet.rules.find((candidate) => candidate.id === ruleId);
+  if (!parent) {
+    return fail("The parent Rule no longer exists in this Rule Set.");
+  }
+
+  visited.add(rule.id);
+  if (visited.has(parent.id)) {
+    return fail(`Parent Rules form a cycle through "${parent.name}".`);
+  }
+
+  const resolvedParent = resolveWithin(parent, ruleSet, visited);
+  if (resolvedParent.errors.length > 0) {
+    return fail(
+      ...resolvedParent.errors.map((error) => `Parent "${parent.name}" cannot be resolved: ${error}`),
+    );
+  }
+
+  const parentSegments = resolvedParent.rule.segments;
+  const errors: string[] = [];
+
+  const missing = inheritSegmentIds.filter(
+    (id) => !parentSegments.some((segment) => segment.id === id),
+  );
+  for (const id of missing) {
+    errors.push(`Inherited segment "${id}" does not exist on parent "${parent.name}".`);
+  }
+
+  const leading = parentSegments.slice(0, inheritSegmentIds.length);
+  const isLeadingRun =
+    missing.length === 0 &&
+    inheritSegmentIds.every((id, index) => leading[index]?.id === id);
+  if (missing.length === 0 && !isLeadingRun) {
+    const expected = leading.map((segment) => `"${segment.key}"`).join(", ");
+    errors.push(
+      `Inherited segments must be the first ${inheritSegmentIds.length} segments of parent "${parent.name}" in order: ${expected}.`,
+    );
+  }
+
+  for (const segment of leading) {
+    if (isLeadingRun && !segment.required) {
+      errors.push(
+        `Inherited segment "${segment.label}" is optional; only required parent segments can be inherited.`,
+      );
+    }
+  }
+
+  if (rule.delimiter !== resolvedParent.rule.delimiter) {
+    errors.push(
+      `The delimiter "${rule.delimiter}" must match parent "${parent.name}", which uses "${resolvedParent.rule.delimiter}".`,
+    );
+  }
+
+  if (errors.length > 0) {
+    return fail(...errors);
+  }
+
+  const { parent: _parent, ...own } = rule;
+  const combined: Rule = {
+    ...own,
+    segments: [...leading.map(copySegment), ...rule.segments.map(copySegment)],
+  };
+
+  const structural = getRuleErrors(combined);
+  const ids = new Set<string>();
+  for (const segment of combined.segments) {
+    if (ids.has(segment.id)) {
+      structural.push(`Segment ids must be unique: "${segment.id}".`);
+    }
+    ids.add(segment.id);
+  }
+  if (structural.length > 0) {
+    return fail(...structural);
+  }
+
+  return { rule: combined, errors: [] };
 }
 
 function valueViolations(

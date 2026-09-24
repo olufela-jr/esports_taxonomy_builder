@@ -4,12 +4,14 @@ import {
   checkRule,
   checkRuleSet,
   compose,
+  resolveRule,
   rollup,
   validate,
   type EnumSegment,
   type FreeformSegment,
   type Rule,
   type RuleScan,
+  type RuleSet,
 } from "./engine";
 
 const typeSegment: EnumSegment = {
@@ -235,5 +237,250 @@ describe("All Rules rollup", () => {
     const result = rollup([{ ruleId: "r_empty", ruleKey: "empty", ruleName: "Empty", scanned: 0, valid: 0 }]);
     expect(result.total).toEqual({ scanned: 0, valid: 0, invalid: 0 });
     expect(result.perRule[0]?.invalid).toBe(0);
+  });
+});
+
+// ---- resolveRule -----------------------------------------------------------------
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const inner of Object.values(value as object)) {
+      deepFreeze(inner);
+    }
+  }
+  return value;
+}
+
+const targetingSegment: EnumSegment = {
+  id: "s_targeting",
+  kind: "enum",
+  key: "targeting",
+  label: "Targeting",
+  required: true,
+  allowedValues: ["broad", "exact"],
+};
+
+const audienceSegment: FreeformSegment = {
+  id: "s_audience",
+  kind: "freeform",
+  key: "audience",
+  label: "Audience",
+  required: true,
+  maxLength: 20,
+  illegalChars: [" "],
+};
+
+const formatSegment: EnumSegment = {
+  id: "s_format",
+  kind: "enum",
+  key: "format",
+  label: "Format",
+  required: true,
+  allowedValues: ["video", "image"],
+};
+
+const adGroupRule: Rule = {
+  id: "r_ad_group",
+  key: "ad_group",
+  name: "Ad Group",
+  delimiter: "_",
+  parent: { ruleId: "r_campaign", inheritSegmentIds: ["s_type", "s_market"] },
+  segments: [targetingSegment, audienceSegment],
+  source: { dataset: "marketing", table: "ad_groups", nameColumn: "ad_group_name" },
+};
+
+const adRule: Rule = {
+  id: "r_ad",
+  key: "ad",
+  name: "Ad",
+  delimiter: "_",
+  parent: { ruleId: "r_ad_group", inheritSegmentIds: ["s_type", "s_market", "s_targeting"] },
+  segments: [formatSegment],
+  source: { dataset: "marketing", table: "ads", nameColumn: "ad_name" },
+};
+
+// Every fixture is deep-frozen so any mutation by resolveRule throws.
+function ruleSetOf(...rules: Rule[]): RuleSet {
+  return deepFreeze(structuredClone({ id: "rs_1", name: "Acme", rules }));
+}
+
+function childOf(ruleSet: RuleSet, id: string): Rule {
+  const rule = ruleSet.rules.find((candidate) => candidate.id === id);
+  if (!rule) throw new Error(`fixture missing ${id}`);
+  return rule;
+}
+
+describe("resolveRule", () => {
+  const chain = ruleSetOf(campaignRule, adGroupRule, adRule);
+
+  it("returns a copy of a Rule without a parent", () => {
+    const result = resolveRule(childOf(chain, "r_campaign"), chain);
+
+    expect(result.errors).toEqual([]);
+    expect(result.rule).toEqual(campaignRule);
+    expect(result.rule).not.toBe(childOf(chain, "r_campaign"));
+    expect(result.rule.segments).not.toBe(childOf(chain, "r_campaign").segments);
+    expect("parent" in result.rule).toBe(false);
+  });
+
+  it("flattens one level: inherited segments first, then the child's own", () => {
+    const result = resolveRule(childOf(chain, "r_ad_group"), chain);
+
+    expect(result.errors).toEqual([]);
+    expect(result.rule.parent).toBeUndefined();
+    expect(result.rule.segments.map((segment) => segment.id)).toEqual([
+      "s_type",
+      "s_market",
+      "s_targeting",
+      "s_audience",
+    ]);
+    expect(result.rule.segments[0]).toEqual(typeSegment);
+    expect(result.rule.id).toBe("r_ad_group");
+    expect(result.rule.name).toBe("Ad Group");
+    expect(result.rule.source).toEqual(adGroupRule.source);
+  });
+
+  it("flattens two levels through the parent's own inherited segments", () => {
+    const result = resolveRule(childOf(chain, "r_ad"), chain);
+
+    expect(result.errors).toEqual([]);
+    expect(result.rule.segments.map((segment) => segment.key)).toEqual([
+      "campaign_type",
+      "market",
+      "targeting",
+      "format",
+    ]);
+  });
+
+  it("keeps compose and validate in round-trip agreement on a resolved child", () => {
+    const resolved = resolveRule(childOf(chain, "r_ad_group"), chain).rule;
+    const parentName = compose(campaignRule, { campaign_type: "perf", market: "uk" }).name;
+    const composed = compose(resolved, {
+      campaign_type: "perf",
+      market: "uk",
+      targeting: "broad",
+      audience: "runners",
+    });
+
+    expect(composed.errors).toEqual([]);
+    expect(composed.name).toBe("perf_uk_broad_runners");
+    expect(composed.name.startsWith(`${parentName}_`)).toBe(true);
+    expect(validate(resolved, composed.name).valid).toBe(true);
+    expect(validate(resolved, "perf_fr_broad_runners").valid).toBe(false);
+  });
+
+  function expectFailure(rule: Rule, ruleSet: RuleSet, ...messages: string[]) {
+    const result = resolveRule(rule, ruleSet);
+    expect(result.errors).toEqual(messages);
+    // The input comes back untouched, parent still set, so the guard catches misuse.
+    expect(result.rule).toBe(rule);
+    expect(result.rule.parent).toBeDefined();
+  }
+
+  it("rejects a cycle between two Rules", () => {
+    const a: Rule = { ...campaignRule, id: "r_a", name: "A", parent: { ruleId: "r_b", inheritSegmentIds: ["s_type"] } };
+    const b: Rule = { ...campaignRule, id: "r_b", name: "B", parent: { ruleId: "r_a", inheritSegmentIds: ["s_type"] } };
+    const ruleSet = ruleSetOf(a, b);
+
+    expectFailure(
+      childOf(ruleSet, "r_a"),
+      ruleSet,
+      'Parent "B" cannot be resolved: Parent Rules form a cycle through "A".',
+    );
+  });
+
+  it("rejects a Rule that names itself as parent", () => {
+    const self: Rule = { ...adGroupRule, parent: { ruleId: "r_ad_group", inheritSegmentIds: ["s_targeting"] } };
+    const ruleSet = ruleSetOf(campaignRule, self);
+
+    expectFailure(childOf(ruleSet, "r_ad_group"), ruleSet, 'Parent Rules form a cycle through "Ad Group".');
+  });
+
+  it("rejects a missing parent", () => {
+    const ruleSet = ruleSetOf(adGroupRule);
+
+    expectFailure(childOf(ruleSet, "r_ad_group"), ruleSet, "The parent Rule no longer exists in this Rule Set.");
+  });
+
+  it("rejects an inherited segment id that is not on the parent", () => {
+    const child: Rule = { ...adGroupRule, parent: { ruleId: "r_campaign", inheritSegmentIds: ["s_type", "s_gone"] } };
+    const ruleSet = ruleSetOf(campaignRule, child);
+
+    expectFailure(
+      childOf(ruleSet, "r_ad_group"),
+      ruleSet,
+      'Inherited segment "s_gone" does not exist on parent "Campaign".',
+    );
+  });
+
+  it("rejects inherited ids that are not the parent's leading run, or are out of order", () => {
+    const skipping: Rule = { ...adGroupRule, parent: { ruleId: "r_campaign", inheritSegmentIds: ["s_type", "s_custom"] } };
+    const reordered: Rule = { ...adGroupRule, parent: { ruleId: "r_campaign", inheritSegmentIds: ["s_market", "s_type"] } };
+    const message =
+      'Inherited segments must be the first 2 segments of parent "Campaign" in order: "campaign_type", "market".';
+
+    const skippingSet = ruleSetOf(campaignRule, skipping);
+    expectFailure(childOf(skippingSet, "r_ad_group"), skippingSet, message);
+
+    const reorderedSet = ruleSetOf(campaignRule, reordered);
+    expectFailure(childOf(reorderedSet, "r_ad_group"), reorderedSet, message);
+  });
+
+  it("rejects inheriting an optional parent segment", () => {
+    const child: Rule = {
+      ...adGroupRule,
+      parent: { ruleId: "r_campaign", inheritSegmentIds: ["s_type", "s_market", "s_custom"] },
+    };
+    const ruleSet = ruleSetOf(campaignRule, child);
+
+    expectFailure(
+      childOf(ruleSet, "r_ad_group"),
+      ruleSet,
+      'Inherited segment "Custom ID" is optional; only required parent segments can be inherited.',
+    );
+  });
+
+  it("rejects a delimiter that differs from the parent's", () => {
+    const child: Rule = { ...adGroupRule, delimiter: "-" };
+    const ruleSet = ruleSetOf(campaignRule, child);
+
+    expectFailure(
+      childOf(ruleSet, "r_ad_group"),
+      ruleSet,
+      'The delimiter "-" must match parent "Campaign", which uses "_".',
+    );
+  });
+
+  it("rejects a key collision between an inherited and an own segment", () => {
+    const child: Rule = { ...adGroupRule, segments: [{ ...targetingSegment, key: "market" }] };
+    const ruleSet = ruleSetOf(campaignRule, child);
+
+    expectFailure(childOf(ruleSet, "r_ad_group"), ruleSet, 'Segment keys must be unique: "market".');
+  });
+
+  it("rejects an id collision between an inherited and an own segment", () => {
+    const child: Rule = { ...adGroupRule, segments: [{ ...targetingSegment, id: "s_market" }] };
+    const ruleSet = ruleSetOf(campaignRule, child);
+
+    expectFailure(childOf(ruleSet, "r_ad_group"), ruleSet, 'Segment ids must be unique: "s_market".');
+  });
+
+  it("rejects a parent link that inherits nothing", () => {
+    const child: Rule = { ...adGroupRule, parent: { ruleId: "r_campaign", inheritSegmentIds: [] } };
+    const ruleSet = ruleSetOf(campaignRule, child);
+
+    expectFailure(childOf(ruleSet, "r_ad_group"), ruleSet, "A parent link must inherit at least one segment.");
+  });
+
+  it("reports a broken parent from the grandchild, naming the parent", () => {
+    const brokenAdGroup: Rule = { ...adGroupRule, delimiter: "-" };
+    const ruleSet = ruleSetOf(campaignRule, brokenAdGroup, adRule);
+
+    expectFailure(
+      childOf(ruleSet, "r_ad"),
+      ruleSet,
+      'Parent "Ad Group" cannot be resolved: The delimiter "-" must match parent "Campaign", which uses "_".',
+    );
   });
 });
