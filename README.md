@@ -68,9 +68,9 @@ guarantee.
 
 ## Firebase
 
-Project `media-taxonomy-tool` (`.firebaserc`), Firestore in `asia-south1`, Google sign-in.
-Signed-in users read every Rule Set; only the owner can change one. The app checks this in
-the UI and `firestore.rules` enforces it.
+Project `media-taxonomy-tool` (`.firebaserc`), Firestore in `asia-south1`, Google sign-in,
+deployed at https://media-taxonomy-tool.web.app. Signed-in users read every Rule Set; only
+the owner can change one. The app checks this in the UI and `firestore.rules` enforces it.
 
 - Deploy rules: `firebase deploy --only firestore:rules`.
 - Deploy the app: `pnpm build` then `firebase deploy --only hosting` (Hosting serves

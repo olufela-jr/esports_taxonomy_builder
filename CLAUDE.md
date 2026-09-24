@@ -69,8 +69,8 @@ migration; the browser regression test in checklist step 3 guards it.)
 
 ## Migration complete (2026-09-24)
 The Replit prototype has been migrated to this codebase; the log is in `migration/`, one
-file per phase. Checklist steps 1 to 6 below are done; step 7 (final verification and the
-first Hosting deploy) is next. In place now:
+file per phase. All seven checklist steps below are done, and the app is deployed at
+https://media-taxonomy-tool.web.app. Stage 2 and the v2 build order come next. In place now:
 - Rule Set / Rule / Segment naming throughout, with immutable `id`s and editable `key`s.
   Old local "taxonomy" data still auto-migrates in `apps/web/src/data/migrations.ts`.
 - Action-first shell with persistent Rule Set and Rule context across actions, refresh,
@@ -82,7 +82,7 @@ first Hosting deploy) is next. In place now:
   ownership, slow saves and save conflicts.
 - Stage 2 configuration (per-Rule `source`) stored and labelled, not yet scanned.
 
-## Migration checklist (steps 1 to 6 done, 7 next)
+## Migration checklist (all seven steps done, kept as the record)
 1. Reconcile "All Rules" semantics. The prototype computes combined compliance as
    rows that pass EVERY Rule, each Rule reading its own mapped CSV column (a per-row
    conjunction). Make the PRIMARY Rule-Set-wide figure a POOLED rollup instead: run each
