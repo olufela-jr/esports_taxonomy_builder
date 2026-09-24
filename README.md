@@ -92,9 +92,18 @@ the caller's tenant.
 
 ### Provisioning and migration (Admin SDK scripts)
 
-Both scripts use Application Default Credentials for the project owner: run
-`gcloud auth application-default login` with that account first. The person being
-provisioned must have signed in to the app once so their Auth account exists.
+Both scripts use Application Default Credentials for the project owner. To keep that login
+apart from the machine's default gcloud credentials, log in once into a separate config
+directory and point the scripts at the file it writes through a gitignored `.env.scripts`:
+
+```
+CLOUDSDK_CONFIG=~/.config/gcloud-media-taxonomy gcloud auth application-default login
+CLOUDSDK_CONFIG=~/.config/gcloud-media-taxonomy gcloud auth application-default set-quota-project media-taxonomy-tool
+echo "GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/gcloud-media-taxonomy/application_default_credentials.json" > .env.scripts
+```
+
+The person being provisioned must have signed in to the app once so their Auth account
+exists.
 
 ```
 pnpm provision:user --email someone@example.com --tenant <id> --role admin

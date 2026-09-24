@@ -10,6 +10,7 @@ functions/lib/
 .env
 .env.*
 !.env.example
+!.env.scripts.example
 
 # Migration backups (JSON dumps of live data)
 backups/
