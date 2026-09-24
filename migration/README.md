@@ -11,9 +11,10 @@ Working notes for moving the Replit prototype to the target described in `CLAUDE
 | [phase-3.md](phase-3.md) | Playwright regression tests for editor typing and shared context; three defects fixed |
 | [phase-4a.md](phase-4a.md) | One store module with Firestore and in-memory implementations; Check All Rules coverage; loud production failure without config |
 | [phase-4b.md](phase-4b.md) | State in App.tsx with useState and props, no Context; screens renamed to the spec's component names |
-| [phase-5.md](phase-5.md) | Firebase Auth with Google sign-in, owner-only editing, Security Rules with an emulator test |
+| [phase-5.md](phase-5.md) | Firebase Auth with Google sign-in, owner-only editing, Security Rules with an emulator test; project setup on media-taxonomy-tool |
+| [phase-6.md](phase-6.md) | Docs match reality, root README, updatedAt conflict check on saves |
 
-Phases still to come: 6 (finish stripping, docs), 7 (final verification).
+Phase still to come: 7 (final verification and the first Hosting deploy).
 
 Conventions for the notes files:
 
