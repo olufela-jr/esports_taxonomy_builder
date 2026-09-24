@@ -83,10 +83,13 @@ Members read every Rule Set in their tenant; only admins change them. The UI fol
 role and `firestore.rules` enforces it, refusing any read or write whose path does not match
 the caller's tenant.
 
-- Deploy rules: `firebase deploy --only firestore:rules`.
-- Deploy the app: `pnpm build` then `firebase deploy --only hosting` (Hosting serves
-  `apps/web/dist` with a single-page rewrite). Deploy rules and hosting together when the
-  data shape changes.
+- Deploy: `./deploy.sh` runs the unit suites, the typecheck and the production build, then
+  deploys rules and hosting together and confirms the live page serves the bundle just
+  built. `./deploy.sh --check` does everything but the deploy; `--skip-tests` skips the unit
+  suites. It refuses to run without `apps/web/.env.local` pointing at the project, or with
+  `VITE_STORE=memory` set. By hand, the same is `pnpm build` then
+  `firebase deploy --only firestore:rules,hosting` (Hosting serves `apps/web/dist` with a
+  single-page rewrite).
 - The Function is built (`pnpm --filter @taxo/functions build`) but not deployed yet: it
   needs the Blaze plan and a deploy-time manifest without the `workspace:*` dependency.
 
