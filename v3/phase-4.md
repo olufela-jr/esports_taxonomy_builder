@@ -35,3 +35,43 @@ app (O2 decided 2026-09-25: one project). One commit per step.
 | `pnpm typecheck` | Clean |
 | `pnpm test` | 62 (engine), 13 (functions, 4 new), 13 (scripts) |
 | `pnpm --filter @taxo/functions build` | `deploy/index.js` 19 kB, runtime manifest written |
+
+## Step 2: the live scan in Check and the impact preview in the Dictionary
+
+### What changed
+
+- `apps/web/src/data/scan.ts` (new): the one module that calls the Cloud Functions,
+  `scanRule` and `previewImpact`, through `httpsCallable` in the database's region; `null` in
+  memory mode, so the screens can say the feature needs the shared workspace.
+  `apps/web/src/lib/firebase.ts` adds the Functions handle.
+- `apps/web/src/components/CsvChecker.tsx`: the Source toggle's "Live scan" is enabled with the
+  shared workspace. It shows what will be read (the Rule's dataset, table and column, or every
+  Rule's own source under All Rules) and a "Scan BigQuery" button. A single-Rule scan shows the
+  exact counts in a banner and the capped list in the same panel the CSV check uses; All Rules
+  scans each Rule in turn and pools the counts through the engine's `rollup`, the same figure
+  the CSV check reports, with the per-platform and per-entity-type breakdowns, and any Rule
+  whose scan failed shows the reason.
+- `apps/web/src/components/Dictionary.tsx`: saving a definition with a changed or removed code
+  now asks the Function for the impact first: the confirm names how many live names would
+  start failing, per Rule, with examples, and any Rule it could not scan. Without the shared
+  workspace, or if the scan fails, the plain confirm stands (O16 fallback).
+- `apps/web/e2e/live-scan.spec.ts`: in memory mode the live source is disabled and says why.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test:e2e` | 35 of 35 (1 new) |
+| `pnpm --filter @taxo/web build` | Clean |
+
+### Live setup on 2026-09-25, each with approval
+
+- APIs enabled: Compute, Cloud Functions, Cloud Run, Cloud Build, Artifact Registry, Eventarc.
+- The Function's runtime account (`231944894886-compute@developer.gserviceaccount.com`) holds
+  `roles/bigquery.dataViewer` and `roles/bigquery.jobUser`. It also holds Google's default
+  `roles/editor` for that account, which predates this work and is not needed by the scan.
+- BigQuery dataset `marketing` (asia-south1) with table `campaign_values` (`name`, `status`,
+  `platform`) and 14 demonstration names shaped for the live "Google Laws" Rule: eight valid,
+  six deliberately wrong (case, an unknown market, a missing title, an overlong title, a legacy
+  name, the wrong join character).

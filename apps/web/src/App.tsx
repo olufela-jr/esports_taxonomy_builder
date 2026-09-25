@@ -12,6 +12,7 @@ import { RuleSetList } from '@/components/RuleSetList';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
 import { createAuth, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
+import { createScanner, type Scanner } from '@/data/scan';
 import { createStore, type Definition, type DefinitionDraft, type RuleSet, type RuleSetDraft, type Store, type Tenant, type ValueRequest, type ValueRequestDraft } from '@/data/store';
 import { isActionPath, readUiState, writeUiState, type CheckMode, type UiState } from '@/data/ui-state';
 
@@ -22,6 +23,8 @@ function App() {
   // The mode is decided once; the session and the store both follow it.
   const mode = useMemo(detectMode, []);
   const auth = useMemo(() => createAuth(mode), [mode]);
+  // The Cloud Functions (live scan, impact preview): only with the shared workspace.
+  const scanner = useMemo(() => createScanner(mode), [mode]);
   const [user, setUser] = useState<User | null | undefined>(() => auth.getUser());
   useEffect(() => auth.subscribe(setUser), [auth]);
 
@@ -88,6 +91,7 @@ function App() {
         definitions={definitions}
         requests={requests}
         tenant={tenant}
+        scanner={scanner}
         storeKind={store.kind}
         ui={ui}
         selectedRuleSet={selectedRuleSet}
@@ -118,6 +122,7 @@ type WorkspaceProps = {
   definitions: Definition[];
   requests: ValueRequest[];
   tenant: Tenant | null;
+  scanner: Scanner | null;
   storeKind: Store['kind'];
   ui: UiState;
   selectedRuleSet: RuleSet | undefined;
@@ -140,7 +145,7 @@ type WorkspaceProps = {
 // Inside the router: syncs the last action with the URL, redirects the root to
 // it, and renders the shell plus the four actions.
 function Workspace(props: WorkspaceProps) {
-  const { user, canEdit, ruleSets, definitions, requests, tenant, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
+  const { user, canEdit, ruleSets, definitions, requests, tenant, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -172,8 +177,8 @@ function Workspace(props: WorkspaceProps) {
         <Switch>
           <Route path="/author">{author}</Route>
           <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} /></Route>
-          <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
-          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} /></Route>
+          <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
+          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} /></Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />
         </Switch>

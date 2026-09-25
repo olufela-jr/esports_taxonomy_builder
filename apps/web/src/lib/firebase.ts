@@ -1,6 +1,7 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
 import { initializeFirestore, type Firestore } from 'firebase/firestore';
+import { getFunctions, type Functions } from 'firebase/functions';
 import { ConfigurationError } from './config-error';
 
 // Firebase is configured entirely from build-time environment variables.
@@ -11,6 +12,7 @@ export type FirebaseServices = {
   app: FirebaseApp;
   db: Firestore;
   auth: Auth;
+  functions: Functions; // the Callables, in the database's region
 };
 
 const env = import.meta.env;
@@ -37,7 +39,8 @@ export function getFirebase(): FirebaseServices {
   // drop undefined values instead of rejecting the write.
   const db = initializeFirestore(app, { ignoreUndefinedProperties: true });
   const auth = getAuth(app);
+  const functions = getFunctions(app, 'asia-south1');
 
-  services = { app, db, auth };
+  services = { app, db, auth, functions };
   return services;
 }

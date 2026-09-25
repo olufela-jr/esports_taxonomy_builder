@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { BookOpen, Check, Plus, Trash2, X } from 'lucide-react';
 import { checkDefinition, definitionDependents, platformName, PLATFORMS, type EnumEntry } from '@taxo/shared';
 import type { User } from '@/data/auth';
+import type { Scanner } from '@/data/scan';
 import type { Definition, DefinitionDraft, RuleSet, Store, Tenant, ValueRequest, ValueRequestDraft } from '@/data/store';
 import { newId } from '@/lib/ids';
 import { PageHeading } from './PageHeading';
@@ -18,6 +19,7 @@ type DictionaryProps = {
   definitions: Definition[];
   requests: ValueRequest[];
   ruleSets: RuleSet[]; // for delete protection: a definition in use stays
+  scanner: Scanner | null; // D44: the impact preview, with the shared workspace only
   tenant: Tenant | null;
   storeKind: Store['kind'];
   onCreateDefinition: (draft: DefinitionDraft) => Promise<Definition>;
@@ -51,7 +53,7 @@ function draftOf(request: ValueRequest): ValueRequestDraft {
 }
 
 export function Dictionary(props: DictionaryProps) {
-  const { user, canEdit, definitions, requests, ruleSets, tenant, storeKind, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
+  const { user, canEdit, definitions, requests, ruleSets, scanner, tenant, storeKind, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = definitions.find((definition) => definition.id === selectedId);
 
@@ -80,8 +82,8 @@ export function Dictionary(props: DictionaryProps) {
         </nav>
 
         <div>
-          {selectedId === NEW && canEdit && <DefinitionEditor key="new" existing={null} ruleSets={ruleSets} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
-          {selected && canEdit && <DefinitionEditor key={selected.id} existing={selected} ruleSets={ruleSets} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
+          {selectedId === NEW && canEdit && <DefinitionEditor key="new" existing={null} ruleSets={ruleSets} scanner={scanner} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
+          {selected && canEdit && <DefinitionEditor key={selected.id} existing={selected} ruleSets={ruleSets} scanner={scanner} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
           {selected && !canEdit && <DefinitionView key={selected.id} definition={selected} user={user} onCreateRequest={onCreateRequest} />}
           {!selected && selectedId !== NEW && <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center text-sm text-muted-foreground">Select a definition to see its values.</div>}
         </div>
@@ -100,7 +102,7 @@ function rowsOf(entries: EnumEntry[]): Row[] {
   return entries.map((entry) => ({ rowId: newId(), label: entry.label, code: entry.code }));
 }
 
-function DefinitionEditor({ existing, ruleSets, tenant, storeKind, onCreate, onUpdate, onDelete, onDone }: { existing: Definition | null; ruleSets: RuleSet[]; tenant: Tenant | null; storeKind: Store['kind']; onCreate: (draft: DefinitionDraft) => Promise<Definition>; onUpdate: (id: string, draft: DefinitionDraft, baseUpdatedAt: string) => Promise<string>; onDelete: (id: string) => Promise<void>; onDone: (id: string | null) => void }) {
+function DefinitionEditor({ existing, ruleSets, scanner, tenant, storeKind, onCreate, onUpdate, onDelete, onDone }: { existing: Definition | null; ruleSets: RuleSet[]; scanner: Scanner | null; tenant: Tenant | null; storeKind: Store['kind']; onCreate: (draft: DefinitionDraft) => Promise<Definition>; onUpdate: (id: string, draft: DefinitionDraft, baseUpdatedAt: string) => Promise<string>; onDelete: (id: string) => Promise<void>; onDone: (id: string | null) => void }) {
   const isNew = existing === null;
   const [name, setName] = useState(existing?.name ?? '');
   const [platforms, setPlatforms] = useState<string[]>(existing?.platforms ?? []);
@@ -133,12 +135,30 @@ function DefinitionEditor({ existing, ruleSets, tenant, storeKind, onCreate, onU
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (saving || errors.length > 0) return;
-    // D44 as amended at G0: a changed or removed code is a hard edit; confirm
-    // in plain words until the phase 4 scan can count the names affected.
+    // D44: a changed or removed code is a hard edit (D43). With the shared
+    // workspace the impact preview counts the live names that would start
+    // failing, per Rule; without it, or if the scan fails, a plain confirm.
     if (!isNew) {
       const newCodes = new Set(entries.map((entry) => entry.code));
       const lost = existing.entries.filter((entry) => !newCodes.has(entry.code));
-      if (lost.length > 0 && !window.confirm(`Names carrying the old code${lost.length > 1 ? 's' : ''} ${lost.map((entry) => `"${entry.code}"`).join(', ')} will fail Check. Save anyway?`)) return;
+      if (lost.length > 0) {
+        const codes = lost.map((entry) => `"${entry.code}"`).join(', ');
+        let message = `Names carrying the old code${lost.length > 1 ? 's' : ''} ${codes} will fail Check. Save anyway?`;
+        if (scanner && dependents.length > 0) {
+          setSaving(true);
+          try {
+            const impact = await scanner.previewImpact(existing.id, entries);
+            const lines = impact.perRule.map((item) => `${item.ruleSetName} / ${item.ruleName}: ${item.wouldFail.toLocaleString()} of ${item.scanned.toLocaleString()} live names would fail${item.examples.length > 0 ? ` (e.g. ${item.examples.slice(0, 3).join(', ')})` : ''}`);
+            const skips = impact.skipped.map((item) => `${item.ruleName}: not scanned (${item.reason})`);
+            message = `${impact.total.toLocaleString()} live name${impact.total === 1 ? '' : 's'} would start failing Check if ${codes} ${lost.length > 1 ? 'are' : 'is'} changed.\n\n${[...lines, ...skips].join('\n')}\n\nSave anyway?`;
+          } catch (cause) {
+            message = `The impact could not be counted (${cause instanceof Error ? cause.message : 'scan failed'}). ${message}`;
+          } finally {
+            setSaving(false);
+          }
+        }
+        if (!window.confirm(message)) return;
+      }
     }
     setError('');
     setSaving(true);

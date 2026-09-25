@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
 import { resolveRule, rollup, validate, UNTAGGED, type Counts, type Definition, type Rollup, type Rule, type RuleScan, type ValidateResult, type Violation } from '@taxo/shared';
-import { ClipboardCheck, Download, FileSpreadsheet, Filter, Upload, CheckCircle2, XCircle, AlertCircle, AlertTriangle } from 'lucide-react';
+import { ClipboardCheck, Database, Download, FileSpreadsheet, Filter, Upload, CheckCircle2, XCircle, AlertCircle, AlertTriangle } from 'lucide-react';
+import type { Scanner, ScanOutcome } from '@/data/scan';
 import type { RuleSet } from '@/data/store';
 import type { CheckMode } from '@/data/ui-state';
 import { PageHeading } from './PageHeading';
@@ -99,7 +100,7 @@ function ModeButton({ active, onClick, testId, children }: { active: boolean; on
 
 // Feature 3a: validate a CSV client-side against the Rule selected in the shell,
 // or every Rule in the Rule Set.
-export function CsvChecker({ ruleSet, rule, definitions, checkMode, onCheckModeChange }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[]; checkMode: CheckMode; onCheckModeChange: (mode: CheckMode) => void }) {
+export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onCheckModeChange }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[]; scanner: Scanner | null; checkMode: CheckMode; onCheckModeChange: (mode: CheckMode) => void }) {
   // Names are checked against resolved Rules (parents inherited, shared
   // definitions filled in, D46). A Rule that cannot be resolved fails every
   // name with the resolution errors as the reason, never a silent mismatch.
@@ -124,10 +125,45 @@ export function CsvChecker({ ruleSet, rule, definitions, checkMode, onCheckModeC
   const [singleResults, setSingleResults] = useState<SingleCheckResult[] | null>(null);
   const [allRulesResults, setAllRulesResults] = useState<AllRulesCheckResult[] | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Stage 2: the live scan reads each Rule's BigQuery source through the
+  // Function; counts are exact over the full scan, the list is capped.
+  const [source, setSource] = useState<'csv' | 'live'>('csv');
+  const [scanning, setScanning] = useState(false);
+  const [liveSingle, setLiveSingle] = useState<ScanOutcome | null>(null);
+  const [liveAll, setLiveAll] = useState<Array<{ rule: Rule; outcome: ScanOutcome | null; error: string }> | null>(null);
+  const [liveError, setLiveError] = useState('');
 
   const resetResults = () => {
     setSingleResults(null);
     setAllRulesResults(null);
+    setLiveSingle(null);
+    setLiveAll(null);
+    setLiveError('');
+  };
+
+  const runLiveScan = async () => {
+    if (!scanner || !ruleSet || scanning) return;
+    setScanning(true);
+    resetResults();
+    try {
+      if (isAllRules) {
+        const outcomes: Array<{ rule: Rule; outcome: ScanOutcome | null; error: string }> = [];
+        for (const item of ruleSet.rules) {
+          try {
+            outcomes.push({ rule: item, outcome: await scanner.scanRule(ruleSet.id, item.id), error: '' });
+          } catch (cause) {
+            outcomes.push({ rule: item, outcome: null, error: cause instanceof Error ? cause.message : 'The scan failed.' });
+          }
+        }
+        setLiveAll(outcomes);
+      } else if (rule) {
+        setLiveSingle(await scanner.scanRule(ruleSet.id, rule.id));
+      }
+    } catch (cause) {
+      setLiveError(cause instanceof Error ? cause.message : 'The scan failed.');
+    } finally {
+      setScanning(false);
+    }
   };
 
   useEffect(() => {
@@ -303,9 +339,9 @@ export function CsvChecker({ ruleSet, rule, definitions, checkMode, onCheckModeC
           <div className="mt-5">
             <div className="mb-2 text-[11px] font-bold text-muted-foreground">Source</div>
             <div className="grid grid-cols-2 rounded-md bg-muted/50 p-1 text-[13px] font-bold border border-border/30">
-              <button type="button" className="rounded-[4px] bg-card py-1.5 text-foreground shadow-sm ring-1 ring-border/20 transition-all" data-testid="button-source-csv">CSV upload</button>
-              <button type="button" className="flex cursor-not-allowed items-center justify-center gap-2 rounded-[4px] py-1.5 text-muted-foreground/50 transition-all hover:text-muted-foreground/70" disabled data-testid="button-source-live-scan">
-                Live scan <span className="rounded bg-black/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider dark:bg-white/10">Stage 2</span>
+              <ModeButton active={source === 'csv'} onClick={() => { setSource('csv'); resetResults(); }} testId="button-source-csv">CSV upload</ModeButton>
+              <button type="button" className={`flex items-center justify-center gap-2 rounded-[4px] py-1.5 transition-all ${source === 'live' ? 'bg-card text-foreground shadow-sm ring-1 ring-border/20' : scanner ? 'text-muted-foreground hover:text-foreground' : 'cursor-not-allowed text-muted-foreground/50'}`} disabled={!scanner} title={scanner ? undefined : 'Live scan needs the shared workspace.'} onClick={() => { setSource('live'); resetResults(); }} data-testid="button-source-live-scan">
+                Live scan {!scanner && <span className="rounded bg-black/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider dark:bg-white/10">Shared workspace</span>}
               </button>
             </div>
           </div>
@@ -323,7 +359,15 @@ export function CsvChecker({ ruleSet, rule, definitions, checkMode, onCheckModeC
             )}
           </div>
 
-          <div className={`mt-6 rounded-xl border-2 border-dashed p-6 transition-all duration-300 ${dragging ? 'border-primary bg-primary/5' : 'border-border bg-background hover:border-border/80 hover:bg-muted/30'}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); loadFile(event.dataTransfer.files[0]); }}>
+          {source === 'live' && (
+            <div className="mt-6 rounded-xl border border-border/50 bg-muted/20 p-5" data-testid="section-live-scan">
+              <div className="text-[13px] font-bold text-foreground">Live scan</div>
+              <p className="mt-1 text-[12px] font-semibold text-muted-foreground">{isAllRules ? `Every Rule in ${ruleSet.name} reads its own source table.` : `Reads every distinct ${rule?.source.nameColumn ?? 'name'} in ${rule?.source.dataset ?? ''}.${rule?.source.table ?? ''}${rule?.source.filter ? `, where ${rule.source.filter.column} is ${rule.source.filter.in.join(' or ')}` : ''}.`} Counts are exact over the whole table; the list shows the first 5,000.</p>
+              <button type="button" className={`${buttonPrimary} mt-4 w-full`} onClick={() => void runLiveScan()} disabled={scanning || !ruleSet || (!isAllRules && !rule)} data-testid="button-run-live-scan"><Database className="h-4 w-4" /> {scanning ? 'Scanning' : 'Scan BigQuery'}</button>
+              {liveError && <p className="mt-3 text-[12px] font-semibold text-destructive" data-testid="text-live-error">{liveError}</p>}
+            </div>
+          )}
+          <div hidden={source === 'live'} className={`mt-6 rounded-xl border-2 border-dashed p-6 transition-all duration-300 ${dragging ? 'border-primary bg-primary/5' : 'border-border bg-background hover:border-border/80 hover:bg-muted/30'}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); loadFile(event.dataTransfer.files[0]); }}>
             <label className="flex cursor-pointer flex-col items-center justify-center py-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground transition-all group-hover:bg-primary/10 group-hover:text-primary"><Upload className="h-5 w-5" /></div>
               <span className="mt-4 text-sm font-semibold text-foreground">Drop a CSV here or browse</span>
@@ -332,16 +376,20 @@ export function CsvChecker({ ruleSet, rule, definitions, checkMode, onCheckModeC
             </label>
           </div>
 
-          <div className="relative mt-6">
+          <div className="relative mt-6" hidden={source === 'live'}>
             <div className="absolute right-3 top-3 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-background px-1">paste</div>
             <textarea className="min-h-[160px] w-full resize-y rounded-xl border border-border bg-background p-4 font-mono text-[13px] leading-relaxed text-foreground outline-none transition-all placeholder:text-muted-foreground/50 focus:border-primary focus:ring-1 focus:ring-primary/50 hover:border-border/80" value={csv} onChange={(event) => editCsv(event.target.value)} aria-label="CSV data" data-testid="textarea-csv-input" />
           </div>
 
-          <button type="button" className={`${buttonPrimary} mt-5 w-full`} onClick={runCheck} disabled={!csv.trim()} data-testid="button-run-check"><ClipboardCheck className="h-4 w-4" /> Validate names</button>
+          <button type="button" className={`${buttonPrimary} mt-5 w-full`} onClick={runCheck} disabled={!csv.trim()} hidden={source === 'live'} data-testid="button-run-check"><ClipboardCheck className="h-4 w-4" /> Validate names</button>
         </section>
 
         <section className="min-w-0">
-          {(singleResults || allRulesResults) ? (
+          {liveSingle ? (
+            <LiveSingleResults outcome={liveSingle} />
+          ) : liveAll ? (
+            <LiveAllRulesResults outcomes={liveAll} />
+          ) : (singleResults || allRulesResults) ? (
             isAllRules && allRulesResults ? (
               <AllRulesResultsPanel results={allRulesResults} strictValidCount={validCount} ruleSet={ruleSet} />
             ) : singleResults ? (
@@ -356,6 +404,34 @@ export function CsvChecker({ ruleSet, rule, definitions, checkMode, onCheckModeC
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+// A live scan of one Rule: the exact counts in a banner, then the same list
+// the CSV check shows, from the capped annotated results.
+function LiveSingleResults({ outcome }: { outcome: ScanOutcome }) {
+  const results: SingleCheckResult[] = outcome.results.map((item, index) => ({ row: index + 1, name: item.name, valid: item.valid, violations: item.violations }));
+  return (
+    <div>
+      <div className="mb-4 rounded-xl border border-primary/30 bg-primary/10 p-4 text-xs text-primary" data-testid="text-live-summary">
+        <span className="font-semibold">{outcome.valid.toLocaleString()} of {outcome.scanned.toLocaleString()} distinct names valid</span> ({outcome.scanned > 0 ? Math.round((outcome.valid / outcome.scanned) * 100) : 0}%), exact over the whole table.{outcome.truncated ? ` The list below shows the first ${outcome.results.length.toLocaleString()}.` : ''}
+      </div>
+      {outcome.scanned === 0 ? <p className="text-sm font-semibold text-muted-foreground" data-testid="text-live-empty">The source table has no names.</p> : <SingleResultsPanel results={results} validCount={results.filter((item) => item.valid).length} />}
+    </div>
+  );
+}
+
+// Every Rule's scan pooled through the engine's rollup, the same figure the
+// CSV check reports under "All Rules"; a Rule whose scan failed shows why.
+function LiveAllRulesResults({ outcomes }: { outcomes: Array<{ rule: Rule; outcome: ScanOutcome | null; error: string }> }) {
+  const scans: RuleScan[] = outcomes.filter((item) => item.outcome).map((item) => ({ ruleId: item.rule.id, ruleKey: item.rule.key, ruleName: item.rule.name, ...(item.rule.tags ? { tags: item.rule.tags } : {}), scanned: item.outcome!.scanned, valid: item.outcome!.valid }));
+  const summary: Rollup = rollup(scans);
+  return (
+    <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30" data-testid="panel-live-all">
+      <div className="flex items-start justify-between gap-4"><div><div className="font-display text-2xl font-medium text-foreground">All Rules, live</div><p className="mt-1.5 text-[13px] font-bold text-muted-foreground"><span className="text-foreground">{summary.total.valid.toLocaleString()}</span> of {summary.total.scanned.toLocaleString()} distinct names valid, pooled across {scans.length} Rule{scans.length === 1 ? '' : 's'}</p></div><StatusPill invalidCount={summary.total.invalid} /></div>
+      <ul className="mt-5 divide-y divide-border/40">{outcomes.map((item) => <li key={item.rule.id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]" data-testid={`row-live-rule-${item.rule.id}`}><span className="font-semibold text-foreground">{item.rule.name}<span className="ml-2 font-mono text-[10px] text-muted-foreground">{item.rule.source.dataset}.{item.rule.source.table}</span></span>{item.outcome ? <span className="font-mono text-[12px] text-muted-foreground">{item.outcome.valid.toLocaleString()} / {item.outcome.scanned.toLocaleString()} valid</span> : <span className="text-[12px] font-semibold text-destructive">{item.error}</span>}</li>)}</ul>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2"><TagBreakdown title="By platform" groups={summary.byPlatform} testId="breakdown-live-platform" /><TagBreakdown title="By entity type" groups={summary.byEntityType} testId="breakdown-live-entity" /></div>
     </div>
   );
 }
