@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { checkRuleSetIssues, dependentsOf, entriesFromCodes, entryFromCode, isPlatform, PLATFORMS, type Definition, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
+import { checkRuleSetIssues, dependentsOf, entriesFromCodes, entryFromCode, isPlatform, PLATFORMS, resolveRule, type Definition, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
 import { Link } from 'wouter';
 import type { RuleSet, RuleSetDraft, Store } from '@/data/store';
 import { newId } from '@/lib/ids';
@@ -31,6 +31,22 @@ function mergeSegment(segment: Segment, updates: Partial<Segment>): Segment {
   const merged = { ...segment, ...updates } as Segment;
   if (merged.kind === 'enum' && merged.definitionId === undefined) delete merged.definitionId;
   return merged;
+}
+
+// Descendants take the delimiter and platform of the Rule they inherit from.
+function cascadeToChildren(rules: Rule[], parentId: string): Rule[] {
+  const parent = rules.find((rule) => rule.id === parentId);
+  if (!parent) return rules;
+  let next = rules;
+  for (const rule of rules) {
+    if (rule.parent?.ruleId !== parentId) continue;
+    const tags = cleanTags({ ...rule.tags, platform: parent.tags?.platform ?? '' });
+    const updated: Rule = { ...rule, delimiter: parent.delimiter, ...(tags ? { tags } : {}) };
+    if (!tags) delete updated.tags;
+    next = next.map((item) => (item.id === rule.id ? updated : item));
+    next = cascadeToChildren(next, rule.id);
+  }
+  return next;
 }
 
 function emptyRule(index: number): Rule {
@@ -99,6 +115,70 @@ function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, definit
 }
 
 // Feature 1: author one Rule Set and its Rules. Storage arrives as props.
+// The parent's resolved segments a child may inherit: the leading run of
+// required segments (D28). An option per position, "up to <label>".
+function inheritableSegments(parent: Rule | undefined, draftRuleSet: { id: string; name: string; rules: Rule[] }, definitions: Definition[]): { segments: Segment[]; error: string } {
+  if (!parent) return { segments: [], error: '' };
+  const resolution = resolveRule(parent, draftRuleSet, definitions);
+  if (resolution.errors.length > 0) return { segments: [], error: `The parent cannot be resolved yet: ${resolution.errors[0]}` };
+  const leading: Segment[] = [];
+  for (const segment of resolution.rule.segments) {
+    if (!segment.required) break;
+    leading.push(segment);
+  }
+  return { segments: leading, error: '' };
+}
+
+// Step 5: a Rule may inherit the leading segments of another Rule in the same
+// Rule Set (D15, D28). Picking a parent copies its delimiter and platform and
+// locks both; the inherited run is chosen by its last segment.
+function ParentPicker({ rule, ruleIndex, rules, draftRuleSet, definitions, onChange }: { rule: Rule; ruleIndex: number; rules: Rule[]; draftRuleSet: { id: string; name: string; rules: Rule[] }; definitions: Definition[]; onChange: (updates: Partial<Rule>) => void }) {
+  const candidates = rules.filter((candidate) => candidate.id !== rule.id);
+  const parent = rules.find((candidate) => candidate.id === rule.parent?.ruleId);
+  const { segments: inheritable, error } = inheritableSegments(parent, draftRuleSet, definitions);
+  const inheritedCount = rule.parent?.inheritSegmentIds.length ?? 0;
+
+  const pickParent = (parentId: string) => {
+    if (!parentId) {
+      onChange({ parent: undefined });
+      return;
+    }
+    const chosen = rules.find((candidate) => candidate.id === parentId);
+    if (!chosen) return;
+    const tags = cleanTags({ ...rule.tags, platform: chosen.tags?.platform ?? '' });
+    onChange({ parent: { ruleId: parentId, inheritSegmentIds: [] }, delimiter: chosen.delimiter, tags });
+  };
+
+  const pickCount = (count: number) => {
+    if (!rule.parent) return;
+    onChange({ parent: { ...rule.parent, inheritSegmentIds: inheritable.slice(0, count).map((segment) => segment.id) } });
+  };
+
+  return (
+    <div className="mt-4 grid gap-4 sm:grid-cols-2" data-testid={`section-parent-${ruleIndex}`}>
+      <label className="text-[13px] font-bold text-foreground">Parent rule: <span className="font-normal text-muted-foreground ml-1">(optional)</span><select className={`${inputClass} mt-2`} value={rule.parent?.ruleId ?? ''} onChange={(event) => pickParent(event.target.value)} data-testid={`select-rule-parent-${ruleIndex}`}><option value="">None</option>{candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}</select></label>
+      {rule.parent && (
+        <label className="text-[13px] font-bold text-foreground">Inherit the parent's segments through:<select className={`${inputClass} mt-2`} value={String(Math.min(inheritedCount, inheritable.length))} disabled={inheritable.length === 0} onChange={(event) => pickCount(Number(event.target.value))} data-testid={`select-rule-inherit-${ruleIndex}`}><option value="0">None</option>{inheritable.map((segment, index) => <option key={segment.id} value={String(index + 1)}>{segment.label}{index + 1 === inheritable.length ? '' : ''}</option>)}</select>{error && <span className="mt-1 block text-[11px] font-semibold text-destructive">{error}</span>}{!error && inheritable.length === 0 && <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">The parent has no required segments to inherit.</span>}</label>
+      )}
+    </div>
+  );
+}
+
+// The segments a child reads from its parent, shown above its own so the
+// full name order is visible; they are edited on the parent.
+function InheritedSegments({ rule, ruleIndex, draftRuleSet, definitions }: { rule: Rule; ruleIndex: number; draftRuleSet: { id: string; name: string; rules: Rule[] }; definitions: Definition[] }) {
+  if (!rule.parent || rule.parent.inheritSegmentIds.length === 0) return null;
+  const parent = draftRuleSet.rules.find((candidate) => candidate.id === rule.parent?.ruleId);
+  const { segments } = inheritableSegments(parent, draftRuleSet, definitions);
+  const inherited = rule.parent.inheritSegmentIds.map((id) => segments.find((segment) => segment.id === id)).filter((segment): segment is Segment => Boolean(segment));
+  if (inherited.length === 0) return null;
+  return (
+    <ol className="mb-4 flex flex-col gap-2" data-testid={`list-inherited-segments-${ruleIndex}`}>
+      {inherited.map((segment) => <li key={segment.id} className="flex items-center justify-between rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-2.5 text-[13px]"><span className="font-bold text-foreground">{segment.label} <span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span></span><span className="text-[11px] font-bold text-muted-foreground">Inherited from {parent?.name}</span></li>)}
+    </ol>
+  );
+}
+
 // readOnly: the signed-in user is not a workspace admin (only admins may
 // change Rule Sets, under the Security Rules); every control is disabled and
 // the Save and Delete buttons give way to a hint.
@@ -141,8 +221,19 @@ export function RuleSetEditor({ existing, definitions, readOnly = false, storeKi
   const issues = checkRuleSetIssues(draftRuleSet, definitions);
   const hasIssues = issues.ruleSet.length > 0 || Object.keys(issues.rules).length > 0;
 
-  const updateRule = (ruleIndex: number, updates: Partial<Rule>) => setRules((current) => current.map((rule, index) => index === ruleIndex ? { ...rule, ...updates } : rule));
-  const updateTags = (ruleIndex: number, patch: Tags) => setRules((current) => current.map((rule, index) => index === ruleIndex ? { ...rule, tags: cleanTags({ ...rule.tags, ...patch }) } : rule));
+  // A child shares its parent's delimiter and platform (D29, D47), so a change
+  // on a parent flows down to every descendant; a cleared parent link leaves
+  // the Rule rather than lingering as undefined.
+  const updateRule = (ruleIndex: number, updates: Partial<Rule>) => setRules((current) => {
+    const next = current.map((rule, index) => {
+      if (index !== ruleIndex) return rule;
+      const merged = { ...rule, ...updates };
+      if (merged.parent === undefined) delete merged.parent;
+      return merged;
+    });
+    return cascadeToChildren(next, next[ruleIndex].id);
+  });
+  const updateTags = (ruleIndex: number, patch: Tags) => setRules((current) => cascadeToChildren(current.map((rule, index) => index === ruleIndex ? { ...rule, tags: cleanTags({ ...rule.tags, ...patch }) } : rule), current[ruleIndex].id));
   const updateSegment = (ruleIndex: number, segmentIndex: number, updates: Partial<Segment>) => setRules((current) => current.map((rule, index) => index === ruleIndex ? { ...rule, segments: rule.segments.map((segment: Segment, segIndex: number) => segIndex === segmentIndex ? mergeSegment(segment, updates) : segment) } : rule));
   const addSegment = (ruleIndex: number) => setRules((current) => current.map((rule, index) => index === ruleIndex ? { ...rule, segments: [...rule.segments, emptySegment(rule.segments.length)] } : rule));
   const removeSegment = (ruleIndex: number, segmentIndex: number) => setRules((current) => current.map((rule, index) => index === ruleIndex ? { ...rule, segments: rule.segments.filter((_: Segment, segIndex: number) => segIndex !== segmentIndex) } : rule));
@@ -201,13 +292,15 @@ export function RuleSetEditor({ existing, definitions, readOnly = false, storeKi
             updateRule(ruleIndex, { name: newName, key: slugify(newName) || `rule_${ruleIndex + 1}` });
           }} placeholder="e.g. Google Campaigns" data-testid={`input-rule-name-${ruleIndex}`} /></label>
           <label className="text-[13px] font-bold text-foreground">Key: <span className="font-normal text-muted-foreground ml-1">(machine name)</span><input className={`${inputClass} mt-2 font-mono`} value={rule.key} onChange={(event) => updateRule(ruleIndex, { key: event.target.value.toLowerCase().replaceAll(' ', '_') })} data-testid={`input-rule-key-${ruleIndex}`} /></label>
-          <label className="text-[13px] font-bold text-foreground">Join with:<input className={`${inputClass} mt-2 font-mono text-center`} maxLength={1} value={rule.delimiter} onChange={(event) => updateRule(ruleIndex, { delimiter: event.target.value })} placeholder="-" data-testid={`input-rule-delimiter-${ruleIndex}`} /></label>
+          <label className="text-[13px] font-bold text-foreground">Join with:<input className={`${inputClass} mt-2 font-mono text-center`} maxLength={1} value={rule.delimiter} disabled={Boolean(rule.parent)} title={rule.parent ? 'Set by the parent Rule' : undefined} onChange={(event) => updateRule(ruleIndex, { delimiter: event.target.value })} placeholder="-" data-testid={`input-rule-delimiter-${ruleIndex}`} /></label>
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-           <label className="text-[13px] font-bold text-foreground">Platform: <span className="font-normal text-muted-foreground ml-1">(optional)</span><select className={`${inputClass} mt-2`} value={rule.tags?.platform ?? ''} onChange={(event) => updateTags(ruleIndex, { platform: event.target.value })} data-testid={`input-rule-platform-${ruleIndex}`}><option value="">None</option>{rule.tags?.platform && !isPlatform(rule.tags.platform) ? <option value={rule.tags.platform}>{rule.tags.platform} (not a known platform)</option> : null}{PLATFORMS.map((platform) => <option key={platform.id} value={platform.id}>{platform.name}</option>)}</select></label>
+           <label className="text-[13px] font-bold text-foreground">Platform: <span className="font-normal text-muted-foreground ml-1">(optional)</span><select className={`${inputClass} mt-2`} value={rule.tags?.platform ?? ''} disabled={Boolean(rule.parent)} title={rule.parent ? 'Set by the parent Rule' : undefined} onChange={(event) => updateTags(ruleIndex, { platform: event.target.value })} data-testid={`input-rule-platform-${ruleIndex}`}><option value="">None</option>{rule.tags?.platform && !isPlatform(rule.tags.platform) ? <option value={rule.tags.platform}>{rule.tags.platform} (not a known platform)</option> : null}{PLATFORMS.map((platform) => <option key={platform.id} value={platform.id}>{platform.name}</option>)}</select></label>
            <label className="text-[13px] font-bold text-foreground">Entity type: <span className="font-normal text-muted-foreground ml-1">(optional)</span><input className={`${inputClass} mt-2`} value={rule.tags?.entityType ?? ''} onChange={(event) => updateTags(ruleIndex, { entityType: event.target.value })} placeholder="e.g. campaign, ad_set" data-testid={`input-rule-entity-type-${ruleIndex}`} /></label>
         </div>
+
+        <ParentPicker rule={rule} ruleIndex={ruleIndex} rules={rules} draftRuleSet={draftRuleSet} definitions={definitions} onChange={(updates) => updateRule(ruleIndex, updates)} />
 
         <div className="mt-5 rounded-lg border border-border/50 bg-muted/20 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><Database className="h-4 w-4 text-muted-foreground" /><div><div className="text-[13px] font-bold text-foreground">Source mapping</div><div className="text-[11px] font-bold text-muted-foreground mt-0.5">Used for live scanning in Stage 2.</div></div></div><button type="button" className="text-[13px] font-bold text-foreground underline-offset-2 hover:underline" onClick={() => {
           if (rule.source.filter) {
@@ -220,6 +313,7 @@ export function RuleSetEditor({ existing, definitions, readOnly = false, storeKi
         }} data-testid={`button-toggle-filter-${ruleIndex}`}>{rule.source.filter ? 'Remove filter' : 'Add filter'}</button></div><div className="mt-4 grid gap-3 sm:grid-cols-3"><label className="text-[11px] font-bold text-foreground">Dataset:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.dataset} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, dataset: event.target.value } })} data-testid={`input-source-dataset-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Table:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.table} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, table: event.target.value } })} data-testid={`input-source-table-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Name column:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.nameColumn} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, nameColumn: event.target.value } })} data-testid={`input-source-name-column-${ruleIndex}`} /></label></div>{rule.source.filter && <div className="mt-4 grid gap-3 sm:grid-cols-2 border-t border-border/50 pt-4"><label className="text-[11px] font-bold text-foreground">Filter column:<input className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.filter.column} onChange={(event) => updateRule(ruleIndex, { source: { ...rule.source, filter: { ...rule.source.filter!, column: event.target.value } } })} data-testid={`input-source-filter-col-${ruleIndex}`} /></label><label className="text-[11px] font-bold text-foreground">Filter values: <span className="font-normal text-muted-foreground ml-1">(comma separated)</span><CommaListInput className={`${inputClass} mt-1.5 font-mono text-[12px]`} value={rule.source.filter.in} onChange={(list) => updateRule(ruleIndex, { source: { ...rule.source, filter: { ...rule.source.filter!, in: list } } })} placeholder="active, published" testId={`input-source-filter-in-${ruleIndex}`} /></label></div>}</div>
         <div className="mt-6 border-t border-border/50 pt-6"><div className="mb-4 flex items-center justify-between"><div><h4 className="font-display text-lg font-medium text-foreground">Segments</h4></div><button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-[4px] border border-border px-3 text-xs font-bold text-foreground transition hover:bg-muted" onClick={() => addSegment(ruleIndex)} data-testid={`button-add-segment-${ruleIndex}`}><Plus className="h-3.5 w-3.5" /> Add segment</button></div>
           {rule.segments.length === 0 && <div className="rounded-lg border border-dashed border-border/50 bg-background/30 px-4 py-8 text-center text-[13px] font-bold text-muted-foreground">No segments defined.</div>}
+          <InheritedSegments rule={rule} ruleIndex={ruleIndex} draftRuleSet={draftRuleSet} definitions={definitions} />
           <div className="space-y-4">{rule.segments.map((segment: Segment, segmentIndex: number) => <SegmentEditor key={segment.id} segment={segment} ruleIndex={ruleIndex} segmentIndex={segmentIndex} segmentCount={rule.segments.length} definitions={definitions} platform={rule.tags?.platform} inheritedBy={dependentsOf(draftRuleSet, rule.id, segment.id).map((dependent) => dependent.ruleName)} onChange={(updates) => updateSegment(ruleIndex, segmentIndex, updates)} onMove={(direction) => moveSegment(ruleIndex, segmentIndex, direction)} onRemove={() => removeSegment(ruleIndex, segmentIndex)} />)}</div>
         </div>
       </section>)}</div>

@@ -290,3 +290,34 @@ Check look the same to a user; they now work on resolved Rules.
   author sees the reason before reaching for the button.
 - Delete protection disables the control rather than showing a dialog: the reason is beside the
   Rule already, and a dialog naming the same Rules would add a click.
+
+## Step 5: the parent picker in Author
+
+### What changed
+
+- `apps/web/src/components/RuleSetEditor.tsx`: each Rule has a "Parent rule" select over the
+  other Rules in the Rule Set. Picking one copies the parent's delimiter and platform onto the
+  child and locks both controls (D29, D47); clearing it frees them. A second select, "Inherit the
+  parent's segments through", lists the parent's leading required segments (its resolved
+  segments, so a grandparent's show too) and stores the first N ids (D28). The inherited
+  segments are listed read-only above the child's own, labelled with the parent's name. A
+  delimiter or platform change on a parent cascades to every descendant, so the locked
+  controls can never drift from it.
+- `apps/web/e2e/author-hierarchy.spec.ts`: a third test links Meta Ad Sets under Google
+  Campaigns, inherits two segments, saves, reads the link back by id, sees the parent's Remove
+  and inherited segments locked, then clears the link. The step 4 test now breaks the child
+  with a key collision, since the delimiter can no longer be edited on a child.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test:e2e` | 26 of 26 (1 new) |
+
+### Decisions not spelled out in the plan
+
+- The inherited run is chosen by its last segment ("through Market") rather than a checklist,
+  which makes the leading-run rule (D28) impossible to break from the screen.
+- Cycles are not prevented by the select (every other Rule is offered); the engine's cycle
+  error appears beside the Rule and blocks Save, which is simpler than hiding descendants.

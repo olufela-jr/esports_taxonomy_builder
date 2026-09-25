@@ -173,6 +173,7 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
 5. Author: definitions screen with the label control (D39), definition picker on enum
    segments filtered by platform, parent UI. Code edits save with a plain warning until
    phase 4 (D44).
+   Done 2026-09-25 (the definitions screen is the Dictionary tab, step 2b).
 6. Build parent step and chaining; `parse` returns selections by code, failing on an
    invalid name (today it is a plain split).
 7. UTM types, `buildTrackingUrl`, `validateUtmValue` and tests, plus the `checkRuleSet`
