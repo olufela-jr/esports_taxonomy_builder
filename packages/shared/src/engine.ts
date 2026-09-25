@@ -1067,3 +1067,96 @@ export function buildTrackingUrl(rule: Rule, ruleSet: RuleSet, context: UtmConte
   }
   return { url: url.toString(), values, errors: [] };
 }
+// ---- Batch build (v2 D32, D33 as amended at G0) --------------------------------------
+
+// What a batch uses per segment, keyed by segment key: the codes to combine
+// (labels are display only, D40). For an optional segment "" means "omit";
+// an omitted optional implies every later optional is omitted in that row.
+export type BatchChoices = Record<string, string[]>;
+
+export type BatchRow = {
+  selections: Record<string, string>;
+  name: string;
+};
+
+// Everything wrong with a batch before a single row is generated: an
+// unresolved Rule, a required segment with no values, or a value its segment
+// would refuse (so one bad freeform line fails here, not on row 40,000).
+export function checkBatchChoices(rule: Rule, choices: BatchChoices): string[] {
+  const unresolved = unresolvedReason(rule);
+  if (unresolved) return [unresolved];
+  const errors: string[] = [...getRuleErrors(rule)];
+  for (const segment of rule.segments) {
+    const values = choices[segment.key] ?? [];
+    const filled = values.filter((value) => value !== "");
+    if (segment.required && filled.length === 0) {
+      errors.push(`${segment.label} needs at least one value.`);
+    }
+    if (!segment.required && values.length === 0) {
+      errors.push(`${segment.label} needs at least one value, or "" to omit it.`);
+    }
+    if (new Set(values).size !== values.length) {
+      errors.push(`${segment.label} lists a value more than once.`);
+    }
+    if (segment.required && values.includes("")) {
+      errors.push(`${segment.label} is required and cannot be omitted.`);
+    }
+    for (const value of filled) {
+      for (const violation of valueViolations(rule, segment, value)) {
+        errors.push(`${segment.label}: "${value}": ${violation.reason}`);
+      }
+    }
+  }
+  return errors;
+}
+
+function assertBatch(rule: Rule, choices: BatchChoices): void {
+  const errors = checkBatchChoices(rule, choices);
+  if (errors.length > 0) {
+    throw new Error(errors.join(" "));
+  }
+}
+
+// The number of rows enumerate will yield, in time linear in the segments:
+// a required segment multiplies by its values; an optional one adds the
+// "omitted here" branch (one row shape, if "" is among its choices) to its
+// filled values times whatever follows.
+export function countCombinations(rule: Rule, choices: BatchChoices): number {
+  assertBatch(rule, choices);
+  return countFrom(rule, choices, 0);
+}
+
+function countFrom(rule: Rule, choices: BatchChoices, index: number): number {
+  if (index >= rule.segments.length) return 1;
+  const segment = rule.segments[index];
+  const values = choices[segment.key] ?? [];
+  const filled = values.filter((value) => value !== "").length;
+  const rest = countFrom(rule, choices, index + 1);
+  if (segment.required) return filled * rest;
+  const omitted = values.includes("") ? 1 : 0;
+  return omitted + filled * rest;
+}
+
+// Every combination in a fixed order (first segment slowest), one row at a
+// time, each produced by compose so each passes validate. The caller keeps as
+// many rows as it wants; the generator holds one.
+export function* enumerate(rule: Rule, choices: BatchChoices): Generator<BatchRow> {
+  assertBatch(rule, choices);
+  yield* walk(rule, choices, 0, {});
+}
+
+function* walk(rule: Rule, choices: BatchChoices, index: number, selections: Record<string, string>): Generator<BatchRow> {
+  if (index >= rule.segments.length) {
+    yield { selections, name: compose(rule, selections).name };
+    return;
+  }
+  const segment = rule.segments[index];
+  for (const value of choices[segment.key] ?? []) {
+    if (value === "") {
+      // Omitting an optional segment ends the row here: later optionals are omitted too.
+      yield { selections, name: compose(rule, selections).name };
+      continue;
+    }
+    yield* walk(rule, choices, index + 1, { ...selections, [segment.key]: value });
+  }
+}

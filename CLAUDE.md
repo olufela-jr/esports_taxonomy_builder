@@ -181,8 +181,9 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
    Done 2026-09-25 (`checkUtmMapping`, `ancestorsOf`).
 8. Author UTM panel; Build URL output. Done 2026-09-25.
 9. Playwright additions.
-Phase 3 is batch (`enumerate`, `countCombinations`, then the D34 child batch in
-`docs/features/`); phase 4 the BigQuery scan and the impact preview; phase 5 requests.
+Phase 3 is batch (`enumerate`, `countCombinations`: done 2026-09-25, log in `v3/phase-3.md`;
+then the D34 child batch in `docs/features/`); phase 4 the BigQuery scan and the impact
+preview; phase 5 drafts and Build blocking.
 
 ## Stage 2 (only after the checklist)
 Callable Cloud Function `scanCampaigns` in `functions/`, importing `@taxo/shared`. The

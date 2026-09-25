@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { buildTrackingUrl, compose, parse, resolveRule, type Definition, type Rule, type Segment } from '@taxo/shared';
 import { AlertCircle, ArrowRight, Check, Copy, Database, Filter, Link2, Lock, Zap } from 'lucide-react';
 import type { RuleSet } from '@/data/store';
+import { BatchBuilder } from './BatchBuilder';
 import { PageHeading } from './PageHeading';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
@@ -34,6 +35,8 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
   // A base URL typed at build time, per Rule, when the mapping allows editing.
   const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
   const [copiedUrl, setCopiedUrl] = useState(false);
+  // Single is today's flow; Batch generates every combination as a CSV (phase 3).
+  const [mode, setMode] = useState<'single' | 'batch'>('single');
 
   useEffect(() => {
     setValues({});
@@ -106,7 +109,15 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
 
   return (
     <div>
-      <PageHeading eyebrow="Workspace" title="Compose a name" description="Fill the required segments to generate a compliant name." />
+      <PageHeading eyebrow="Workspace" title="Compose a name" description={mode === 'single' ? 'Fill the required segments to generate a compliant name.' : 'Pick the values to combine and generate every name at once.'} action={<div className="inline-flex rounded-[4px] border border-border bg-card p-0.5" role="group" aria-label="Build mode">{(['single', 'batch'] as const).map((item) => <button key={item} type="button" className={`rounded-[3px] px-3 py-1.5 text-[12px] font-bold capitalize transition ${mode === item ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setMode(item)} aria-pressed={mode === item} data-testid={`button-build-mode-${item}`}>{item}</button>)}</div>} />
+      {rule.parent && parentRule && mode === 'batch' && (
+        <div className="mb-6 rounded-lg border border-border/50 bg-muted/20 p-4" data-testid="section-build-parent">
+          <label htmlFor="build-parent-batch" className="text-[13px] font-bold text-foreground">Under {parentRule.name}:<span className="ml-2 font-normal text-muted-foreground">the batch runs under this one name</span></label>
+          <input id="build-parent-batch" className={`${inputClass} mt-2 font-mono`} value={parentName} onChange={(event) => setParentNames((current) => ({ ...current, [rule.id]: event.target.value }))} data-testid="input-build-parent" />
+          {parentName && parentParse && !parentParse.valid && <ul className="mt-3 list-disc pl-5 text-xs font-semibold text-destructive" data-testid="status-build-parent-violations">{parentParse.violations.map((violation) => <li key={`${violation.segmentKey}-${violation.reason}`}>{violation.reason}</li>)}</ul>}
+        </div>
+      )}
+      {mode === 'batch' ? (parentReady ? <BatchBuilder rule={rule} active={active} ruleSet={ruleSet} inheritedValues={inheritedValues} parentName={parentName} baseUrl={baseUrl} /> : <p className="text-sm font-semibold text-muted-foreground" data-testid="text-batch-needs-parent">Paste a valid {parentRule?.name.toLowerCase()} name to batch under it.</p>) : (
       <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
         <section className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
           <div className="mb-8 flex items-start justify-between gap-4">
@@ -220,6 +231,7 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
           </div>
         </section>
       </div>
+      )}
     </div>
   );
 }

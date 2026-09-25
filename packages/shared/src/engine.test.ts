@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTrackingUrl,
+  checkBatchChoices,
   checkDefinition,
   checkRule,
   checkRuleSet,
   checkRuleSetIssues,
   checkUtmMapping,
   compose,
+  countCombinations,
   definitionDependents,
   dependentsOf,
+  enumerate,
   isPlatform,
   parse,
   platformName,
@@ -893,5 +896,51 @@ describe("tracking URLs", () => {
     ]);
     // The checks surface through checkRuleSetIssues beside the Rule.
     expect(checkRuleSetIssues(ruleSetOf(campaign, badLiteral)).rules["r_ad_group"]).toHaveLength(2);
+  });
+});
+
+// ---- batch build ----------------------------------------------------------------------
+
+describe("batch build", () => {
+  const twoOptional: Rule = {
+    ...campaignRule,
+    segments: [typeSegment, marketSegment, customSegment, { ...customSegment, id: "s_note", key: "note", label: "Note" }],
+  };
+
+  it("counts the product of the chosen codes and enumerates exactly that many rows in a fixed order", () => {
+    const choices = { campaign_type: ["brand", "perf"], market: ["uk", "us", "de"], custom_id: [""] };
+    expect(countCombinations(campaignRule, choices)).toBe(6);
+    const rows = [...enumerate(campaignRule, choices)];
+    expect(rows).toHaveLength(6);
+    expect(rows.map((row) => row.name)).toEqual(["brand_uk", "brand_us", "brand_de", "perf_uk", "perf_us", "perf_de"]);
+    expect(rows[0].selections).toEqual({ campaign_type: "brand", market: "uk" });
+    // Every row passes validate against the same Rule: the round-trip guarantee covers batch.
+    for (const row of rows) expect(validate(campaignRule, row.name).valid).toBe(true);
+    // The same choices always produce the same file.
+    expect([...enumerate(campaignRule, choices)].map((row) => row.name)).toEqual(rows.map((row) => row.name));
+  });
+
+  it("treats an omitted optional as ending the row, so the count matches the rows and later optionals are skipped", () => {
+    // custom_id: include "a1" or omit; note: "n1" or "n2" or omit.
+    const choices = { campaign_type: ["brand"], market: ["uk"], custom_id: ["a1", ""], note: ["n1", "n2", ""] };
+    const rows = [...enumerate(twoOptional, choices)];
+    expect(rows.map((row) => row.name)).toEqual(["brand_uk_a1_n1", "brand_uk_a1_n2", "brand_uk_a1", "brand_uk"]);
+    expect(countCombinations(twoOptional, choices)).toBe(rows.length);
+    for (const row of rows) expect(validate(twoOptional, row.name).valid).toBe(true);
+    // Omitting the first optional never yields a row with the second filled.
+    expect(rows.some((row) => !row.selections.custom_id && row.selections.note)).toBe(false);
+    // With no "" the optional is always filled.
+    expect(countCombinations(twoOptional, { ...choices, custom_id: ["a1"], note: ["n1"] })).toBe(1);
+  });
+
+  it("refuses bad choices before generating anything, and an unresolved Rule", () => {
+    expect(checkBatchChoices(campaignRule, { campaign_type: [], market: ["uk"], custom_id: [""] })).toEqual(["Campaign Type needs at least one value."]);
+    expect(checkBatchChoices(campaignRule, { campaign_type: ["brand"], market: ["uk", "fr"], custom_id: [""] })).toEqual(['Market: "fr": Value is not in the allowed list.']);
+    expect(checkBatchChoices(campaignRule, { campaign_type: ["brand"], market: ["uk"], custom_id: ["with space", ""] })).toEqual(['Custom ID: "with space": Value contains an illegal character: " ".']);
+    expect(checkBatchChoices(campaignRule, { campaign_type: ["brand", ""], market: ["uk"], custom_id: [""] })).toEqual(["Campaign Type is required and cannot be omitted."]);
+    expect(checkBatchChoices(campaignRule, { campaign_type: ["brand"], market: ["uk"] })).toEqual(['Custom ID needs at least one value, or "" to omit it.']);
+    expect(() => countCombinations(campaignRule, { campaign_type: [], market: ["uk"], custom_id: [""] })).toThrow("Campaign Type needs at least one value.");
+    const chain = ruleSetOf(campaignRule, adGroupRule);
+    expect(checkBatchChoices(childOf(chain, "r_ad_group"), {})[0]).toContain("resolve it with resolveRule");
   });
 });

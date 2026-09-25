@@ -8,6 +8,7 @@ on `main`, and each phase gets one notes file here, updated with every commit in
 |---|---|
 | [phase-1.md](phase-1.md) | Foundation: enum entries, Auth claims and roles, tenant path, Security Rules, Function guard, migration scripts |
 | [phase-2.md](phase-2.md) | Repository: platform list, definitions, resolution on codes, Author and Build for hierarchy and UTMs |
+| [phase-3.md](phase-3.md) | Batch build: combinations of codes as a CSV, then the child batch across parents |
 
 Conventions for the notes files are the same as `migration/README.md`:
 
