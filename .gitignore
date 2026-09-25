@@ -30,3 +30,4 @@ blob-report/
 .DS_Store
 .idea/
 .vscode/
+functions/deploy/
