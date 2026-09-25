@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, Download, Play } from 'lucide-react';
-import { buildTrackingUrl, checkBatchChoices, countCombinations, enumerate, type BatchChoices, type Rule, type Segment } from '@taxo/shared';
+import { AlertCircle, ArrowRight, Download, Play } from 'lucide-react';
+import { buildTrackingUrl, checkBatchChoices, countCombinations, enumerate, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
 import type { RuleSet } from '@/data/store';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
@@ -22,23 +22,28 @@ type BatchBuilderProps = {
   inheritedValues: Record<string, string>; // from the parent step; single-item lists, locked
   parentName: string;
   baseUrl: string;
+  children: Rule[]; // Rules whose parent is this one, for "Build children under these names"
+  onCarry: (childId: string, lines: ParentLine[]) => void;
 };
 
 function csvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
-export function BatchBuilder({ rule, active, ruleSet, inheritedValues, parentName, baseUrl }: BatchBuilderProps) {
+export function BatchBuilder({ rule, active, ruleSet, inheritedValues, parentName, baseUrl, children, onCarry }: BatchBuilderProps) {
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [lines, setLines] = useState<Record<string, string>>({});
   const [optional, setOptional] = useState<Record<string, OptionalMode>>({});
   const [preview, setPreview] = useState<Array<{ selections: Record<string, string>; name: string; url: string }>>([]);
   const [generated, setGenerated] = useState<number | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  // Every generated name, for the carry-over list; unticked names are left behind.
+  const [names, setNames] = useState<string[]>([]);
+  const [left, setLeft] = useState<Set<string>>(new Set());
 
   // A new Rule starts a new batch; a stale object URL is released.
   useEffect(() => {
-    setPicked({}); setLines({}); setOptional({}); setPreview([]); setGenerated(null);
+    setPicked({}); setLines({}); setOptional({}); setPreview([]); setGenerated(null); setNames([]); setLeft(new Set());
     setDownloadUrl((current) => { if (current) URL.revokeObjectURL(current); return null; });
   }, [rule.id]);
 
@@ -85,6 +90,7 @@ export function BatchBuilder({ rule, active, ruleSet, inheritedValues, parentNam
     const header = [...segments.map((segment) => segment.key), 'name', ...(mapping ? ['tracking_url'] : [])];
     const chunks: string[] = [`${header.join(',')}\n`];
     const rows: typeof preview = [];
+    const allNames: string[] = [];
     let total = 0;
     // One row at a time from the engine into the CSV text; only the preview stays in state.
     for (const row of enumerate(active, choices)) {
@@ -97,8 +103,11 @@ export function BatchBuilder({ rule, active, ruleSet, inheritedValues, parentNam
       const cells = [...segments.map((segment) => row.selections[segment.key] ?? ''), row.name, ...(mapping ? [url] : [])];
       chunks.push(`${cells.map(csvCell).join(',')}\n`);
       if (rows.length < PREVIEW_ROWS) rows.push({ selections: row.selections, name: row.name, url });
+      allNames.push(row.name);
       total += 1;
     }
+    setNames(allNames);
+    setLeft(new Set());
     const blob = new Blob(chunks, { type: 'text/csv;charset=utf-8' });
     setDownloadUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
     setPreview(rows);
@@ -145,6 +154,14 @@ export function BatchBuilder({ rule, active, ruleSet, inheritedValues, parentNam
           )}
           {mapping && !baseUrl && <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-bold text-muted-foreground"><AlertCircle className="h-3.5 w-3.5" /> No base URL, so the tracking_url column will be empty.</p>}
         </div>
+        {children.length > 0 && names.length > 0 && (
+          <div className="mt-4 rounded-xl bg-card p-6 shadow-sm border border-border/30" data-testid="section-batch-carry">
+            <div className="font-display text-xl font-medium text-foreground">Build children under these names</div>
+            <p className="mt-1 text-[12px] font-bold text-muted-foreground">Untick any name to leave it out{names.length > PREVIEW_ROWS ? `; the first ${PREVIEW_ROWS} are listed, all ${names.length.toLocaleString()} carry across` : ''}.</p>
+            <div className="mt-3 max-h-48 overflow-y-auto rounded-[4px] border border-border/50 p-2">{names.slice(0, PREVIEW_ROWS).map((name) => <label key={name} className="flex items-center gap-2 py-0.5 font-mono text-[12px] text-foreground"><input type="checkbox" checked={!left.has(name)} onChange={() => setLeft((current) => { const next = new Set(current); if (next.has(name)) next.delete(name); else next.add(name); return next; })} className="h-3.5 w-3.5 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-carry-${name}`} /> {name}</label>)}</div>
+            <div className="mt-3 flex flex-col gap-2">{children.map((child) => <button key={child.id} type="button" className={`${buttonQuiet} w-full justify-between`} disabled={names.length - left.size === 0} onClick={() => onCarry(child.id, names.filter((name) => !left.has(name)).map((name) => ({ name, ...(rule.parent && parentName ? { ancestors: { [rule.parent.ruleId]: parentName } } : {}) })))} data-testid={`button-carry-child-${child.id}`}>Build {child.name} under {names.length - left.size === 1 ? 'this name' : `these ${(names.length - left.size).toLocaleString()} names`} <ArrowRight className="h-4 w-4" /></button>)}</div>
+          </div>
+        )}
         {preview.length > 0 && (
           <div className="mt-4 overflow-x-auto rounded-xl bg-card p-4 shadow-sm border border-border/30">
             <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Preview{generated !== null && generated > preview.length ? `, first ${preview.length} of ${generated.toLocaleString()}` : ''}</div>

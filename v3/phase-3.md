@@ -84,6 +84,52 @@ step implements sections 3 and 4 and stops before the UI, as the sheet's instruc
 - Inherited segments are detected as the child's segments whose keys the parsed parent name
   supplies, since a resolved child no longer carries its parent link.
 
-## Next
+## Step 2b: the D34 child batch, Build UI
 
-- Step 2b: sections 5 to 7 of the sheet, the Build UI for the child batch, after confirmation.
+Sections 5 to 7 of the sheet, after confirmation.
+
+### What changed
+
+- `apps/web/src/components/ChildBatchBuilder.tsx` (new): in Batch mode a child Rule shows a
+  parent list instead of the single parent step. Parents are pasted one per line (a tab or
+  comma separates the name from ancestor names, in the batch CSV's column order; a header line
+  and further columns are ignored, so a batch CSV pastes back as it is) or carried across from
+  a parent batch. `checkParents` runs on every change; failing lines are listed with their
+  violations, or the missing ancestor column, and a remove action; valid lines stay. The
+  child's own controls are shared across parents, inherited segments are shown as taken from
+  each parent name. Each valid parent row shows its count and expands to untick shared values
+  for that parent only; narrowing can only remove and survives changes to the shared choices.
+  Total live, the 50,000 cap on the total, Generate disabled while any line fails. Output: a
+  preview of the first 500 rows grouped by parent and a streamed CSV with `parent_name`, one
+  column per needed ancestor, one per child segment, `name` and `tracking_url` when mapped,
+  every cell a code (D48); each row's URL uses its own parent and ancestors.
+- `apps/web/src/components/BatchBuilder.tsx`: after a parent-level batch, "Build <child>
+  under these names" with a checkbox list to leave names out; carrying switches to the child
+  in Batch mode with the list filled. A parent batch that itself ran under a parent name
+  passes that name as the carried lines' ancestor.
+- `apps/web/src/components/Builder.tsx`: carried lines kept per child Rule; Batch on a child
+  renders the child batch.
+- `apps/web/e2e/child-batch.spec.ts` (2 tests): pasted parents checked, a bad one removed,
+  narrowing one parent to one row and to nothing, the grouped preview, the exact CSV, and the
+  CSV pasted back; a parent batch carrying a chosen subset into the child batch.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test:e2e` | 34 of 34 (2 new) |
+| `pnpm --filter @taxo/web build` | Clean |
+
+### Decisions not spelled out in the sheet
+
+- Section 6's "ancestor needed but missing" state is detected in the UI from the child's
+  mapping and shown on the line as a failing line, since `checkParents` sees the parent only.
+- The base URL for every row is the one on the Rule's Single card, as for a single-Rule batch.
+- Narrowing state is keyed by parent name, so it persists while the name stays in the list.
+
+Section 8's acceptance items: every row passes `validate` and starts with its parent's
+inherited tokens (engine tests); rows equal the total (engine and browser); narrowing to zero
+yields 0 for that parent only (both); an invalid parent blocks generation (both); a CSV
+pasted back is accepted (browser); Single mode and top-level batch unchanged (the earlier 32
+browser tests still pass).
