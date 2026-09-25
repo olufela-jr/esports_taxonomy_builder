@@ -48,7 +48,42 @@ v3 release phase 3, the v2 R2 batch build re-based on codes. One commit per step
 - The download uses a plain `<a download>` with an object URL, released when a new batch is
   generated or the Rule changes.
 
+## Step 2a: the D34 child batch, engine half
+
+`docs/features/d34-child-batch.md` is authoritative. Section 2's seven dependencies all exist
+now (`resolveRule`, `parse` returning selections, `compose`, `validate`, `BatchChoices`,
+`countCombinations` and `enumerate` refusing unresolved Rules, `buildTrackingUrl`), so this
+step implements sections 3 and 4 and stops before the UI, as the sheet's instructions say.
+
+### What changed
+
+- `packages/shared/src/engine.ts`: `ParentLine`, `ParentBatchInput`, `ParentBatchRow`.
+  `checkParents(parentRule, lines)` validates each distinct parent name in order.
+  `countUnderParents` and `enumerateUnderParents` apply the eight rules of section 4: both
+  Rules resolved or a throw; per parent the name is parsed, the inherited segments (the child
+  segments whose keys the parent name yields) become single-item lists, the shared choices are
+  intersected with that parent's narrow entry, and the work is delegated to `enumerate`; a
+  narrow value outside the shared choices throws; duplicate parent names collapse; any invalid
+  parent throws naming every failing one; a line missing an ancestor name the child's mapping
+  reads throws naming the line; output is parents in input order then enumerate order; the
+  count is a product per parent, summed. A parent narrowed to nothing yields zero rows and does
+  not block the rest. Five tests covering section 8's engine items.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test` | 62 (engine, 5 new), 9, 13 |
+
+### Decisions not spelled out in the sheet
+
+- Rule 6 (a line missing an ancestor the mapping needs) is enforced in `countUnderParents` and
+  `enumerateUnderParents`, which know the child; `checkParents` keeps the signature section 3
+  gives it, with the parent Rule only. The UI will need both to flag such a line.
+- Inherited segments are detected as the child's segments whose keys the parsed parent name
+  supplies, since a resolved child no longer carries its parent link.
+
 ## Next
 
-- Step 2: the D34 child batch across many parents (`docs/features/d34-child-batch.md`), now
-  that every dependency in its section 2 exists.
+- Step 2b: sections 5 to 7 of the sheet, the Build UI for the child batch, after confirmation.

@@ -4,15 +4,18 @@ import {
   buildTrackingUrl,
   checkBatchChoices,
   checkDefinition,
+  checkParents,
   checkRule,
   checkRuleSet,
   checkRuleSetIssues,
   checkUtmMapping,
   compose,
   countCombinations,
+  countUnderParents,
   definitionDependents,
   dependentsOf,
   enumerate,
+  enumerateUnderParents,
   isPlatform,
   parse,
   platformName,
@@ -942,5 +945,65 @@ describe("batch build", () => {
     expect(() => countCombinations(campaignRule, { campaign_type: [], market: ["uk"], custom_id: [""] })).toThrow("Campaign Type needs at least one value.");
     const chain = ruleSetOf(campaignRule, adGroupRule);
     expect(checkBatchChoices(childOf(chain, "r_ad_group"), {})[0]).toContain("resolve it with resolveRule");
+  });
+});
+
+// ---- child batch across parents (D34) ---------------------------------------------------
+
+describe("child batch across parents", () => {
+  const chain = ruleSetOf(campaignRule, adGroupRule);
+  const parent = resolveRule(childOf(chain, "r_campaign"), chain).rule;
+  const child = resolveRule(childOf(chain, "r_ad_group"), chain).rule;
+  const choices = { targeting: ["broad", "exact"], audience: ["runners", "walkers"] };
+  const parents = [{ name: "perf_uk" }, { name: "brand_de_summer" }];
+
+  it("checks every parent line once against the parent Rule, in order", () => {
+    const checked = checkParents(parent, [...parents, { name: "perf_uk" }, { name: "nope_zz" }]);
+    expect(checked.map((entry) => entry.name)).toEqual(["perf_uk", "brand_de_summer", "nope_zz"]);
+    expect(checked.map((entry) => entry.result.valid)).toEqual([true, true, false]);
+  });
+
+  it("counts a product per parent, sums them, and enumerates rows that validate and start with their parent's tokens", () => {
+    const counts = countUnderParents(child, parent, { parents: [...parents, { name: "perf_uk" }], choices });
+    expect(counts).toEqual({ perParent: { perf_uk: 4, brand_de_summer: 4 }, total: 8 });
+    const rows = [...enumerateUnderParents(child, parent, { parents, choices })];
+    expect(rows).toHaveLength(counts.total);
+    expect(rows.slice(0, 4).map((row) => row.name)).toEqual(["perf_uk_broad_runners", "perf_uk_broad_walkers", "perf_uk_exact_runners", "perf_uk_exact_walkers"]);
+    expect(rows[4]).toEqual({ parentName: "brand_de_summer", selections: { campaign_type: "brand", market: "de", targeting: "broad", audience: "runners" }, name: "brand_de_broad_runners" });
+    for (const row of rows) {
+      expect(validate(child, row.name).valid).toBe(true);
+      const inheritedTokens = row.parentName.split("_").slice(0, 2).join("_");
+      expect(row.name.startsWith(`${inheritedTokens}_`)).toBe(true);
+    }
+  });
+
+  it("narrows one parent without touching the others, down to zero rows", () => {
+    const narrow = { perf_uk: { targeting: ["broad"] }, brand_de_summer: { audience: [] } };
+    const counts = countUnderParents(child, parent, { parents, choices, narrow });
+    expect(counts).toEqual({ perParent: { perf_uk: 2, brand_de_summer: 0 }, total: 2 });
+    const rows = [...enumerateUnderParents(child, parent, { parents, choices, narrow })];
+    expect(rows.map((row) => row.name)).toEqual(["perf_uk_broad_runners", "perf_uk_broad_walkers"]);
+    expect(() => countUnderParents(child, parent, { parents, choices, narrow: { perf_uk: { targeting: ["phrase"] } } })).toThrow('uses values not in the shared choices: "phrase"');
+  });
+
+  it("refuses to count or generate with any invalid parent, naming each, and refuses unresolved Rules", () => {
+    const withBad = { parents: [...parents, { name: "nope_zz" }, { name: "perf" }], choices };
+    expect(() => countUnderParents(child, parent, withBad)).toThrow('Invalid parent names: "nope_zz", "perf".');
+    expect(() => [...enumerateUnderParents(child, parent, withBad)]).toThrow('Invalid parent names: "nope_zz", "perf".');
+    expect(() => countUnderParents(childOf(chain, "r_ad_group"), parent, { parents, choices })).toThrow("resolve it with resolveRule");
+  });
+
+  it("treats a parent line missing an ancestor name the mapping needs as invalid", () => {
+    const grand: Rule = { ...campaignRule, id: "r_grand", name: "Grand", segments: [typeSegment] };
+    const mid: Rule = { ...campaignRule, id: "r_mid", name: "Mid", parent: { ruleId: "r_grand", inheritSegmentIds: ["s_type"] }, segments: [marketSegment] };
+    const leaf: Rule = {
+      ...adGroupRule, id: "r_leaf", name: "Leaf", parent: { ruleId: "r_mid", inheritSegmentIds: ["s_type", "s_market"] },
+      utm: { source: { kind: "literal", value: "google" }, medium: { kind: "literal", value: "cpc" }, campaign: { kind: "ruleName", ruleId: "r_grand" }, baseUrlEditable: true, casePolicy: "lower" },
+    };
+    const three = ruleSetOf(grand, mid, leaf);
+    const midResolved = resolveRule(childOf(three, "r_mid"), three).rule;
+    const leafResolved = resolveRule(childOf(three, "r_leaf"), three).rule;
+    expect(() => countUnderParents(leafResolved, midResolved, { parents: [{ name: "perf_uk" }], choices })).toThrow('missing an ancestor name the tracking URL needs: "perf_uk"');
+    expect(countUnderParents(leafResolved, midResolved, { parents: [{ name: "perf_uk", ancestors: { r_grand: "perf" } }], choices }).total).toBe(4);
   });
 });

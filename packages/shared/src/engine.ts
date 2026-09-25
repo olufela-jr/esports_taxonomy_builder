@@ -1160,3 +1160,133 @@ function* walk(rule: Rule, choices: BatchChoices, index: number, selections: Rec
     yield* walk(rule, choices, index + 1, { ...selections, [segment.key]: value });
   }
 }
+
+// ---- Child batch across parents (D34, docs/features/d34-child-batch.md) -----------------
+
+export type ParentLine = {
+  name: string;                       // parent name as pasted or carried
+  ancestors?: Record<string, string>; // ruleId -> name, only when a UTM mapping needs it
+};
+
+export type ParentBatchInput = {
+  parents: ParentLine[];
+  choices: BatchChoices;                 // child's own segments, shared by every parent
+  narrow?: Record<string, BatchChoices>; // parent name -> subsets of choices
+};
+
+export type ParentBatchRow = {
+  parentName: string;
+  selections: Record<string, string>;
+  name: string;
+};
+
+// Every parent line validated against the parent Rule, in input order; a
+// duplicate name is checked once (rule 4).
+export function checkParents(parentRule: Rule, lines: ParentLine[]): { name: string; result: ValidateResult }[] {
+  const seen = new Set<string>();
+  const checked: { name: string; result: ValidateResult }[] = [];
+  for (const line of lines) {
+    if (seen.has(line.name)) continue;
+    seen.add(line.name);
+    checked.push({ name: line.name, result: validate(parentRule, line.name) });
+  }
+  return checked;
+}
+
+// The parent lines collapsed to one per name (rule 4), or a throw naming every
+// failing parent (rule 5) and every line missing an ancestor name the child's
+// mapping reads (rule 6).
+function acceptedParents(child: Rule, parentRule: Rule, input: ParentBatchInput): ParentLine[] {
+  for (const rule of [child, parentRule]) {
+    const unresolved = unresolvedReason(rule);
+    if (unresolved) throw new Error(unresolved);
+  }
+  const unique: ParentLine[] = [];
+  const seen = new Set<string>();
+  for (const line of input.parents) {
+    if (seen.has(line.name)) continue;
+    seen.add(line.name);
+    unique.push(line);
+  }
+  const failing = checkParents(parentRule, unique).filter((entry) => !entry.result.valid).map((entry) => entry.name);
+  if (failing.length > 0) {
+    throw new Error(`Invalid parent name${failing.length > 1 ? "s" : ""}: ${failing.map((name) => `"${name}"`).join(", ")}.`);
+  }
+  // Ancestor names the mapping needs beyond the parent itself.
+  const needed = new Set<string>();
+  if (child.utm) {
+    for (const param of UTM_PARAMS) {
+      const source = child.utm[param];
+      if (source && source.kind === "ruleName" && source.ruleId !== child.id && source.ruleId !== parentRule.id) {
+        needed.add(source.ruleId);
+      }
+    }
+  }
+  if (needed.size > 0) {
+    const missing = unique.filter((line) => [...needed].some((ruleId) => !line.ancestors?.[ruleId])).map((line) => line.name);
+    if (missing.length > 0) {
+      throw new Error(`Parent line${missing.length > 1 ? "s" : ""} missing an ancestor name the tracking URL needs: ${missing.map((name) => `"${name}"`).join(", ")}.`);
+    }
+  }
+  return unique;
+}
+
+// The child's choices for one parent: inherited segments pinned to the
+// parent's parsed codes as single-item lists, the rest intersected with the
+// parent's narrow entry (rule 2). A narrow value absent from choices throws
+// (rule 3).
+function choicesUnder(child: Rule, parentRule: Rule, input: ParentBatchInput, line: ParentLine): BatchChoices {
+  const parsed = parse(parentRule, line.name);
+  const narrow = input.narrow?.[line.name];
+  const choices: BatchChoices = {};
+  for (const segment of child.segments) {
+    const inherited = parsed.selections[segment.key];
+    if (inherited !== undefined) {
+      choices[segment.key] = [inherited];
+      continue;
+    }
+    const shared = input.choices[segment.key] ?? [];
+    const subset = narrow?.[segment.key];
+    if (subset === undefined) {
+      choices[segment.key] = shared;
+      continue;
+    }
+    const strangers = subset.filter((value) => !shared.includes(value));
+    if (strangers.length > 0) {
+      throw new Error(`Narrowing for "${line.name}" on ${segment.label} uses values not in the shared choices: ${strangers.map((value) => `"${value}"`).join(", ")}.`);
+    }
+    choices[segment.key] = subset;
+  }
+  return choices;
+}
+
+// A parent narrowed to nothing yields no rows for that parent and does not
+// block the rest; the engine's own check would otherwise refuse the empty
+// required list.
+function rowsUnder(child: Rule, choices: BatchChoices): number {
+  const emptyRequired = child.segments.some((segment) => segment.required && (choices[segment.key] ?? []).filter((value) => value !== "").length === 0);
+  return emptyRequired ? 0 : countCombinations(child, choices);
+}
+
+// Per parent a product, summed (rule 8); linear in the number of parents.
+export function countUnderParents(child: Rule, parentRule: Rule, input: ParentBatchInput): { perParent: Record<string, number>; total: number } {
+  const perParent: Record<string, number> = {};
+  let total = 0;
+  for (const line of acceptedParents(child, parentRule, input)) {
+    const count = rowsUnder(child, choicesUnder(child, parentRule, input, line));
+    perParent[line.name] = count;
+    total += count;
+  }
+  return { perParent, total };
+}
+
+// Parents in input order, enumerate's order within each (rule 7).
+export function* enumerateUnderParents(child: Rule, parentRule: Rule, input: ParentBatchInput): Generator<ParentBatchRow> {
+  for (const line of acceptedParents(child, parentRule, input)) {
+    const choices = choicesUnder(child, parentRule, input, line);
+    if (rowsUnder(child, choices) === 0) continue;
+    for (const row of enumerate(child, choices)) {
+      yield { parentName: line.name, selections: row.selections, name: row.name };
+    }
+  }
+}
