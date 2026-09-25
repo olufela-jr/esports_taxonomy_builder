@@ -94,6 +94,32 @@ export type ParentLink = {
   inheritSegmentIds: string[]; // ids on the parent's RESOLVED segments, in parent order
 };
 
+// Where a UTM parameter's value comes from at build time (v2 D26, D27):
+// the built name of this Rule or an ancestor, one of this Rule's resolved
+// segments (its code), a tag on a Rule, or fixed text such as "cpc".
+export type UtmSource =
+  | { kind: "ruleName"; ruleId: string }
+  | { kind: "segment"; segmentId: string }
+  | { kind: "tag"; ruleId: string; tag: "platform" | "entityType" }
+  | { kind: "literal"; value: string };
+
+export type UtmParam = "source" | "medium" | "campaign" | "content" | "term";
+
+export const UTM_PARAMS: UtmParam[] = ["source", "medium", "campaign", "content", "term"];
+
+// One Rule's UTM mapping (D26: per Rule, explicit Rule ids). campaign must be
+// a ruleName source so utm_campaign equals a built name byte for byte (D19).
+export type UtmMapping = {
+  source: UtmSource;
+  medium: UtmSource;
+  campaign: UtmSource;
+  content?: UtmSource;
+  term?: UtmSource;
+  baseUrl?: string;
+  baseUrlEditable: boolean;
+  casePolicy: "asIs" | "lower";
+};
+
 export type Rule = {
   id: string;
   key: string;
@@ -103,6 +129,7 @@ export type Rule = {
   segments: Segment[]; // the Rule's OWN segments only; see resolveRule
   source: Source;
   parent?: ParentLink;
+  utm?: UtmMapping;
 };
 
 export type RuleSet = {
@@ -332,7 +359,9 @@ export function checkRuleSetIssues(ruleSet: RuleSet, definitions: Definition[] =
 
   for (const rule of ruleSet.rules) {
     const own = checkRule(rule);
-    const errors = own.length > 0 ? own : resolveRule(rule, ruleSet, definitions).errors;
+    const resolution = own.length > 0 ? [] : resolveRule(rule, ruleSet, definitions).errors;
+    const utm = own.length > 0 || resolution.length > 0 ? [] : checkUtmMapping(rule, ruleSet, definitions);
+    const errors = [...own, ...resolution, ...utm];
     if (errors.length > 0) {
       issues.rules[rule.id] = errors;
     }
@@ -818,4 +847,223 @@ export function rollup(scans: RuleScan[]): Rollup {
   }
 
   return { total, perRule, byPlatform, byEntityType };
+}
+
+// ---- UTM tracking URLs (v2 D19, D23, D30) -----------------------------------------
+
+// RFC 3986 unreserved characters: a value made of these is never percent-
+// encoded, so what lands in the URL is byte for byte what was built.
+const UNRESERVED = /^[A-Za-z0-9._~-]+$/;
+
+// The value rules of D30 for one parameter: non-empty, unreserved characters
+// only, and under the "lower" policy no uppercase letter. Never transforms.
+export function validateUtmValue(param: UtmParam, value: string, policy: UtmMapping["casePolicy"]): string[] {
+  const errors: string[] = [];
+  const name = `utm_${param}`;
+  if (!value) {
+    errors.push(`${name} is empty.`);
+    return errors;
+  }
+  if (!UNRESERVED.test(value)) {
+    const bad = [...new Set([...value].filter((character) => !/[A-Za-z0-9._~-]/.test(character)))];
+    errors.push(`${name} contains ${bad.map((character) => `"${character}"`).join(", ")}; only letters, digits, "-", ".", "_" and "~" are allowed.`);
+  }
+  if (policy === "lower" && /[A-Z]/.test(value)) {
+    errors.push(`${name} must be lowercase under this mapping's case policy.`);
+  }
+  return errors;
+}
+
+// The Rule and every ancestor above it, nearest first. Stops on a broken link.
+export function ancestorsOf(rule: Rule, ruleSet: RuleSet): Rule[] {
+  const chain: Rule[] = [];
+  const visited = new Set<string>([rule.id]);
+  let current = rule;
+  while (current.parent) {
+    const parent = ruleSet.rules.find((candidate) => candidate.id === current.parent?.ruleId);
+    if (!parent || visited.has(parent.id)) break;
+    chain.push(parent);
+    visited.add(parent.id);
+    current = parent;
+  }
+  return chain;
+}
+
+// Authoring-time checks on a Rule's UTM mapping, run by checkRuleSet: the
+// required parameters, every ruleName source names this Rule or an ancestor,
+// every segment source exists on the resolved Rule, campaign is a ruleName,
+// literals pass the value rules, and (the D30 amendment) the delimiter and
+// every enum code of each Rule a mapping reads a name from can actually be
+// emitted under the mapping's character set and case policy.
+export function checkUtmMapping(rule: Rule, ruleSet: RuleSet, definitions: Definition[] = []): string[] {
+  const mapping = rule.utm;
+  if (!mapping) return [];
+  const errors: string[] = [];
+  const allowedRuleIds = new Set([rule.id, ...ancestorsOf(rule, ruleSet).map((ancestor) => ancestor.id)]);
+  const resolved = resolveRule(rule, ruleSet, definitions);
+  const segments = resolved.errors.length === 0 ? resolved.rule.segments : [];
+
+  for (const param of ["source", "medium", "campaign"] as UtmParam[]) {
+    if (!mapping[param]) errors.push(`utm_${param} needs a source.`);
+  }
+  if (mapping.campaign && mapping.campaign.kind !== "ruleName") {
+    errors.push("utm_campaign must come from a Rule's built name.");
+  }
+
+  const namedRules = new Set<string>();
+  for (const param of UTM_PARAMS) {
+    const source = mapping[param];
+    if (!source) continue;
+    if (source.kind === "ruleName" || source.kind === "tag") {
+      if (!allowedRuleIds.has(source.ruleId)) {
+        errors.push(`utm_${param} names a Rule that is not this Rule or one of its parents.`);
+      } else if (source.kind === "ruleName") {
+        namedRules.add(source.ruleId);
+      }
+    }
+    if (source.kind === "segment" && resolved.errors.length === 0 && !segments.some((segment) => segment.id === source.segmentId)) {
+      errors.push(`utm_${param} names a segment that is not on this Rule.`);
+    }
+    if (source.kind === "literal") {
+      errors.push(...validateUtmValue(param, source.value, mapping.casePolicy));
+    }
+  }
+
+  if (mapping.baseUrl) {
+    errors.push(...baseUrlErrors(mapping.baseUrl));
+  }
+
+  // Names that will feed a value must be emittable: check each named Rule's
+  // delimiter and codes, and this Rule's segment codes, under the policy.
+  const reportedSegments = new Set<string>();
+  for (const ruleId of namedRules) {
+    const named = ruleSet.rules.find((candidate) => candidate.id === ruleId);
+    if (!named) continue;
+    const namedResolved = resolveRule(named, ruleSet, definitions);
+    if (namedResolved.errors.length > 0) continue;
+    if (named.delimiter && !UNRESERVED.test(named.delimiter)) {
+      errors.push(`The delimiter "${named.delimiter}" of "${named.name}" cannot appear in a tracking URL value.`);
+    }
+    for (const segment of namedResolved.rule.segments) {
+      // An inherited segment is reported once, under the Rule it belongs to.
+      if (segment.kind !== "enum" || reportedSegments.has(segment.id)) continue;
+      reportedSegments.add(segment.id);
+      const bad = segment.allowedValues.find((entry) => validateUtmValue("campaign", entry.code, mapping.casePolicy).length > 0);
+      if (bad) {
+        errors.push(`"${named.name}" has the code "${bad.code}" (${segment.label}), which cannot appear in a tracking URL value under this mapping.`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+function baseUrlErrors(baseUrl: string): string[] {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    return ["The base URL must be an absolute http or https URL."];
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    return ["The base URL must be an absolute http or https URL."];
+  }
+  const existing = [...parsed.searchParams.keys()].filter((key) => key.startsWith("utm_"));
+  if (existing.length > 0) {
+    return [`The base URL already carries ${existing.join(", ")}; remove them so the mapping can set them.`];
+  }
+  return [];
+}
+
+// What the builder knows at build time: the built names of this Rule and its
+// ancestors keyed by Rule id, the selections (codes) of the resolved Rule, and
+// the base URL in use (the mapping's default unless the user edited it).
+export type UtmContext = {
+  names: Record<string, string>;
+  selections: Record<string, string>;
+  baseUrl?: string;
+};
+
+export type UtmValue = {
+  param: UtmParam;
+  value: string;
+  errors: string[];
+};
+
+export type TrackingUrlResult = {
+  url: string | null;
+  values: UtmValue[];
+  errors: string[];
+};
+
+function resolveSource(source: UtmSource, rule: Rule, ruleSet: RuleSet, context: UtmContext): { value: string; error?: string } {
+  switch (source.kind) {
+    case "literal":
+      return { value: source.value };
+    case "ruleName": {
+      const named = ruleSet.rules.find((candidate) => candidate.id === source.ruleId);
+      const value = context.names[source.ruleId];
+      if (value === undefined) {
+        return { value: "", error: `needs the built name of ${named ? `"${named.name}"` : "a Rule that no longer exists"}.` };
+      }
+      return { value };
+    }
+    case "segment": {
+      const segment = rule.segments.find((candidate) => candidate.id === source.segmentId);
+      if (!segment) return { value: "", error: "names a segment that is not on this Rule." };
+      return { value: context.selections[segment.key] ?? "" };
+    }
+    case "tag": {
+      const tagged = ruleSet.rules.find((candidate) => candidate.id === source.ruleId);
+      return { value: tagged?.tags?.[source.tag] ?? "" };
+    }
+  }
+}
+
+// Produces the UTM values and the full tracking URL for a resolved Rule with
+// a mapping (D19). Every value is validated and never transformed: a value
+// that breaks the policy is an error, so utm_campaign always equals the built
+// campaign name exactly. A missing optional parameter is omitted, never sent
+// blank. The base URL keeps its own query and fragment.
+export function buildTrackingUrl(rule: Rule, ruleSet: RuleSet, context: UtmContext): TrackingUrlResult {
+  const mapping = rule.utm;
+  if (!mapping) return { url: null, values: [], errors: ["This Rule has no UTM mapping."] };
+  const unresolved = unresolvedReason(rule);
+  if (unresolved) return { url: null, values: [], errors: [unresolved] };
+
+  const values: UtmValue[] = [];
+  const errors: string[] = [];
+  for (const param of UTM_PARAMS) {
+    const source = mapping[param];
+    const required = param === "source" || param === "medium" || param === "campaign";
+    if (!source) {
+      if (required) errors.push(`utm_${param} needs a source.`);
+      continue;
+    }
+    const resolvedSource = resolveSource(source, rule, ruleSet, context);
+    if (resolvedSource.error) {
+      values.push({ param, value: "", errors: [`utm_${param} ${resolvedSource.error}`] });
+      continue;
+    }
+    if (!resolvedSource.value && !required) continue;
+    values.push({ param, value: resolvedSource.value, errors: validateUtmValue(param, resolvedSource.value, mapping.casePolicy) });
+  }
+
+  const baseUrl = context.baseUrl ?? mapping.baseUrl ?? "";
+  if (!baseUrl) {
+    errors.push("A base URL is needed.");
+  } else {
+    errors.push(...baseUrlErrors(baseUrl));
+  }
+
+  const valueErrors = values.some((value) => value.errors.length > 0);
+  if (errors.length > 0 || valueErrors) {
+    return { url: null, values, errors };
+  }
+
+  const url = new URL(baseUrl);
+  for (const value of values) {
+    url.searchParams.set(`utm_${value.param}`, value.value);
+  }
+  return { url: url.toString(), values, errors: [] };
 }

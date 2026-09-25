@@ -370,3 +370,37 @@ Check look the same to a user; they now work on resolved Rules.
 - Steps 7 and 8 (UTM types, `buildTrackingUrl`, `validateUtmValue`, the Author UTM panel and
   Build URL output) and step 9 (further Playwright) remain in phase 2.
 - Seven commits since the last deploy (steps 2a to 6); the live app is on step 1.
+
+## Step 7: UTM types, validation, the URL builder and the authoring checks
+
+### What changed
+
+- `packages/shared/src/engine.ts`: `UtmSource` (ruleName, segment, tag, literal), `UtmMapping`
+  (source, medium, campaign required; content, term optional; base URL and whether it is
+  editable; case policy) and `utm?` on `Rule`, exactly the spec's shapes. `validateUtmValue`
+  applies D30: non-empty, unreserved characters only, no uppercase under "lower", never a
+  transformation. `ancestorsOf` walks parent links. `checkUtmMapping` runs from
+  `checkRuleSetIssues` once a Rule's own checks and resolution pass: required parameters,
+  campaign from a built name, every named Rule is self or an ancestor, every segment source on
+  the resolved Rule, literals valid, the base URL absolute with no `utm_` of its own, and the
+  D30 amendment: the delimiter and every enum code of each Rule whose name feeds a value must
+  be emittable under the mapping, each segment reported once. `buildTrackingUrl(resolvedRule,
+  ruleSet, context)` resolves each source from the built names (keyed by Rule id), the
+  selections and the tags, validates every value, omits an empty optional parameter, keeps the
+  base URL's own query and fragment, and returns the URL with the standard `URL` API. Four
+  tests, including the URL round-trip: every mapped parameter exactly once, decoding to the
+  built value, and `utm_campaign` equal to the campaign name byte for byte.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test` | 54 (engine, 4 new), 9, 13 |
+
+### Decisions not spelled out in the plan
+
+- A missing base URL is a build-time error, not an authoring one, since D3/P3 let it be typed
+  at build time; an authored base URL is still checked at save.
+- The ancestor-name gap (O1) is reported per value: "utm_campaign needs the built name of
+  X", so a three-level chain fails clearly until Build collects that name.

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildTrackingUrl,
   checkDefinition,
   checkRule,
   checkRuleSet,
   checkRuleSetIssues,
+  checkUtmMapping,
   compose,
   definitionDependents,
   dependentsOf,
@@ -16,12 +18,14 @@ import {
   resolveRule,
   rollup,
   validate,
+  validateUtmValue,
   type Definition,
   type EnumSegment,
   type FreeformSegment,
   type Rule,
   type RuleScan,
   type RuleSet,
+  type UtmMapping,
 } from "./engine";
 
 const typeSegment: EnumSegment = {
@@ -797,5 +801,97 @@ describe("parse", () => {
     const unresolved = parse(childOf(chain, "r_ad_group"), "perf_uk_broad_runners");
     expect(unresolved.valid).toBe(false);
     expect(unresolved.violations[0].reason).toContain("resolve it with resolveRule");
+  });
+});
+
+// ---- UTM tracking URLs ------------------------------------------------------------------
+
+describe("tracking URLs", () => {
+  const mapping: UtmMapping = {
+    source: { kind: "tag", ruleId: "r_ad_group", tag: "platform" },
+    medium: { kind: "literal", value: "cpc" },
+    campaign: { kind: "ruleName", ruleId: "r_campaign" },
+    content: { kind: "ruleName", ruleId: "r_ad_group" },
+    term: { kind: "segment", segmentId: "s_audience" },
+    baseUrl: "https://shop.example.com/sale?ref=abc#top",
+    baseUrlEditable: true,
+    casePolicy: "lower",
+  };
+  const campaign: Rule = { ...campaignRule, tags: { platform: "google" } };
+  const adGroup: Rule = { ...adGroupRule, tags: { platform: "google" }, utm: mapping };
+  const ruleSet = ruleSetOf(campaign, adGroup);
+  const resolvedChild = resolveRule(childOf(ruleSet, "r_ad_group"), ruleSet).rule;
+
+  it("validates values without transforming them", () => {
+    expect(validateUtmValue("campaign", "perf_uk_sales", "lower")).toEqual([]);
+    expect(validateUtmValue("campaign", "", "lower")).toEqual(["utm_campaign is empty."]);
+    expect(validateUtmValue("campaign", "Perf_UK", "lower")).toEqual(["utm_campaign must be lowercase under this mapping's case policy."]);
+    expect(validateUtmValue("campaign", "Perf_UK", "asIs")).toEqual([]);
+    expect(validateUtmValue("term", "a b|c", "asIs")).toEqual(['utm_term contains " ", "|"; only letters, digits, "-", ".", "_" and "~" are allowed.']);
+  });
+
+  it("builds the URL from the mapping, keeping the base URL's own query and fragment", () => {
+    const campaignName = compose(campaign, { campaign_type: "perf", market: "uk" }).name;
+    const selections = { campaign_type: "perf", market: "uk", targeting: "broad", audience: "runners" };
+    const childName = compose(resolvedChild, selections).name;
+    const result = buildTrackingUrl(resolvedChild, ruleSet, { names: { r_campaign: campaignName, r_ad_group: childName }, selections });
+    expect(result.errors).toEqual([]);
+    expect(result.url).toBe("https://shop.example.com/sale?ref=abc&utm_source=google&utm_medium=cpc&utm_campaign=perf_uk&utm_content=perf_uk_broad_runners&utm_term=runners#top");
+    // URL round-trip: each mapped parameter exactly once, decoding to the built value; utm_campaign is the campaign name byte for byte.
+    const parsed = new URL(result.url ?? "");
+    expect(parsed.searchParams.getAll("utm_campaign")).toEqual([campaignName]);
+    expect(parsed.searchParams.getAll("utm_content")).toEqual([childName]);
+    for (const value of result.values) {
+      expect(parsed.searchParams.get(`utm_${value.param}`)).toBe(value.value);
+      expect(validateUtmValue(value.param, value.value, "lower")).toEqual([]);
+    }
+  });
+
+  it("omits an empty optional parameter, fails a required one, and reports each bad value", () => {
+    const selections = { campaign_type: "perf", market: "uk", targeting: "broad", audience: "" };
+    const withoutTerm = buildTrackingUrl(resolvedChild, ruleSet, { names: { r_campaign: "perf_uk", r_ad_group: "perf_uk_broad_x" }, selections });
+    expect(withoutTerm.values.map((value) => value.param)).toEqual(["source", "medium", "campaign", "content"]);
+    expect(withoutTerm.url).toContain("utm_content=perf_uk_broad_x");
+    expect(withoutTerm.url).not.toContain("utm_term");
+
+    const missingParent = buildTrackingUrl(resolvedChild, ruleSet, { names: { r_ad_group: "perf_uk_broad_x" }, selections });
+    expect(missingParent.url).toBeNull();
+    expect(missingParent.values.find((value) => value.param === "campaign")?.errors).toEqual(['utm_campaign needs the built name of "Campaign".']);
+
+    const uppercase = buildTrackingUrl(resolvedChild, ruleSet, { names: { r_campaign: "Perf_UK", r_ad_group: "perf_uk_broad_x" }, selections });
+    expect(uppercase.url).toBeNull();
+    expect(uppercase.values.find((value) => value.param === "campaign")?.errors).toEqual(["utm_campaign must be lowercase under this mapping's case policy."]);
+
+    const badBase = buildTrackingUrl(resolvedChild, ruleSet, { names: { r_campaign: "perf_uk", r_ad_group: "perf_uk_broad_x" }, selections, baseUrl: "https://x.test/?utm_source=old" });
+    expect(badBase.errors).toEqual(["The base URL already carries utm_source; remove them so the mapping can set them."]);
+    expect(buildTrackingUrl(resolvedChild, ruleSet, { names: {}, selections, baseUrl: "not a url" }).errors).toEqual(["The base URL must be an absolute http or https URL."]);
+    expect(buildTrackingUrl(childOf(ruleSet, "r_ad_group"), ruleSet, { names: {}, selections }).errors[0]).toContain("resolve it with resolveRule");
+  });
+
+  it("checks a mapping at authoring time, including codes that could never be emitted", () => {
+    expect(checkUtmMapping(childOf(ruleSet, "r_ad_group"), ruleSet)).toEqual([]);
+    const stranger: Rule = { ...adGroup, utm: { ...mapping, campaign: { kind: "ruleName", ruleId: "r_other" } } };
+    expect(checkUtmMapping(stranger, ruleSetOf(campaign, stranger))).toEqual(["utm_campaign names a Rule that is not this Rule or one of its parents."]);
+    const literalCampaign: Rule = { ...adGroup, utm: { ...mapping, campaign: { kind: "literal", value: "x" } } };
+    expect(checkUtmMapping(literalCampaign, ruleSetOf(campaign, literalCampaign))).toEqual(["utm_campaign must come from a Rule's built name."]);
+    const badLiteral: Rule = { ...adGroup, utm: { ...mapping, medium: { kind: "literal", value: "Paid Social" } } };
+    expect(checkUtmMapping(badLiteral, ruleSetOf(campaign, badLiteral))).toEqual([
+      'utm_medium contains " "; only letters, digits, "-", ".", "_" and "~" are allowed.',
+      "utm_medium must be lowercase under this mapping's case policy.",
+    ]);
+    const shoutingParent: Rule = { ...campaign, segments: [{ ...typeSegment, allowedValues: [{ label: "Brand", code: "BRAND" }] }, marketSegment] };
+    const child = { ...adGroup };
+    expect(checkUtmMapping(child, ruleSetOf(shoutingParent, child))).toEqual([
+      '"Campaign" has the code "BRAND" (Campaign Type), which cannot appear in a tracking URL value under this mapping.',
+    ]);
+    const pipeParent: Rule = { ...campaign, delimiter: "|" };
+    const pipeChild: Rule = { ...adGroup, delimiter: "|" };
+    // Both names feed a value (utm_campaign and utm_content), so both delimiters are reported.
+    expect(checkUtmMapping(pipeChild, ruleSetOf(pipeParent, pipeChild))).toEqual([
+      'The delimiter "|" of "Campaign" cannot appear in a tracking URL value.',
+      'The delimiter "|" of "Ad Group" cannot appear in a tracking URL value.',
+    ]);
+    // The checks surface through checkRuleSetIssues beside the Rule.
+    expect(checkRuleSetIssues(ruleSetOf(campaign, badLiteral)).rules["r_ad_group"]).toHaveLength(2);
   });
 });

@@ -178,6 +178,7 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
    invalid name. Done 2026-09-25.
 7. UTM types, `buildTrackingUrl`, `validateUtmValue` and tests, plus the `checkRuleSet`
    UTM checks (literals, codes and delimiters under the mapping's policy).
+   Done 2026-09-25 (`checkUtmMapping`, `ancestorsOf`).
 8. Author UTM panel; Build URL output.
 9. Playwright additions.
 Phase 3 is batch (`enumerate`, `countCombinations`, then the D34 child batch in
