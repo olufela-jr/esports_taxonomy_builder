@@ -404,3 +404,45 @@ Check look the same to a user; they now work on resolved Rules.
   at build time; an authored base URL is still checked at save.
 - The ancestor-name gap (O1) is reported per value: "utm_campaign needs the built name of
   X", so a three-level chain fails clearly until Build collects that name.
+
+## Step 8: the Author tracking panel and the Build URL output
+
+### What changed
+
+- `apps/web/src/components/RuleSetEditor.tsx`: a "Tracking URL" checkbox per Rule. Ticking it
+  creates a mapping with the P2 defaults (source from the platform tag, medium the fixed text
+  `cpc`, campaign the top of the Rule's chain, content the Rule itself when it has a parent).
+  One row per parameter: a source kind select, then by kind a Rule select over this Rule and
+  its ancestors, a segment select over the resolved segments, a Rule plus tag select, or a text
+  input; campaign is fixed to a built name. Base URL, "Editable in Build" and the case policy
+  below. Every problem comes from `checkUtmMapping` through the Rule's issue list.
+- `apps/web/src/components/Builder.tsx`: a "Tracking URL" card for a Rule with a mapping: the
+  base URL (editable per the mapping, kept per Rule in state), then once the name is valid the
+  per-parameter values with any errors, the URL, and a Copy URL button enabled only when the
+  URL builds. The built names passed in are this Rule's and, on a child, the parent step's name.
+- `apps/web/e2e/utm.spec.ts` (2 tests): Build's URL for a child under a pasted parent, with
+  `utm_campaign` the parent name and `utm_content` the built name, and a base URL carrying a
+  UTM refused; Author switching tracking on, a bad base URL listed beside the Rule, a term
+  source from a segment, and the mapping read back.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test` | 54, 9, 13 |
+| `pnpm test:e2e` | 30 of 30 (2 new) |
+| `pnpm --filter @taxo/web build` | Clean |
+
+### Decisions not spelled out in the plan
+
+- "Copy mapping from another Rule" is not built (D26 as amended).
+- A grandchild's `utm_campaign` still needs the campaign name (O1); Build only has the
+  immediate parent's, so a three-level mapping reports "needs the built name of X" until that
+  is collected. Two levels, the P1 default, work end to end.
+
+### Leftovers
+
+- Step 9, further Playwright coverage, is largely done along the way (30 browser tests); the
+  spec's remaining item is continuous typing in the UTM literal and base URL inputs.
+- Phase 3 (batch, then the D34 child batch) is next after step 9.

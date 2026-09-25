@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { compose, parse, resolveRule, type Definition, type Rule, type Segment } from '@taxo/shared';
-import { AlertCircle, ArrowRight, Check, Copy, Database, Filter, Lock, Zap } from 'lucide-react';
+import { buildTrackingUrl, compose, parse, resolveRule, type Definition, type Rule, type Segment } from '@taxo/shared';
+import { AlertCircle, ArrowRight, Check, Copy, Database, Filter, Link2, Lock, Zap } from 'lucide-react';
 import type { RuleSet } from '@/data/store';
 import { PageHeading } from './PageHeading';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
@@ -31,6 +31,9 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
   // The parent name each child Rule is being built under, kept per Rule so
   // switching Rules (or chaining from a parent) never loses it.
   const [parentNames, setParentNames] = useState<Record<string, string>>({});
+  // A base URL typed at build time, per Rule, when the mapping allows editing.
+  const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   useEffect(() => {
     setValues({});
@@ -86,6 +89,16 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
   const displayOutput = result.name || 'Fill segments to generate a name';
   const missing = segments.filter((segment) => segment.required && !selections[segment.key]?.trim());
   const copyName = async () => { if (!valid) return; await navigator.clipboard?.writeText(result.name); setCopied(true); window.setTimeout(() => setCopied(false), 1800); };
+  // Step 8: the tracking URL, from the built names of this Rule and its parent
+  // (the parent step's name), the selections and the base URL in use.
+  const mapping = active.utm;
+  const names: Record<string, string> = {};
+  if (valid) names[rule.id] = result.name;
+  if (parentRule && parentParse?.valid) names[parentRule.id] = parentName;
+  const baseUrl = mapping ? (mapping.baseUrlEditable ? (baseUrls[rule.id] ?? mapping.baseUrl ?? '') : (mapping.baseUrl ?? '')) : '';
+  const tracking = mapping && valid ? buildTrackingUrl(active, ruleSet, { names, selections, baseUrl }) : undefined;
+  const copyUrl = async () => { if (!tracking?.url) return; await navigator.clipboard?.writeText(tracking.url); setCopiedUrl(true); window.setTimeout(() => setCopiedUrl(false), 1800); };
+
   const buildChild = (childId: string) => {
     setParentNames((current) => ({ ...current, [childId]: result.name }));
     onSelectRule(childId);
@@ -178,6 +191,23 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
               )}
             </div>
           </div>
+          {mapping && (
+            <div className="mt-4 rounded-xl bg-card p-6 shadow-sm border border-border/30" data-testid="section-build-url">
+              <div className="flex items-center gap-2 font-display text-xl font-medium text-foreground"><Link2 className="h-4 w-4 text-muted-foreground" /> Tracking URL</div>
+              <label className="mt-4 block text-[11px] font-bold text-muted-foreground">Base URL<input className={`${inputClass} mt-1.5 font-mono`} value={baseUrl} disabled={!mapping.baseUrlEditable} title={mapping.baseUrlEditable ? undefined : 'Fixed by the Rule'} onChange={(event) => setBaseUrls((current) => ({ ...current, [rule.id]: event.target.value }))} placeholder="https://www.example.com/landing" data-testid="input-build-base-url" /></label>
+              {!valid && <p className="mt-3 text-[11px] font-bold text-muted-foreground">Complete the name first.</p>}
+              {tracking && (
+                <>
+                  <ul className="mt-4 flex flex-col gap-1.5" data-testid="list-build-utm">
+                    {tracking.values.map((value) => <li key={value.param} className="flex flex-col gap-0.5 text-[12px]"><span><span className="font-mono font-bold text-foreground">utm_{value.param}</span> <span className="font-mono text-primary">{value.value || '(empty)'}</span></span>{value.errors.map((message) => <span key={message} className="font-semibold text-destructive">{message}</span>)}</li>)}
+                  </ul>
+                  {tracking.errors.length > 0 && <ul className="mt-3 list-disc pl-5 text-[12px] font-semibold text-destructive" data-testid="status-build-url-errors">{tracking.errors.map((message) => <li key={message}>{message}</li>)}</ul>}
+                  {tracking.url && <div className="mt-4 break-all rounded-[4px] bg-muted/40 p-3 font-mono text-[12px] text-foreground" data-testid="text-build-url">{tracking.url}</div>}
+                  <button type="button" className={`${buttonQuiet} mt-4 w-full`} disabled={!tracking.url} onClick={copyUrl} data-testid="button-copy-build-url">{copiedUrl ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy URL</>}</button>
+                </>
+              )}
+            </div>
+          )}
           {result.errors.length > 0 && (
             <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-5 text-[13px] font-bold text-destructive shadow-sm" data-testid="status-build-violations">
               <div className="flex items-center gap-2"><AlertCircle className="h-4 w-4" /> Validation error</div>

@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
-import { checkRuleSetIssues, dependentsOf, entriesFromCodes, entryFromCode, isPlatform, PLATFORMS, resolveRule, type Definition, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
+import { ancestorsOf, checkRuleSetIssues, dependentsOf, entriesFromCodes, entryFromCode, isPlatform, PLATFORMS, resolveRule, UTM_PARAMS, type Definition, type UtmMapping, type UtmParam, type UtmSource, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
 import { Link } from 'wouter';
 import type { RuleSet, RuleSetDraft, Store } from '@/data/store';
 import { newId } from '@/lib/ids';
@@ -179,6 +179,85 @@ function InheritedSegments({ rule, ruleIndex, draftRuleSet, definitions }: { rul
   );
 }
 
+// Step 8: the Rule's UTM mapping (v2 D19, D26, D27, D30). One row per
+// parameter: a source kind and, by kind, the Rule, segment, tag or text it
+// reads. campaign is always a Rule's built name. Errors come from
+// checkUtmMapping through the Rule's issue list.
+const SOURCE_KINDS: Array<{ kind: UtmSource['kind']; label: string }> = [
+  { kind: 'ruleName', label: "A Rule's built name" },
+  { kind: 'segment', label: 'One of this Rule\'s segments' },
+  { kind: 'tag', label: "A Rule's platform or entity type" },
+  { kind: 'literal', label: 'Fixed text' },
+];
+
+function defaultMapping(rule: Rule, draftRuleSet: { id: string; name: string; rules: Rule[] }): UtmMapping {
+  // P2 defaults: source from the platform tag, medium a fixed value; campaign
+  // from the top of the chain, so an ad group's utm_campaign is its campaign.
+  const ancestors = ancestorsOf(rule, draftRuleSet);
+  const root = ancestors.length > 0 ? ancestors[ancestors.length - 1] : rule;
+  return {
+    source: { kind: 'tag', ruleId: rule.id, tag: 'platform' },
+    medium: { kind: 'literal', value: 'cpc' },
+    campaign: { kind: 'ruleName', ruleId: root.id },
+    ...(root.id !== rule.id ? { content: { kind: 'ruleName', ruleId: rule.id } as UtmSource } : {}),
+    baseUrl: '',
+    baseUrlEditable: true,
+    casePolicy: 'lower',
+  };
+}
+
+function sourceOfKind(kind: UtmSource['kind'], rule: Rule, segments: Segment[]): UtmSource {
+  if (kind === 'ruleName') return { kind, ruleId: rule.id };
+  if (kind === 'segment') return { kind, segmentId: segments[0]?.id ?? '' };
+  if (kind === 'tag') return { kind, ruleId: rule.id, tag: 'platform' };
+  return { kind, value: '' };
+}
+
+function UtmPanel({ rule, ruleIndex, draftRuleSet, definitions, onChange }: { rule: Rule; ruleIndex: number; draftRuleSet: { id: string; name: string; rules: Rule[] }; definitions: Definition[]; onChange: (utm: UtmMapping | undefined) => void }) {
+  const mapping = rule.utm;
+  const chain = [rule, ...ancestorsOf(rule, draftRuleSet)];
+  const resolution = resolveRule(rule, draftRuleSet, definitions);
+  const segments = resolution.errors.length === 0 ? resolution.rule.segments : rule.segments;
+  const setParam = (param: UtmParam, source: UtmSource | undefined) => {
+    if (!mapping) return;
+    const next = { ...mapping, [param]: source } as UtmMapping;
+    if (source === undefined) delete next[param as 'content' | 'term'];
+    onChange(next);
+  };
+
+  return (
+    <div className="mt-5 rounded-lg border border-border/50 bg-muted/20 p-4" data-testid={`section-utm-${ruleIndex}`}>
+      <label className="flex items-center gap-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={Boolean(mapping)} onChange={(event) => onChange(event.target.checked ? defaultMapping(rule, draftRuleSet) : undefined)} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-rule-utm-${ruleIndex}`} /> Tracking URL <span className="font-normal text-muted-foreground">(Build outputs a URL with UTM parameters for this Rule)</span></label>
+      {mapping && (
+        <div className="mt-4 flex flex-col gap-3">
+          {UTM_PARAMS.map((param) => {
+            const source = mapping[param];
+            const required = param === 'source' || param === 'medium' || param === 'campaign';
+            return (
+              <div key={param} className="grid gap-3 sm:grid-cols-[110px_220px_1fr] sm:items-center" data-testid={`row-utm-${ruleIndex}-${param}`}>
+                <span className="font-mono text-[12px] font-bold text-foreground">utm_{param}</span>
+                <select className={inputClass} value={source?.kind ?? ''} disabled={param === 'campaign'} onChange={(event) => setParam(param, event.target.value ? sourceOfKind(event.target.value as UtmSource['kind'], rule, segments) : undefined)} data-testid={`select-utm-kind-${ruleIndex}-${param}`}>
+                  {!required && <option value="">Not sent</option>}
+                  {SOURCE_KINDS.filter((item) => param !== 'campaign' || item.kind === 'ruleName').map((item) => <option key={item.kind} value={item.kind}>{item.label}</option>)}
+                </select>
+                {source?.kind === 'ruleName' && <select className={inputClass} value={source.ruleId} onChange={(event) => setParam(param, { kind: 'ruleName', ruleId: event.target.value })} data-testid={`select-utm-rule-${ruleIndex}-${param}`}>{chain.map((item) => <option key={item.id} value={item.id}>{item.name}{item.id === rule.id ? ' (this Rule)' : ''}</option>)}</select>}
+                {source?.kind === 'segment' && <select className={inputClass} value={source.segmentId} onChange={(event) => setParam(param, { kind: 'segment', segmentId: event.target.value })} data-testid={`select-utm-segment-${ruleIndex}-${param}`}>{segments.map((segment) => <option key={segment.id} value={segment.id}>{segment.label}</option>)}</select>}
+                {source?.kind === 'tag' && <div className="grid grid-cols-2 gap-2"><select className={inputClass} value={source.ruleId} onChange={(event) => setParam(param, { ...source, ruleId: event.target.value })} data-testid={`select-utm-tag-rule-${ruleIndex}-${param}`}>{chain.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select className={inputClass} value={source.tag} onChange={(event) => setParam(param, { ...source, tag: event.target.value as 'platform' | 'entityType' })} data-testid={`select-utm-tag-${ruleIndex}-${param}`}><option value="platform">Platform</option><option value="entityType">Entity type</option></select></div>}
+                {source?.kind === 'literal' && <input className={`${inputClass} font-mono`} value={source.value} onChange={(event) => setParam(param, { kind: 'literal', value: event.target.value })} placeholder="cpc" data-testid={`input-utm-literal-${ruleIndex}-${param}`} />}
+              </div>
+            );
+          })}
+          <div className="mt-2 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+            <label className="text-[13px] font-bold text-foreground">Base URL:<input className={`${inputClass} mt-2 font-mono`} value={mapping.baseUrl ?? ''} onChange={(event) => onChange({ ...mapping, baseUrl: event.target.value })} placeholder="https://www.example.com/landing" data-testid={`input-utm-base-url-${ruleIndex}`} /></label>
+            <label className="flex items-center gap-2 pb-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={mapping.baseUrlEditable} onChange={(event) => onChange({ ...mapping, baseUrlEditable: event.target.checked })} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-utm-base-editable-${ruleIndex}`} /> Editable in Build</label>
+            <label className="text-[13px] font-bold text-foreground">Case:<select className={`${inputClass} mt-2`} value={mapping.casePolicy} onChange={(event) => onChange({ ...mapping, casePolicy: event.target.value as UtmMapping['casePolicy'] })} data-testid={`select-utm-case-${ruleIndex}`}><option value="lower">Lowercase only</option><option value="asIs">As built</option></select></label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // readOnly: the signed-in user is not a workspace admin (only admins may
 // change Rule Sets, under the Security Rules); every control is disabled and
 // the Save and Delete buttons give way to a hint.
@@ -229,6 +308,7 @@ export function RuleSetEditor({ existing, definitions, readOnly = false, storeKi
       if (index !== ruleIndex) return rule;
       const merged = { ...rule, ...updates };
       if (merged.parent === undefined) delete merged.parent;
+      if (merged.utm === undefined) delete merged.utm;
       return merged;
     });
     return cascadeToChildren(next, next[ruleIndex].id);
@@ -301,6 +381,8 @@ export function RuleSetEditor({ existing, definitions, readOnly = false, storeKi
         </div>
 
         <ParentPicker rule={rule} ruleIndex={ruleIndex} rules={rules} draftRuleSet={draftRuleSet} definitions={definitions} onChange={(updates) => updateRule(ruleIndex, updates)} />
+
+        <UtmPanel rule={rule} ruleIndex={ruleIndex} draftRuleSet={draftRuleSet} definitions={definitions} onChange={(utm) => updateRule(ruleIndex, { utm })} />
 
         <div className="mt-5 rounded-lg border border-border/50 bg-muted/20 p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-3"><Database className="h-4 w-4 text-muted-foreground" /><div><div className="text-[13px] font-bold text-foreground">Source mapping</div><div className="text-[11px] font-bold text-muted-foreground mt-0.5">Used for live scanning in Stage 2.</div></div></div><button type="button" className="text-[13px] font-bold text-foreground underline-offset-2 hover:underline" onClick={() => {
           if (rule.source.filter) {
