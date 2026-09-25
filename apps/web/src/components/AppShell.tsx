@@ -44,7 +44,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const current = location.startsWith('/build') ? 'build' : location.startsWith('/check') ? 'check' : 'author';
+  const current = location.startsWith('/build') ? 'build' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : 'author';
 
   const selectedRuleSet = ruleSets.find(rs => rs.id === ruleSetId);
 
@@ -106,6 +106,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           <NavItem href="/author" label="Author" active={current === 'author'} />
           <NavItem href="/build" label="Build" active={current === 'build'} />
           <NavItem href="/check" label="Check" active={current === 'check'} />
+          <NavItem href="/dictionary" label="Dictionary" active={current === 'dictionary'} />
         </nav>
         
         <div className="mt-auto">

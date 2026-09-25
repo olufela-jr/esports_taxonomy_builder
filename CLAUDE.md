@@ -78,8 +78,10 @@ round-trip and every violation type; keep it green after every change.
 - `source = { dataset, table, nameColumn, filter? }` per Rule. Stage 1 stores it only.
 
 ## UI rule: action-first with persistent context
-Top navigation is the three actions: Author, Build, Check. The selected Rule Set and Rule
-are persistent context carried across all three. Switching action must NOT reset them.
+Top navigation is the three actions, Author, Build, Check, plus Dictionary (v3, added
+2026-09-25 by decision): the tenant's shared definitions, where admins author them and
+standard users request new values. The selected Rule Set and Rule are persistent context
+carried across all of them. Switching action must NOT reset them.
 (Implemented in the prototype, including restore across refresh. Preserve it through
 migration; the browser regression test in checklist step 3 guards it.)
 
@@ -156,7 +158,11 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
 1. Platform list in `@taxo/shared` (O12) and a `--platforms` flag on provisioning (D38).
    Done 2026-09-24 (`v3/phase-2.md`).
 2. Definitions: type, `tenants/{id}/definitions` in `store.ts` and the Security Rules,
-   `checkDefinition` sharing one entry-list check with `checkRule` (O14).
+   `checkDefinition` sharing one entry-list check with `checkRule` (O14). Done 2026-09-25,
+   with the Dictionary tab: admins author definitions there, standard users request a
+   value (`tenants/{id}/requests`) and admins approve or reject in the same tab. That is
+   the submit-and-approve half of phase 5 pulled forward; drafts and Build blocking (D42)
+   stay in phase 5.
 3. `definitionId` enum segments; `resolveRule(rule, ruleSet, definitions)` resolving parents
    and definitions in one call (D46) with the platform guard (D47); the runtime guard on
    `compose` and `validate` (D25: error result, never a throw).
@@ -194,7 +200,8 @@ inlined: pnpm's symlinked `node_modules` makes this essential, do not rely on ho
 - Inheritance by reference at build time is in scope; cross-level validation is not.
 - Do not add server-side CSV processing.
 - Do not build scheduled scanning or an exceptions list. (Legacy noise is handled by a
-  Rule's `source.filter`.) Roles are done (v3 phase 1); the request queue and approvals are
-  v3 phase 5, not before. No versioning and no retired codes, anywhere (D43).
+  Rule's `source.filter`.) Roles are done (v3 phase 1); request submit and approve are
+  done in the Dictionary (phase 2); drafts and Build blocking are v3 phase 5, not before.
+  No versioning and no retired codes, anywhere (D43).
 - Do not let the prototype's "suggested next prompts" reopen settled decisions:
   the items above are deferred (decided).

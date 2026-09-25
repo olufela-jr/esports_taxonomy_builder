@@ -4,7 +4,7 @@ import type { RuleSet } from './types';
 // last action used, and the Check scope. Per-browser, so it lives in
 // localStorage; Rule Set data itself goes through the store module.
 
-export type ActionPath = '/author' | '/build' | '/check';
+export type ActionPath = '/author' | '/build' | '/check' | '/dictionary';
 export type CheckMode = 'single' | 'all';
 
 // ruleId is the selected Rule's immutable id, never its editable key.
@@ -32,7 +32,7 @@ type StoredState = {
 };
 
 export function isActionPath(value: unknown): value is ActionPath {
-  return value === '/author' || value === '/build' || value === '/check';
+  return value === '/author' || value === '/build' || value === '/check' || value === '/dictionary';
 }
 
 function isCheckMode(value: unknown): value is CheckMode {

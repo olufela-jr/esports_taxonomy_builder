@@ -1,6 +1,6 @@
 import { entriesFromCodes, entryFromCode, type EnumEntry, type Rule, type Segment, type Source, type Tags } from '@taxo/shared';
 import { newId } from '@/lib/ids';
-import type { Definition, RuleSet } from './types';
+import type { Definition, RuleSet, ValueRequest } from './types';
 
 // localStorage keys, newest first. Only the in-memory store (development) reads
 // these; Firestore users never had browser-local data.
@@ -183,6 +183,29 @@ export function readLocalDefinitions(): Definition[] | null {
     // Corrupt storage: treat as empty.
   }
   return null;
+}
+
+export const LOCAL_REQUESTS_KEY = 'campaign-naming-requests-v3';
+
+export function readLocalRequests(): ValueRequest[] | null {
+  try {
+    const current = window.localStorage.getItem(LOCAL_REQUESTS_KEY);
+    if (current) {
+      const parsed: unknown = JSON.parse(current);
+      return Array.isArray(parsed) ? (parsed as ValueRequest[]) : null;
+    }
+  } catch {
+    // Corrupt storage: treat as empty.
+  }
+  return null;
+}
+
+export function writeLocalRequests(requests: ValueRequest[]): void {
+  try {
+    window.localStorage.setItem(LOCAL_REQUESTS_KEY, JSON.stringify(requests));
+  } catch {
+    // Storage unavailable: the in-memory copy still works.
+  }
 }
 
 export function writeLocalDefinitions(definitions: Definition[]): void {

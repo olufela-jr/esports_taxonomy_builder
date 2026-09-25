@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import { collection, deleteDoc, doc, getDoc, getDocs, runTransaction, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, query, runTransaction, setDoc, updateDoc, where } from 'firebase/firestore';
 
 // The Security Rules are the app's only access control, so they get their own
 // test against the Firestore emulator: `pnpm test:rules` (the emulator needs Java).
@@ -29,6 +29,22 @@ const definition = {
   entries: [{ label: 'United Kingdom', code: 'uk' }],
   createdBy: 'alice',
   updatedBy: 'alice',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+// A pending request from uma, the standard user (v3 D41).
+const valueRequest = {
+  id: 'req-1',
+  definitionId: 'def-1',
+  label: 'Germany',
+  code: 'de',
+  note: '',
+  requestedByName: 'Uma',
+  status: 'pending',
+  reason: '',
+  createdBy: 'uma',
+  updatedBy: 'uma',
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
@@ -61,6 +77,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'tenants/acme/users/uma'), { uid: 'uma', email: 'uma@acme.test', role: 'user', updatedAt: '2026-01-01T00:00:00.000Z' });
     await setDoc(doc(db, 'tenants/acme/rulesets/rs-1'), ruleSet);
     await setDoc(doc(db, 'tenants/acme/definitions/def-1'), definition);
+    await setDoc(doc(db, 'tenants/acme/requests/req-1'), valueRequest);
     await setDoc(doc(db, 'tenants/other/rulesets/rs-9'), { ...ruleSet, id: 'rs-9', createdBy: 'bob', updatedBy: 'bob' });
     // The pre-v3 collection, left in place by the migration until it is deleted explicitly.
     await setDoc(doc(db, 'rulesets/rs-legacy'), { ...ruleSet, id: 'rs-legacy' });
@@ -223,5 +240,49 @@ describe('definitions by role', () => {
     await assertFails(deleteDoc(doc(nobody(), DEF1)));
     await assertFails(deleteDoc(doc(anonymous(), DEF1)));
     await assertSucceeds(deleteDoc(doc(alice(), DEF1)));
+  });
+});
+
+const REQ1 = 'tenants/acme/requests/req-1';
+
+describe('requests by role', () => {
+  it('lets a member submit their own pending request and nothing else', async () => {
+    const fresh = { ...valueRequest, id: 'req-2', code: 'fr', label: 'France' };
+    await assertSucceeds(setDoc(doc(uma(), 'tenants/acme/requests/req-2'), fresh));
+    // Not as someone else, not already approved, not into another tenant, not malformed, not unstamped.
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/requests/req-3'), { ...fresh, id: 'req-3', createdBy: 'alice' }));
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/requests/req-4'), { ...fresh, id: 'req-4', status: 'approved' }));
+    await assertFails(setDoc(doc(uma(), 'tenants/other/requests/req-5'), { ...fresh, id: 'req-5' }));
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/requests/req-6'), { ...fresh, id: 'req-6', status: 'later' }));
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/requests/req-7'), { ...fresh, id: 'req-7', updatedBy: 'alice' }));
+    await assertFails(setDoc(doc(bob(), 'tenants/acme/requests/req-8'), { ...fresh, id: 'req-8', createdBy: 'bob', updatedBy: 'bob' }));
+    await assertFails(setDoc(doc(anonymous(), 'tenants/acme/requests/req-9'), { ...fresh, id: 'req-9' }));
+  });
+
+  it('lets the requester read their own, admins read all, and nobody else', async () => {
+    await assertSucceeds(getDoc(doc(uma(), REQ1)));
+    await assertSucceeds(getDocs(query(collection(uma(), 'tenants/acme/requests'), where('createdBy', '==', 'uma'))));
+    // An unfiltered list would expose other members' requests, so it is refused.
+    await assertFails(getDocs(collection(uma(), 'tenants/acme/requests')));
+    await assertSucceeds(getDoc(doc(alice(), REQ1)));
+    await assertSucceeds(getDocs(collection(alice(), 'tenants/acme/requests')));
+    await assertFails(getDoc(doc(bob(), REQ1)));
+    await assertFails(getDoc(doc(nobody(), REQ1)));
+    await assertFails(getDoc(doc(anonymous(), REQ1)));
+  });
+
+  it('lets only an admin decide a request, stamped as themselves, keeping the requester', async () => {
+    await assertFails(updateDoc(doc(uma(), REQ1), { status: 'approved', updatedBy: 'uma' }));
+    await assertFails(updateDoc(doc(alice(), REQ1), { status: 'approved' }));
+    await assertFails(updateDoc(doc(alice(), REQ1), { status: 'approved', createdBy: 'alice', updatedBy: 'alice' }));
+    await assertFails(updateDoc(doc(alice(), REQ1), { status: 'maybe', updatedBy: 'alice' }));
+    await assertSucceeds(updateDoc(doc(alice(), REQ1), { status: 'rejected', reason: 'Use the existing code.', updatedAt: '2026-01-02T00:00:00.000Z', updatedBy: 'alice' }));
+    await assertFails(updateDoc(doc(bob(), REQ1), { status: 'approved', updatedBy: 'bob' }));
+  });
+
+  it('lets only an admin delete a request', async () => {
+    await assertFails(deleteDoc(doc(uma(), REQ1)));
+    await assertFails(deleteDoc(doc(bob(), REQ1)));
+    await assertSucceeds(deleteDoc(doc(alice(), REQ1)));
   });
 });

@@ -7,20 +7,23 @@
 // read-only view of the tenant document. Every Firestore path sits under
 // tenants/{tenantId}, and every write stamps the caller's uid as updatedBy,
 // which the Security Rules require.
-import { collection, deleteDoc, doc, onSnapshot, runTransaction, setDoc, type Firestore } from 'firebase/firestore';
+import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, setDoc, where, type Firestore } from 'firebase/firestore';
 import { newId } from '@/lib/ids';
 import { getFirebase } from '@/lib/firebase';
-import { readLocalDefinitions, readLocalRuleSets, writeLocalDefinitions, writeLocalRuleSets } from './migrations';
+import { readLocalDefinitions, readLocalRequests, readLocalRuleSets, writeLocalDefinitions, writeLocalRequests, writeLocalRuleSets } from './migrations';
 import type { Mode } from './mode';
 import { seedDefinitions, seedRuleSets } from './seeds';
-import type { Audit, Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant } from './types';
+import type { Audit, Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
 
-export type { Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant } from './types';
+export type { Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
 
-// Who the store writes as: the signed-in user's tenant and uid.
+// Who the store writes as: the signed-in user's tenant, uid and role. The role
+// decides what the requests subscription may ask for: an admin lists every
+// request, a standard user only their own, which is all the rules let them read.
 export type StoreSession = {
   tenantId: string;
   uid: string;
+  role: 'admin' | 'user';
 };
 
 // Every stored document: its own fields plus the audit fields and an id.
@@ -52,6 +55,7 @@ export type Store = {
   kind: Mode;
   ruleSets: Collection<RuleSet, RuleSetDraft>;
   definitions: Collection<Definition, DefinitionDraft>;
+  requests: Collection<ValueRequest, ValueRequestDraft>;
   tenant: TenantReader;
 };
 
@@ -74,6 +78,7 @@ declare global {
   interface Window {
     __taxoTestSeed?: RuleSet[];
     __taxoTestDefinitions?: Definition[];
+    __taxoTestRequests?: ValueRequest[];
     __taxoStore?: Store;
   }
 }
@@ -86,6 +91,10 @@ export function definitionsPath(tenantId: string): string {
   return `tenants/${tenantId}/definitions`;
 }
 
+export function requestsPath(tenantId: string): string {
+  return `tenants/${tenantId}/requests`;
+}
+
 function stamp(): string {
   return new Date().toISOString();
 }
@@ -96,21 +105,23 @@ function byNewestFirst(a: Stored, b: Stored): number {
 
 // ---- In-memory -----------------------------------------------------------------
 
-function memoryCollection<T extends Stored, Draft>(initial: T[], session: StoreSession, persist?: (items: T[]) => void): Collection<T, Draft> {
+// visible: which stored items this session may see (the rules' read filter,
+// applied here so memory mode behaves like Firestore for a standard user).
+function memoryCollection<T extends Stored, Draft>(initial: T[], session: StoreSession, persist?: (items: T[]) => void, visible: (item: T) => boolean = () => true): Collection<T, Draft> {
   let items = initial;
   const listeners = new Set<(items: T[]) => void>();
 
   function commit(next: T[]) {
     items = next;
     persist?.(next);
-    listeners.forEach((listener) => listener(next));
+    listeners.forEach((listener) => listener(next.filter(visible)));
   }
 
   return {
-    getSnapshot: () => items,
+    getSnapshot: () => items.filter(visible),
     subscribe(listener) {
       listeners.add(listener);
-      listener(items);
+      listener(items.filter(visible));
       return () => { listeners.delete(listener); };
     },
     async create(draft) {
@@ -145,11 +156,17 @@ function memoryTenant(session: StoreSession): TenantReader {
   };
 }
 
-export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void }): Store {
+// A standard user sees only their own requests; an admin sees every one.
+function requestVisible(session: StoreSession): (request: ValueRequest) => boolean {
+  return session.role === 'admin' ? () => true : (request) => request.createdBy === session.uid;
+}
+
+export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void }): Store {
   return {
     kind: 'memory',
     ruleSets: memoryCollection<RuleSet, RuleSetDraft>(ruleSets, session, persist?.ruleSets),
     definitions: memoryCollection<Definition, DefinitionDraft>(definitions, session, persist?.definitions),
+    requests: memoryCollection<ValueRequest, ValueRequestDraft>(requests, session, persist?.requests, requestVisible(session)),
     tenant: memoryTenant(session),
   };
 }
@@ -159,7 +176,9 @@ export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[]
 // Listening starts with the first subscriber and stops with the last, so nothing
 // is read before sign-in and nothing stays open after sign-out (reads need a
 // signed-in tenant member under the Security Rules).
-function firestoreCollection<T extends Stored, Draft>(db: Firestore, path: string, session: StoreSession): Collection<T, Draft> {
+// ownOnly: subscribe to the caller's own documents only (createdBy == uid),
+// the filter the Security Rules require of a standard user listing requests.
+function firestoreCollection<T extends Stored, Draft>(db: Firestore, path: string, session: StoreSession, ownOnly = false): Collection<T, Draft> {
   let snapshot: T[] = [];
   const listeners = new Set<(items: T[]) => void>();
   let stopListening: (() => void) | null = null;
@@ -167,7 +186,7 @@ function firestoreCollection<T extends Stored, Draft>(db: Firestore, path: strin
   function ensureListening() {
     if (stopListening) return;
     stopListening = onSnapshot(
-      collection(db, path),
+      ownOnly ? query(collection(db, path), where('createdBy', '==', session.uid)) : collection(db, path),
       (result) => {
         // The document shape is the stored type; Security Rules enforce it on write.
         snapshot = result.docs.map((item) => item.data() as T).sort(byNewestFirst);
@@ -267,6 +286,7 @@ export function createFirestoreStore(db: Firestore, session: StoreSession): Stor
     kind: 'firestore',
     ruleSets: firestoreCollection<RuleSet, RuleSetDraft>(db, ruleSetsPath(session.tenantId), session),
     definitions: firestoreCollection<Definition, DefinitionDraft>(db, definitionsPath(session.tenantId), session),
+    requests: firestoreCollection<ValueRequest, ValueRequestDraft>(db, requestsPath(session.tenantId), session, session.role !== 'admin'),
     tenant: firestoreTenant(db, session),
   };
 }
@@ -283,7 +303,7 @@ const stores = new Map<string, Store>();
 // persists past the session except the local development data, which
 // round-trips through localStorage.
 export function createStore(mode: Mode, session: StoreSession): Store {
-  const cacheKey = `${mode}:${session.tenantId}:${session.uid}`;
+  const cacheKey = `${mode}:${session.tenantId}:${session.uid}:${session.role}`;
   const cached = stores.get(cacheKey);
   if (cached) return cached;
 
@@ -292,8 +312,8 @@ export function createStore(mode: Mode, session: StoreSession): Store {
     store = createFirestoreStore(getFirebase().db, session);
   } else {
     store = window.__taxoTestSeed
-      ? createMemoryStore(window.__taxoTestSeed, window.__taxoTestDefinitions ?? [], session)
-      : createMemoryStore(readLocalRuleSets() ?? seedRuleSets, readLocalDefinitions() ?? seedDefinitions, session, { ruleSets: writeLocalRuleSets, definitions: writeLocalDefinitions });
+      ? createMemoryStore(window.__taxoTestSeed, window.__taxoTestDefinitions ?? [], window.__taxoTestRequests ?? [], session)
+      : createMemoryStore(readLocalRuleSets() ?? seedRuleSets, readLocalDefinitions() ?? seedDefinitions, readLocalRequests() ?? [], session, { ruleSets: writeLocalRuleSets, definitions: writeLocalDefinitions, requests: writeLocalRequests });
     window.__taxoStore = store;
   }
   stores.set(cacheKey, store);

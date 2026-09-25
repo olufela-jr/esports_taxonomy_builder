@@ -4,6 +4,7 @@ import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { AppShell } from '@/components/AppShell';
 import { Builder } from '@/components/Builder';
 import { CsvChecker } from '@/components/CsvChecker';
+import { Dictionary } from '@/components/Dictionary';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { NotFound } from '@/components/NotFound';
 import { RuleSetEditor } from '@/components/RuleSetEditor';
@@ -11,7 +12,7 @@ import { RuleSetList } from '@/components/RuleSetList';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
 import { createAuth, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
-import { createStore, type RuleSet, type RuleSetDraft, type Store } from '@/data/store';
+import { createStore, type Definition, type DefinitionDraft, type RuleSet, type RuleSetDraft, type Store, type Tenant, type ValueRequest, type ValueRequestDraft } from '@/data/store';
 import { isActionPath, readUiState, writeUiState, type CheckMode, type UiState } from '@/data/ui-state';
 
 // App owns all shared state with useState: the signed-in user, the Rule Sets
@@ -28,14 +29,22 @@ function App() {
   // workspace member is signed in; its listener starts then and stops on sign-out.
   const tenantId = user?.tenantId ?? null;
   const uid = user?.uid ?? null;
-  const store = useMemo(() => (tenantId && uid ? createStore(mode, { tenantId, uid }) : null), [mode, tenantId, uid]);
+  const role = user?.role ?? null;
+  const store = useMemo(() => (tenantId && uid && role ? createStore(mode, { tenantId, uid, role }) : null), [mode, tenantId, uid, role]);
   const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store?.ruleSets.getSnapshot() ?? []);
+  const [definitions, setDefinitions] = useState<Definition[]>(() => store?.definitions.getSnapshot() ?? []);
+  const [requests, setRequests] = useState<ValueRequest[]>(() => store?.requests.getSnapshot() ?? []);
+  const [tenant, setTenant] = useState<Tenant | null>(() => store?.tenant.getSnapshot() ?? null);
   useEffect(() => {
     if (!store) {
       setRuleSets([]);
+      setDefinitions([]);
+      setRequests([]);
+      setTenant(null);
       return;
     }
-    return store.ruleSets.subscribe(setRuleSets);
+    const stops = [store.ruleSets.subscribe(setRuleSets), store.definitions.subscribe(setDefinitions), store.requests.subscribe(setRequests), store.tenant.subscribe(setTenant)];
+    return () => stops.forEach((stop) => stop());
   }, [store]);
 
   // The workspace context is per browser, not per user, so it survives sign-out and sign-in.
@@ -76,6 +85,9 @@ function App() {
         user={user}
         canEdit={user.role === 'admin'}
         ruleSets={ruleSets}
+        definitions={definitions}
+        requests={requests}
+        tenant={tenant}
         storeKind={store.kind}
         ui={ui}
         selectedRuleSet={selectedRuleSet}
@@ -88,6 +100,11 @@ function App() {
         onCreate={(draft) => store.ruleSets.create(draft)}
         onUpdate={(id, draft, baseUpdatedAt) => store.ruleSets.update(id, draft, baseUpdatedAt)}
         onDelete={(id) => store.ruleSets.remove(id)}
+        onCreateDefinition={(draft) => store.definitions.create(draft)}
+        onUpdateDefinition={(id, draft, baseUpdatedAt) => store.definitions.update(id, draft, baseUpdatedAt)}
+        onDeleteDefinition={(id) => store.definitions.remove(id)}
+        onCreateRequest={(draft) => store.requests.create(draft)}
+        onUpdateRequest={(id, draft, baseUpdatedAt) => store.requests.update(id, draft, baseUpdatedAt)}
       />
     </WouterRouter>
   );
@@ -98,6 +115,9 @@ type WorkspaceProps = {
   // Admins author; standard users only build and check (D36).
   canEdit: boolean;
   ruleSets: RuleSet[];
+  definitions: Definition[];
+  requests: ValueRequest[];
+  tenant: Tenant | null;
   storeKind: Store['kind'];
   ui: UiState;
   selectedRuleSet: RuleSet | undefined;
@@ -110,12 +130,17 @@ type WorkspaceProps = {
   onCreate: (draft: RuleSetDraft) => Promise<RuleSet>;
   onUpdate: (id: string, draft: RuleSetDraft, baseUpdatedAt: string) => Promise<string>;
   onDelete: (id: string) => Promise<void>;
+  onCreateDefinition: (draft: DefinitionDraft) => Promise<Definition>;
+  onUpdateDefinition: (id: string, draft: DefinitionDraft, baseUpdatedAt: string) => Promise<string>;
+  onDeleteDefinition: (id: string) => Promise<void>;
+  onCreateRequest: (draft: ValueRequestDraft) => Promise<ValueRequest>;
+  onUpdateRequest: (id: string, draft: ValueRequestDraft, baseUpdatedAt: string) => Promise<string>;
 };
 
 // Inside the router: syncs the last action with the URL, redirects the root to
-// it, and renders the shell plus the three actions.
+// it, and renders the shell plus the four actions.
 function Workspace(props: WorkspaceProps) {
-  const { user, canEdit, ruleSets, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete } = props;
+  const { user, canEdit, ruleSets, definitions, requests, tenant, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -148,6 +173,7 @@ function Workspace(props: WorkspaceProps) {
           <Route path="/author">{author}</Route>
           <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} /></Route>
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
+          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} tenant={tenant} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} /></Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />
         </Switch>

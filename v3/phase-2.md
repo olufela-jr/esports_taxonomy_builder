@@ -113,3 +113,77 @@ yet (step 3) and nothing shows one (step 2b).
 
 - The definitions collection is deployed by the next `./deploy.sh` (rules) but has no screen
   until step 2b, so nothing can write to it yet.
+
+## Step 2b: the Dictionary tab
+
+Changed at review from the planned Author sub-route: the user wanted the shared definitions
+visible in their own tab, "Dictionary", with the request flow for new values in it. So the
+tab shows every definition to every member, admins author there, and the submit-and-approve
+half of phase 5's request queue arrives now (chosen at review: submit and approve, no drafts
+or Build blocking, which stay D42 phase 5).
+
+### What changed
+
+- `apps/web/src/data/types.ts`: `ValueRequest` (definitionId, label, code, note,
+  requestedByName, status pending/approved/rejected, reason, audit fields) and its draft.
+- `firestore.rules`: `tenants/{tenantId}/requests/{id}`: any member creates their own, status
+  pending, stamped; the requester or an admin reads one, so a member's list must be filtered
+  to `createdBy == uid`; only an admin updates (status, reason), `createdBy` frozen; admin
+  deletes. `firestore.rules.test.ts`: a pending request seeded, four new cases including the
+  refused unfiltered list.
+- `apps/web/src/data/store.ts`: a `requests` collection from the same factory. The session now
+  carries the role, because a standard user's Firestore subscription is a `where('createdBy',
+  '==', uid)` query and the memory store applies the same visibility filter, so the two modes
+  behave alike. Local persistence key and `__taxoTestRequests` hook added.
+- `apps/web/src/data/ui-state.ts`: `/dictionary` is an action path, so it persists as the last
+  action and survives a refresh like the other three. `AppShell.tsx`: the fourth nav item.
+- `apps/web/src/components/Dictionary.tsx` (new): list of definitions on the left; on the right
+  an admin editor (name, platform checkboxes over the tenant's platforms or all of them while
+  the tenant has none, an entries table with stable row ids, `checkDefinition` errors, Save
+  disabled until clean and dirty, Delete with confirm, the D44 plain confirm when an existing
+  code is changed or removed, the stale-version reload) or, for a standard user, a read-only
+  values table with a "Request a new value" form that refuses a collision up front. Below,
+  the requests: admins see pending ones with the collision check, a reason field, Reject and
+  Approve (Approve writes the entry to the definition first, then marks the request); members
+  see their own with status and reason.
+- `apps/web/src/App.tsx`: definitions, requests and tenant state from the store, the
+  `/dictionary` route, five new handlers passed through `Workspace`.
+- `apps/web/e2e/dictionary.spec.ts` (new, 4 tests): admin creates a definition typing freely
+  and it is stored with entries and platforms, refresh returns to the Dictionary; a duplicate
+  code blocks Save; a standard user reads and submits a request and cannot request an
+  existing code; an admin approves one request (entry added) and rejects another with a
+  reason. `e2e/fixtures.ts`: two definition fixtures, `readDefinitions`, `readRequests`, and
+  `seedRuleSets` takes definitions and requests.
+- `CLAUDE.md`: the UI rule names the fourth action; build order step 2 done; the Do-not list
+  says submit and approve are done, drafts and blocking are phase 5.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean everywhere |
+| `pnpm test` | 38 (engine), 9 (functions), 13 (scripts) |
+| `PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" pnpm test:rules` | 16 of 16 (4 new) |
+| `pnpm test:e2e` | 21 of 21 (4 new) |
+| `pnpm --filter @taxo/web build` | Clean, 871 kB |
+
+### Decisions not spelled out in the plan
+
+- A request has no `platforms` of its own, unlike the v3 spec's sketch: the definition it
+  targets already carries the scope, and an entry has none. Recorded as a spec change to make
+  in Phase C.
+- A request has no `draftId` yet; D42 drafts add it in phase 5.
+- Approve writes the definition before the request, so a refused definition save (a conflict,
+  or a collision that appeared meanwhile) leaves the request pending rather than approved
+  with no entry.
+- A member's request form runs `checkDefinition` on the proposed entry, so a request that
+  could never be approved is refused before it reaches an admin.
+- Deleting a definition is allowed with a confirm; the dependents block arrives in step 3
+  when Rules can reference definitions.
+
+### Leftovers
+
+- The tenant's platform list is still empty on `esports`, so the Dictionary offers all nine
+  platforms; set it with `provision-user.ts --platforms` when the client's platforms are known.
+- `docs/spec-v3.md` still describes requests with `platforms[]` and `draftId` and puts the
+  whole queue in phase 5; update in the Phase C spec pass.

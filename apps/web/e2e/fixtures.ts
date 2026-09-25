@@ -71,12 +71,55 @@ export const globalRuleSet = {
 // stays in localStorage; one test asserts on it directly.
 export const UI_STATE_KEY = 'campaign-tool-ui-state-v4';
 
+// Two shared definitions for the Dictionary tests: one for every platform, one
+// scoped to search platforms.
+export const marketDefinition = {
+  id: 'def-market',
+  name: 'Market',
+  platforms: [],
+  entries: [{ label: 'United Kingdom', code: 'uk' }, { label: 'United States', code: 'us' }],
+  createdBy: 'maya',
+  updatedBy: 'maya',
+  createdAt: '2026-09-01T09:00:00.000Z',
+  updatedAt: '2026-09-01T09:00:00.000Z',
+};
+
+export const objectiveDefinition = {
+  id: 'def-objective',
+  name: 'Campaign objective',
+  platforms: ['google', 'microsoft'],
+  entries: [{ label: 'Awareness', code: 'AWA' }],
+  createdBy: 'maya',
+  updatedBy: 'maya',
+  createdAt: '2026-09-02T09:00:00.000Z',
+  updatedAt: '2026-09-02T09:00:00.000Z',
+};
+
 // role: the local user is an admin unless a test asks for a standard user.
-export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaRuleSet, globalRuleSet], role: 'admin' | 'user' = 'admin') {
-  await page.addInitScript(({ seed, role }) => {
+// definitions and requests seed the Dictionary; both default to empty.
+export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaRuleSet, globalRuleSet], role: 'admin' | 'user' = 'admin', definitions: unknown[] = [], requests: unknown[] = []) {
+  await page.addInitScript(({ seed, role, definitions, requests }) => {
     window.__taxoTestSeed = seed;
     window.__taxoTestRole = role;
-  }, { seed: ruleSets as never, role });
+    window.__taxoTestDefinitions = definitions;
+    window.__taxoTestRequests = requests;
+  }, { seed: ruleSets as never, role, definitions: definitions as never, requests: requests as never });
+}
+
+export async function readDefinitions(page: Page): Promise<Array<{ id: string; name: string; platforms: string[]; entries: Array<{ label: string; code: string }> }>> {
+  return page.evaluate(() => {
+    const store = window.__taxoStore;
+    if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
+    return JSON.parse(JSON.stringify(store.definitions.getSnapshot()));
+  });
+}
+
+export async function readRequests(page: Page): Promise<Array<{ id: string; definitionId: string; label: string; code: string; status: string; reason: string }>> {
+  return page.evaluate(() => {
+    const store = window.__taxoStore;
+    if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
+    return JSON.parse(JSON.stringify(store.requests.getSnapshot()));
+  });
 }
 
 // The Rule Sets as the app currently holds them, read back through the store.

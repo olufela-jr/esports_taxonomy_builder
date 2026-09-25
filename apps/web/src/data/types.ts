@@ -20,6 +20,26 @@ export type Definition = EngineDefinition & Audit;
 
 export type DefinitionDraft = Pick<Definition, 'name' | 'platforms' | 'entries'>;
 
+// A standard user's request for a new entry in a shared definition (v3 D41),
+// stored at tenants/{tenantId}/requests/{id}. createdBy is the requester; an
+// admin moves status from pending to approved (the entry is added to the
+// definition in the same action) or rejected with a reason. Drafts and Build
+// blocking (D42) are phase 5 and not modelled yet.
+export type RequestStatus = 'pending' | 'approved' | 'rejected';
+
+export type ValueRequest = {
+  id: string;
+  definitionId: string;
+  label: string;
+  code: string;
+  note: string;            // why the value is needed; may be empty
+  requestedByName: string; // display name at submission, for the admin's list
+  status: RequestStatus;
+  reason: string;          // the admin's reason on rejection; empty otherwise
+} & Audit;
+
+export type ValueRequestDraft = Pick<ValueRequest, 'definitionId' | 'label' | 'code' | 'note' | 'requestedByName' | 'status' | 'reason'>;
+
 // The tenant document at tenants/{tenantId}. Written only by the provisioning
 // and migration scripts; the app and the scan Function read it.
 export type TenantConfig = {
