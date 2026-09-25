@@ -14,9 +14,9 @@ async function someoneElseRenames(page: import('@playwright/test').Page, name: s
   await page.evaluate(async (newName) => {
     const store = window.__taxoStore;
     if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
-    const current = store.getSnapshot().find((item) => item.id === 'ruleset-paid');
+    const current = store.ruleSets.getSnapshot().find((item) => item.id === 'ruleset-paid');
     if (!current) throw new Error('ruleset-paid is not in the store');
-    await store.update('ruleset-paid', { name: newName, rules: current.rules }, current.updatedAt);
+    await store.ruleSets.update('ruleset-paid', { name: newName, rules: current.rules }, current.updatedAt);
   }, name);
 }
 

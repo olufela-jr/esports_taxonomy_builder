@@ -1,5 +1,37 @@
 import { entriesFromCodes } from '@taxo/shared';
-import type { RuleSet } from './types';
+import type { Definition, RuleSet } from './types';
+
+// Two shared definitions for the local repository (v3 phase 2): one for every
+// platform, one scoped to search, so the platform filter has something to hide.
+export const seedDefinitions: Definition[] = [
+  {
+    id: 'def-market',
+    name: 'Market',
+    platforms: [],
+    entries: [
+      { label: 'United Kingdom', code: 'uk' },
+      { label: 'United States', code: 'us' },
+      { label: 'Germany', code: 'de' },
+    ],
+    createdBy: 'you',
+    updatedBy: 'you',
+    createdAt: '2026-09-24T09:00:00.000Z',
+    updatedAt: '2026-09-24T09:00:00.000Z',
+  },
+  {
+    id: 'def-objective',
+    name: 'Campaign objective',
+    platforms: ['google', 'microsoft'],
+    entries: [
+      { label: 'Awareness', code: 'AWA' },
+      { label: 'Conversion', code: 'CON' },
+    ],
+    createdBy: 'you',
+    updatedBy: 'you',
+    createdAt: '2026-09-24T09:00:00.000Z',
+    updatedAt: '2026-09-24T09:00:00.000Z',
+  },
+];
 
 // Demo data for the in-memory store (development and tests). Never written to
 // Firestore. Created by the local user, who is an admin in development.

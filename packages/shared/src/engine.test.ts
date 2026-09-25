@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  checkDefinition,
   checkRule,
   checkRuleSet,
   compose,
@@ -11,6 +12,7 @@ import {
   resolveRule,
   rollup,
   validate,
+  type Definition,
   type EnumSegment,
   type FreeformSegment,
   type Rule,
@@ -557,5 +559,56 @@ describe("platforms", () => {
     expect(checkRule({ ...campaignRule, tags: { platform: "Google" } })).toEqual([
       `Platform "Google" is not one of the known platforms: ${PLATFORMS.map((platform) => platform.id).join(", ")}.`,
     ]);
+  });
+});
+
+// ---- shared definitions ------------------------------------------------------------
+
+describe("checkDefinition", () => {
+  const market: Definition = {
+    id: "def_market",
+    name: "Market",
+    platforms: ["google", "meta"],
+    entries: [
+      { label: "United Kingdom", code: "uk" },
+      { label: "Germany", code: "de" },
+    ],
+  };
+
+  it("passes a well-formed definition, with or without entries or platforms", () => {
+    expect(checkDefinition(market)).toEqual([]);
+    expect(checkDefinition({ ...market, platforms: [], entries: [] })).toEqual([]);
+  });
+
+  it("reports a blank name, an unknown platform and a platform listed twice", () => {
+    expect(checkDefinition({ ...market, name: " " })).toEqual(["The definition needs a name."]);
+    expect(checkDefinition({ ...market, platforms: ["google", "facebook"] })).toEqual([
+      `Platform "facebook" is not one of the known platforms: ${PLATFORMS.map((platform) => platform.id).join(", ")}.`,
+    ]);
+    expect(checkDefinition({ ...market, platforms: ["google", "google"] })).toEqual([
+      'Market lists the platform "google" more than once.',
+    ]);
+  });
+
+  it("holds entries to the same rules as an inline list: no blanks, codes unique exactly, labels unique ignoring case", () => {
+    expect(checkDefinition({ ...market, entries: [{ label: "", code: "uk" }] })).toEqual([
+      "Market has an entry without a code or a label.",
+    ]);
+    expect(checkDefinition({ ...market, entries: [{ label: "A", code: "uk" }, { label: "B", code: "uk" }] })).toEqual([
+      'Market has the code "uk" more than once.',
+    ]);
+    expect(checkDefinition({ ...market, entries: [{ label: "Germany", code: "de" }, { label: "germany", code: "de2" }] })).toEqual([
+      'Market has the label "germany" more than once.',
+    ]);
+    // Codes differing only by case are distinct; matching is exact.
+    expect(checkDefinition({ ...market, entries: [{ label: "A", code: "uk" }, { label: "B", code: "UK" }] })).toEqual([]);
+  });
+
+  it("applies the case-insensitive label rule to a Rule's inline list too", () => {
+    const rule: Rule = {
+      ...campaignRule,
+      segments: [{ ...typeSegment, allowedValues: [{ label: "Brand", code: "brand" }, { label: "BRAND", code: "brand2" }] }],
+    };
+    expect(checkRule(rule)).toEqual(['Campaign Type has the label "BRAND" more than once.']);
   });
 });

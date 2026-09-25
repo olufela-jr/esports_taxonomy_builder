@@ -39,6 +39,19 @@ service cloud.firestore {
       return data.updatedBy == request.auth.uid;
     }
 
+    // A shared definition (v3 phase 2): coarse shape only; checkDefinition in
+    // @taxo/shared checks the entries and platforms before every save.
+    function wellFormedDefinition(data) {
+      return data.id is string
+        && data.name is string
+        && data.platforms is list
+        && data.entries is list
+        && data.createdAt is string
+        && data.updatedAt is string
+        && data.createdBy is string
+        && data.updatedBy is string;
+    }
+
     match /tenants/{tenantId} {
       // The tenant document: name and config (allowed datasets, platforms).
       allow read: if inTenant(tenantId);
@@ -59,6 +72,22 @@ service cloud.firestore {
           && stampedByCaller(request.resource.data);
         allow update: if isAdmin(tenantId)
           && wellFormed(request.resource.data)
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.createdBy == resource.data.createdBy
+          && stampedByCaller(request.resource.data);
+        allow delete: if isAdmin(tenantId);
+      }
+
+      // The tenant's shared definitions: any member reads, only an admin writes.
+      match /definitions/{definitionId} {
+        allow read: if inTenant(tenantId);
+        allow create: if isAdmin(tenantId)
+          && wellFormedDefinition(request.resource.data)
+          && request.resource.data.id == definitionId
+          && request.resource.data.createdBy == request.auth.uid
+          && stampedByCaller(request.resource.data);
+        allow update: if isAdmin(tenantId)
+          && wellFormedDefinition(request.resource.data)
           && request.resource.data.id == resource.data.id
           && request.resource.data.createdBy == resource.data.createdBy
           && stampedByCaller(request.resource.data);

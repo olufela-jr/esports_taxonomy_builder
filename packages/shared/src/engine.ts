@@ -9,6 +9,18 @@ export type EnumEntry = {
   code: string;
 };
 
+// A shared definition in a tenant's repository (v3 D37): one named list of
+// entries that any Rule in the tenant can reference, scoped to platforms
+// (D38; an empty list means every platform). Stored at
+// tenants/{tenantId}/definitions/{id}; the engine holds the shape so
+// resolveRule and the scan Function can use it without Firestore.
+export type Definition = {
+  id: string;
+  name: string;
+  platforms: string[]; // PLATFORMS ids
+  entries: EnumEntry[];
+};
+
 export type EnumSegment = {
   id: string;
   kind: "enum";
@@ -184,6 +196,63 @@ function getRuleErrors(rule: Rule): string[] {
   return errors;
 }
 
+// The one entry-list check (v3 O14), shared by a Rule's inline list and a
+// shared definition: no blank code or label, no code twice (exact), no label
+// twice ignoring case (D39). `subject` names the list in the message and
+// `noun` is what its members are called there.
+function entryErrors(entries: EnumEntry[], subject: string, noun: string): string[] {
+  const errors: string[] = [];
+
+  if (entries.some((entry) => !entry.code.trim() || !entry.label.trim())) {
+    errors.push(`${subject} has an ${noun} without a code or a label.`);
+  }
+
+  const codes = new Set<string>();
+  const labels = new Set<string>();
+  for (const entry of entries) {
+    if (codes.has(entry.code)) {
+      errors.push(`${subject} has the code "${entry.code}" more than once.`);
+    }
+    const labelKey = entry.label.trim().toLowerCase();
+    if (labels.has(labelKey)) {
+      errors.push(`${subject} has the label "${entry.label}" more than once.`);
+    }
+    codes.add(entry.code);
+    labels.add(labelKey);
+  }
+
+  return errors;
+}
+
+// Everything an admin must get right before a shared definition can be saved
+// (v3 D37 to D39). An empty entry list is allowed: definitions fill up over
+// time, and a Rule that references an empty one fails checkRule instead.
+export function checkDefinition(definition: Definition): string[] {
+  const errors: string[] = [];
+  const subject = definition.name.trim() || "The definition";
+
+  if (!definition.name.trim()) {
+    errors.push("The definition needs a name.");
+  }
+
+  const seen = new Set<string>();
+  for (const platform of definition.platforms) {
+    if (!isPlatform(platform)) {
+      errors.push(
+        `Platform "${platform}" is not one of the known platforms: ${PLATFORMS.map((known) => known.id).join(", ")}.`,
+      );
+    }
+    if (seen.has(platform)) {
+      errors.push(`${subject} lists the platform "${platform}" more than once.`);
+    }
+    seen.add(platform);
+  }
+
+  errors.push(...entryErrors(definition.entries, subject, "entry"));
+
+  return errors;
+}
+
 // Everything an author must get right before a Rule can be saved. A superset
 // of the structural checks compose() and validate() apply. The authoring UI
 // calls this and keeps no checks of its own.
@@ -211,24 +280,10 @@ export function checkRule(rule: Rule): string[] {
       if (segment.allowedValues.length === 0) {
         errors.push(`${label} needs at least one allowed value.`);
       }
-      if (segment.allowedValues.some((entry) => !entry.code.trim() || !entry.label.trim())) {
-        errors.push(`${label} has an allowed value without a code or a label.`);
-      }
       if (rule.delimiter && segment.allowedValues.some((entry) => entry.code.includes(rule.delimiter))) {
         errors.push(`${label} has an allowed value containing the "${rule.delimiter}" delimiter.`);
       }
-      const codes = new Set<string>();
-      const labels = new Set<string>();
-      for (const entry of segment.allowedValues) {
-        if (codes.has(entry.code)) {
-          errors.push(`${label} has the code "${entry.code}" more than once.`);
-        }
-        if (labels.has(entry.label)) {
-          errors.push(`${label} has the label "${entry.label}" more than once.`);
-        }
-        codes.add(entry.code);
-        labels.add(entry.label);
-      }
+      errors.push(...entryErrors(segment.allowedValues, label, "allowed value"));
     } else if (segment.maxLength < 1) {
       errors.push(`${label} needs a maximum length of at least 1.`);
     }

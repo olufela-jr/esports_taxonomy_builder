@@ -2,7 +2,7 @@ import { ReactNode, useState } from 'react';
 import { ShieldCheck, Menu, X, ChevronRight, LogOut } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import type { User } from '@/data/auth';
-import type { RuleSet, RuleSetStore } from '@/data/store';
+import type { RuleSet, Store } from '@/data/store';
 
 // Up to two initials for the avatar; falls back to "?" for an empty name.
 function initials(name: string) {
@@ -29,7 +29,7 @@ function NavItem({ href, label, active }: { href: string; label: string; active:
 type AppShellProps = {
   user: User;
   ruleSets: RuleSet[];
-  storeKind: RuleSetStore['kind'];
+  storeKind: Store['kind'];
   ruleSetId: string | null;
   ruleId: string | null;
   onSelectRuleSet: (id: string | null) => void;

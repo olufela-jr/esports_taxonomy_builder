@@ -1,6 +1,6 @@
 import { entriesFromCodes, entryFromCode, type EnumEntry, type Rule, type Segment, type Source, type Tags } from '@taxo/shared';
 import { newId } from '@/lib/ids';
-import type { RuleSet } from './types';
+import type { Definition, RuleSet } from './types';
 
 // localStorage keys, newest first. Only the in-memory store (development) reads
 // these; Firestore users never had browser-local data.
@@ -165,5 +165,30 @@ export function writeLocalRuleSets(ruleSets: RuleSet[]): void {
     window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(ruleSets));
   } catch {
     // Storage unavailable (private mode, quota): the in-memory copy still works.
+  }
+}
+
+// Shared definitions (v3 phase 2) are a new collection, so there is nothing to
+// migrate: the current shape or nothing.
+export const LOCAL_DEFINITIONS_KEY = 'campaign-naming-definitions-v3';
+
+export function readLocalDefinitions(): Definition[] | null {
+  try {
+    const current = window.localStorage.getItem(LOCAL_DEFINITIONS_KEY);
+    if (current) {
+      const parsed: unknown = JSON.parse(current);
+      return Array.isArray(parsed) ? (parsed as Definition[]) : null;
+    }
+  } catch {
+    // Corrupt storage: treat as empty.
+  }
+  return null;
+}
+
+export function writeLocalDefinitions(definitions: Definition[]): void {
+  try {
+    window.localStorage.setItem(LOCAL_DEFINITIONS_KEY, JSON.stringify(definitions));
+  } catch {
+    // Storage unavailable: the in-memory copy still works.
   }
 }

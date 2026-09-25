@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowRight, BadgeCheck, Hash, Layers3, Plus, Search } from 'lucide-react';
 import type { Rule } from '@taxo/shared';
-import type { RuleSet, RuleSetStore } from '@/data/store';
+import type { RuleSet, Store } from '@/data/store';
 import { PageHeading } from './PageHeading';
 import { buttonPrimary, inputClass } from './styles';
 
@@ -37,7 +37,7 @@ function RuleSetRow({ ruleSet, index, onSelect }: { ruleSet: RuleSet; index: num
 
 // Feature 1, landing view: list, search, and open Rule Sets, or start a new one.
 // canCreate: the signed-in user is a workspace admin; standard users only open.
-export function RuleSetList({ ruleSets, canCreate, storeKind, onOpen, onCreate }: { ruleSets: RuleSet[]; canCreate: boolean; storeKind: RuleSetStore['kind']; onOpen: (id: string) => void; onCreate: () => void }) {
+export function RuleSetList({ ruleSets, canCreate, storeKind, onOpen, onCreate }: { ruleSets: RuleSet[]; canCreate: boolean; storeKind: Store['kind']; onOpen: (id: string) => void; onCreate: () => void }) {
   const [query, setQuery] = useState('');
   const filtered = ruleSets.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
   const totalSegments = ruleSets.reduce((sum, ruleSet) => sum + ruleSet.rules.reduce((ruleSum: number, rule: Rule) => ruleSum + rule.segments.length, 0), 0);

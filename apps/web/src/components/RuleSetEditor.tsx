@@ -15,7 +15,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { checkRuleSet, entriesFromCodes, entryFromCode, isPlatform, PLATFORMS, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
-import type { RuleSet, RuleSetDraft, RuleSetStore } from '@/data/store';
+import type { RuleSet, RuleSetDraft, Store } from '@/data/store';
 import { newId } from '@/lib/ids';
 import { buttonDanger, buttonPrimary, buttonQuiet, iconButton, inputClass } from './styles';
 
@@ -88,7 +88,7 @@ function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, onChang
 // readOnly: the signed-in user is not a workspace admin (only admins may
 // change Rule Sets, under the Security Rules); every control is disabled and
 // the Save and Delete buttons give way to a hint.
-export function RuleSetEditor({ existing, readOnly = false, storeKind, justCreated, onCreate, onUpdate, onDelete, onSaved, onClose }: { existing: RuleSet | null; readOnly?: boolean; storeKind: RuleSetStore['kind']; justCreated?: boolean; onCreate: (draft: RuleSetDraft) => Promise<RuleSet>; onUpdate: (id: string, draft: RuleSetDraft, baseUpdatedAt: string) => Promise<string>; onDelete: (id: string) => Promise<void>; onSaved: (id: string) => void; onClose: () => void }) {
+export function RuleSetEditor({ existing, readOnly = false, storeKind, justCreated, onCreate, onUpdate, onDelete, onSaved, onClose }: { existing: RuleSet | null; readOnly?: boolean; storeKind: Store['kind']; justCreated?: boolean; onCreate: (draft: RuleSetDraft) => Promise<RuleSet>; onUpdate: (id: string, draft: RuleSetDraft, baseUpdatedAt: string) => Promise<string>; onDelete: (id: string) => Promise<void>; onSaved: (id: string) => void; onClose: () => void }) {
   const isNew = existing === null;
   const [name, setName] = useState(existing?.name ?? 'Untitled Rule Set');
   const [rules, setRules] = useState<Rule[]>(existing?.rules ?? [emptyRule(0)]);

@@ -11,7 +11,7 @@ import { RuleSetList } from '@/components/RuleSetList';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
 import { createAuth, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
-import { createStore, type RuleSet, type RuleSetDraft, type RuleSetStore } from '@/data/store';
+import { createStore, type RuleSet, type RuleSetDraft, type Store } from '@/data/store';
 import { isActionPath, readUiState, writeUiState, type CheckMode, type UiState } from '@/data/ui-state';
 
 // App owns all shared state with useState: the signed-in user, the Rule Sets
@@ -29,13 +29,13 @@ function App() {
   const tenantId = user?.tenantId ?? null;
   const uid = user?.uid ?? null;
   const store = useMemo(() => (tenantId && uid ? createStore(mode, { tenantId, uid }) : null), [mode, tenantId, uid]);
-  const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store?.getSnapshot() ?? []);
+  const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store?.ruleSets.getSnapshot() ?? []);
   useEffect(() => {
     if (!store) {
       setRuleSets([]);
       return;
     }
-    return store.subscribe(setRuleSets);
+    return store.ruleSets.subscribe(setRuleSets);
   }, [store]);
 
   // The workspace context is per browser, not per user, so it survives sign-out and sign-in.
@@ -85,9 +85,9 @@ function App() {
         onCheckModeChange={setCheckMode}
         onLocationChange={setLastAction}
         onSignOut={auth.signOut}
-        onCreate={(draft) => store.create(draft)}
-        onUpdate={(id, draft, baseUpdatedAt) => store.update(id, draft, baseUpdatedAt)}
-        onDelete={(id) => store.remove(id)}
+        onCreate={(draft) => store.ruleSets.create(draft)}
+        onUpdate={(id, draft, baseUpdatedAt) => store.ruleSets.update(id, draft, baseUpdatedAt)}
+        onDelete={(id) => store.ruleSets.remove(id)}
       />
     </WouterRouter>
   );
@@ -98,7 +98,7 @@ type WorkspaceProps = {
   // Admins author; standard users only build and check (D36).
   canEdit: boolean;
   ruleSets: RuleSet[];
-  storeKind: RuleSetStore['kind'];
+  storeKind: Store['kind'];
   ui: UiState;
   selectedRuleSet: RuleSet | undefined;
   selectedRule: RuleSet['rules'][number] | undefined;

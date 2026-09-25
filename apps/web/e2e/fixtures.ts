@@ -84,6 +84,6 @@ export async function readRuleSets(page: Page): Promise<Array<{ id: string; name
   return page.evaluate(() => {
     const store = window.__taxoStore;
     if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
-    return JSON.parse(JSON.stringify(store.getSnapshot()));
+    return JSON.parse(JSON.stringify(store.ruleSets.getSnapshot()));
   });
 }

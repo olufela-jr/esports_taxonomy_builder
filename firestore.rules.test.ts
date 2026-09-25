@@ -21,6 +21,18 @@ const ruleSet = {
   rules: [],
 };
 
+// A shared definition under acme (v3 phase 2).
+const definition = {
+  id: 'def-1',
+  name: 'Market',
+  platforms: [],
+  entries: [{ label: 'United Kingdom', code: 'uk' }],
+  createdBy: 'alice',
+  updatedBy: 'alice',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 const acmeTenant = {
   id: 'acme',
   name: 'Acme',
@@ -48,6 +60,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'tenants/acme/users/alice'), { uid: 'alice', email: 'alice@acme.test', role: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' });
     await setDoc(doc(db, 'tenants/acme/users/uma'), { uid: 'uma', email: 'uma@acme.test', role: 'user', updatedAt: '2026-01-01T00:00:00.000Z' });
     await setDoc(doc(db, 'tenants/acme/rulesets/rs-1'), ruleSet);
+    await setDoc(doc(db, 'tenants/acme/definitions/def-1'), definition);
     await setDoc(doc(db, 'tenants/other/rulesets/rs-9'), { ...ruleSet, id: 'rs-9', createdBy: 'bob', updatedBy: 'bob' });
     // The pre-v3 collection, left in place by the migration until it is deleted explicitly.
     await setDoc(doc(db, 'rulesets/rs-legacy'), { ...ruleSet, id: 'rs-legacy' });
@@ -162,5 +175,53 @@ describe('rulesets by role', () => {
       stillExists = (await getDoc(doc(context.firestore(), RS1))).exists();
     });
     expect(stillExists).toBe(false);
+  });
+});
+
+const DEF1 = 'tenants/acme/definitions/def-1';
+
+describe('definitions by role', () => {
+  it('lets every member read the definitions and nobody outside the tenant', async () => {
+    await assertSucceeds(getDoc(doc(alice(), DEF1)));
+    await assertSucceeds(getDoc(doc(uma(), DEF1)));
+    await assertSucceeds(getDocs(collection(uma(), 'tenants/acme/definitions')));
+    await assertFails(getDoc(doc(bob(), DEF1)));
+    await assertFails(getDocs(collection(bob(), 'tenants/acme/definitions')));
+    await assertFails(getDoc(doc(nobody(), DEF1)));
+    await assertFails(getDoc(doc(anonymous(), DEF1)));
+  });
+
+  it('lets an admin create only a well-formed definition stamped as their own', async () => {
+    const fresh = { ...definition, id: 'def-2', name: 'Objective' };
+    await assertSucceeds(setDoc(doc(alice(), 'tenants/acme/definitions/def-2'), fresh));
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/definitions/def-3'), { ...fresh, id: 'def-3', createdBy: 'uma', updatedBy: 'uma' }));
+    await assertFails(setDoc(doc(bob(), 'tenants/acme/definitions/def-4'), { ...fresh, id: 'def-4', createdBy: 'bob', updatedBy: 'bob' }));
+    await assertFails(setDoc(doc(alice(), 'tenants/acme/definitions/def-5'), { ...fresh, id: 'def-5', createdBy: 'uma' }));
+    await assertFails(setDoc(doc(alice(), 'tenants/acme/definitions/def-6'), { ...fresh, id: 'def-6', updatedBy: 'uma' }));
+    await assertFails(setDoc(doc(alice(), 'tenants/acme/definitions/def-7'), { ...fresh, id: 'other' }));
+    await assertFails(setDoc(doc(alice(), 'tenants/acme/definitions/def-8'), { ...fresh, id: 'def-8', entries: 'not a list' }));
+    await assertFails(setDoc(doc(alice(), 'tenants/acme/definitions/def-9'), { ...fresh, id: 'def-9', platforms: 'google' }));
+    const { updatedBy: _updatedBy, ...unstamped } = { ...fresh, id: 'def-10' };
+    await assertFails(setDoc(doc(alice(), 'tenants/acme/definitions/def-10'), unstamped));
+    await assertFails(setDoc(doc(anonymous(), 'tenants/acme/definitions/def-11'), { ...fresh, id: 'def-11' }));
+  });
+
+  it('lets only an admin update, stamped as themselves, keeping id and createdBy', async () => {
+    await assertSucceeds(updateDoc(doc(alice(), DEF1), { entries: [{ label: 'United Kingdom', code: 'uk' }, { label: 'Germany', code: 'de' }], updatedAt: '2026-01-02T00:00:00.000Z', updatedBy: 'alice' }));
+    await assertFails(updateDoc(doc(carol(), DEF1), { name: 'Carol, unstamped', updatedAt: '2026-01-03T00:00:00.000Z' }));
+    await assertSucceeds(updateDoc(doc(carol(), DEF1), { name: 'Carol, stamped', updatedAt: '2026-01-03T00:00:00.000Z', updatedBy: 'carol' }));
+    await assertFails(updateDoc(doc(alice(), DEF1), { createdBy: 'carol', updatedBy: 'alice' }));
+    await assertFails(updateDoc(doc(alice(), DEF1), { id: 'def-moved', updatedBy: 'alice' }));
+    await assertFails(updateDoc(doc(uma(), DEF1), { name: 'User edit', updatedBy: 'uma' }));
+    await assertFails(updateDoc(doc(bob(), DEF1), { name: 'Hijacked', updatedBy: 'bob' }));
+    await assertFails(updateDoc(doc(anonymous(), DEF1), { name: 'Anonymous' }));
+  });
+
+  it('lets only an admin of the tenant delete a definition', async () => {
+    await assertFails(deleteDoc(doc(uma(), DEF1)));
+    await assertFails(deleteDoc(doc(bob(), DEF1)));
+    await assertFails(deleteDoc(doc(nobody(), DEF1)));
+    await assertFails(deleteDoc(doc(anonymous(), DEF1)));
+    await assertSucceeds(deleteDoc(doc(alice(), DEF1)));
   });
 });

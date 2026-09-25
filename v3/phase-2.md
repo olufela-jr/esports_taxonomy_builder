@@ -58,3 +58,58 @@ definitions yet; this step gives the three places that will name platforms one v
   with the platforms the client actually uses; it needs explicit approval like every live run.
 - Step 2 next: the `Definition` type, `tenants/{id}/definitions` in the store and the rules,
   and `checkDefinition` sharing one entry-list check with `checkRule`.
+
+## Step 2a: shared definitions, Firebase side
+
+The client repository's storage half: the `Definition` type, its check, its Firestore path with
+rules and tests, and a store that holds it beside the Rule Sets. Nothing references a definition
+yet (step 3) and nothing shows one (step 2b).
+
+### What changed
+
+- `packages/shared/src/engine.ts`: `Definition = { id, name, platforms, entries }`. The entry
+  checks moved out of `checkRule` into one `entryErrors` helper (O14) that both `checkRule` and the
+  new `checkDefinition` call: no blank code or label, no code twice (exact), no label twice
+  ignoring case (the D39 amendment, the one behaviour change to `checkRule`). `checkDefinition`
+  also requires a name and known, unrepeated platforms; an empty entry list is allowed.
+- `firestore.rules`: `tenants/{tenantId}/definitions/{definitionId}` beside `rulesets`, same
+  shape: members read, admins write, `wellFormedDefinition`, id and `createdBy` frozen,
+  `updatedBy` stamped by the caller. `firestore.rules.test.ts`: one definition seeded under acme
+  and four new cases (read, create, update, delete by role).
+- `apps/web/src/data/types.ts`: `Audit` shared by `RuleSet` and the new `Definition` and
+  `DefinitionDraft`.
+- `apps/web/src/data/store.ts`: the store is now the tenant's store: `{ kind, ruleSets,
+  definitions, tenant }`. One `memoryCollection` and one `firestoreCollection` factory serve both
+  collections with the same `updatedAt` transaction check and `updatedBy` stamping; `tenant` is a
+  read-only subscription to `tenants/{tenantId}` so the front end knows the platform subset.
+  `__taxoTestDefinitions` joins the test seed hooks; `__taxoStore` is the whole store.
+- `apps/web/src/data/migrations.ts`: `readLocalDefinitions` and `writeLocalDefinitions` on a new
+  key, no migration. `seeds.ts`: Market (all platforms) and Campaign objective (google,
+  microsoft) for development.
+- Call sites moved to `store.ruleSets.*`: `App.tsx`, `e2e/fixtures.ts`, `editor-save.spec.ts`,
+  `editor-conflict.spec.ts`. The `RuleSetStore` type is now `Store`.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean in shared, functions, web and the root |
+| `pnpm test` | 38 (engine, 4 new), 9 (functions), 13 (scripts) |
+| `PATH="/opt/homebrew/opt/openjdk@21/bin:$PATH" pnpm test:rules` | 12 of 12 (4 new) |
+| `pnpm test:e2e` | 17 of 17, unchanged, so the store reshape broke nothing |
+| `pnpm --filter @taxo/web build` | Clean, 847 kB |
+
+### Decisions not spelled out in the plan
+
+- `Collection<T, Draft>` carries a `T extends Stored` constraint so the factories can compare
+  `updatedAt`; that is ordinary TypeScript, not the advanced generics CLAUDE.md rules out. The
+  two `create` results are cast through `unknown`, since a spread of a type parameter cannot be
+  proven to be `T`.
+- The conflict messages lost the words "Rule Set" so they read correctly for a definition too.
+- The memory tenant reports no platforms, matching the live `esports` tenant, so the front end's
+  fallback to the full platform list is exercised in development.
+
+### Leftovers
+
+- The definitions collection is deployed by the next `./deploy.sh` (rules) but has no screen
+  until step 2b, so nothing can write to it yet.
