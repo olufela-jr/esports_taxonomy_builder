@@ -6,7 +6,7 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
-import { resolveRule, type RuleSet } from '@taxo/shared';
+import { resolveRule, type Definition, type RuleSet } from '@taxo/shared';
 import { assertDatasetAllowed, readTenantConfig, tenantFromAuth } from './tenant';
 
 initializeApp();
@@ -44,8 +44,12 @@ export const scanCampaigns = onCall({ region: 'asia-south1' }, async (request) =
   const config = await readTenantConfig(db, caller.tenantId);
   assertDatasetAllowed(config, rule.source.dataset);
 
-  // A stored child Rule is never validated directly (spec: Stage 2 scan).
-  const resolved = resolveRule(rule, ruleSet);
+  // A stored Rule is never validated directly: parent links and shared
+  // definitions are resolved first, in one call (D46), from the tenant's own
+  // definitions collection.
+  const definitionDocs = await db.collection(`tenants/${caller.tenantId}/definitions`).get();
+  const definitions = definitionDocs.docs.map((item) => item.data() as Definition);
+  const resolved = resolveRule(rule, ruleSet, definitions);
   if (resolved.errors.length > 0) {
     throw new HttpsError('failed-precondition', resolved.errors.join(' '));
   }

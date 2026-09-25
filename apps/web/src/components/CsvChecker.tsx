@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { rollup, validate, UNTAGGED, type Counts, type Rollup, type Rule, type RuleScan, type Violation } from '@taxo/shared';
+import { resolveRule, rollup, validate, UNTAGGED, type Counts, type Definition, type Rollup, type Rule, type RuleScan, type ValidateResult, type Violation } from '@taxo/shared';
 import { ClipboardCheck, Download, FileSpreadsheet, Filter, Upload, CheckCircle2, XCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 import type { RuleSet } from '@/data/store';
 import type { CheckMode } from '@/data/ui-state';
@@ -99,13 +99,25 @@ function ModeButton({ active, onClick, testId, children }: { active: boolean; on
 
 // Feature 3a: validate a CSV client-side against the Rule selected in the shell,
 // or every Rule in the Rule Set.
-export function CsvChecker({ ruleSet, rule, checkMode, onCheckModeChange }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; checkMode: CheckMode; onCheckModeChange: (mode: CheckMode) => void }) {
+export function CsvChecker({ ruleSet, rule, definitions, checkMode, onCheckModeChange }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[]; checkMode: CheckMode; onCheckModeChange: (mode: CheckMode) => void }) {
+  // Names are checked against resolved Rules (parents inherited, shared
+  // definitions filled in, D46). A Rule that cannot be resolved fails every
+  // name with the resolution errors as the reason, never a silent mismatch.
+  const resolvedRuleSet = ruleSet ? { ...ruleSet, rules: ruleSet.rules.map((item) => resolveRule(item, ruleSet, definitions).rule) } : undefined;
+  const checkName = (target: Rule, name: string): ValidateResult => {
+    if (!ruleSet) return validate(target, name);
+    const resolution = resolveRule(target, ruleSet, definitions);
+    if (resolution.errors.length > 0) {
+      return { valid: false, violations: resolution.errors.map((reason) => ({ segmentKey: '__rule__', token: name, reason })) };
+    }
+    return validate(resolution.rule, name);
+  };
   const ruleSetId = ruleSet?.id;
   const ruleId = rule?.id;
   const isAllRules = checkMode === 'all';
 
   // The sample CSV and name column follow the selection until the user edits them.
-  const [csv, setCsv] = useState(() => (ruleSet ? sampleCsv(ruleSet) : ''));
+  const [csv, setCsv] = useState(() => (resolvedRuleSet ? sampleCsv(resolvedRuleSet) : ''));
   const [csvTouched, setCsvTouched] = useState(false);
   const [nameColumn, setNameColumn] = useState(() => rule?.source.nameColumn || 'name');
   const [columnTouched, setColumnTouched] = useState(false);
@@ -123,7 +135,7 @@ export function CsvChecker({ ruleSet, rule, checkMode, onCheckModeChange }: { ru
   }, [ruleSetId, ruleId, checkMode]);
 
   useEffect(() => {
-    if (!csvTouched) setCsv(ruleSet ? sampleCsv(ruleSet) : '');
+    if (!csvTouched) setCsv(resolvedRuleSet ? sampleCsv(resolvedRuleSet) : '');
   }, [ruleSetId, ruleSet, csvTouched]);
 
   useEffect(() => {
@@ -157,7 +169,7 @@ export function CsvChecker({ ruleSet, rule, checkMode, onCheckModeChange }: { ru
 
           let validation = { valid: false, violations: [{ segmentKey: 'N/A', token: '', reason: `Missing mapped column: ${r.source.nameColumn}` }] };
           if (!colMissing) {
-            validation = validate(r, name);
+            validation = checkName(r, name);
           }
 
           return {
@@ -194,7 +206,7 @@ export function CsvChecker({ ruleSet, rule, checkMode, onCheckModeChange }: { ru
 
       const results = rows.slice(1).filter((row) => row.some(Boolean)).map((row, index) => {
         const name = row[columnIndex] ?? '';
-        const validation = validate(rule, name);
+        const validation = checkName(rule, name);
         return { row: index + 2, name, valid: validation.valid, violations: validation.violations };
       });
       setSingleResults(results);

@@ -5,6 +5,7 @@ import {
   checkRule,
   checkRuleSet,
   compose,
+  definitionDependents,
   isPlatform,
   platformName,
   PLATFORMS,
@@ -610,5 +611,127 @@ describe("checkDefinition", () => {
       segments: [{ ...typeSegment, allowedValues: [{ label: "Brand", code: "brand" }, { label: "BRAND", code: "brand2" }] }],
     };
     expect(checkRule(rule)).toEqual(['Campaign Type has the label "BRAND" more than once.']);
+  });
+});
+
+// ---- definitions in resolveRule, the runtime guard, dependents ------------------------
+
+describe("resolveRule with shared definitions", () => {
+  const marketDefinition: Definition = {
+    id: "def_market",
+    name: "Market",
+    platforms: [],
+    entries: [{ label: "United Kingdom", code: "uk" }, { label: "Germany", code: "de" }],
+  };
+  const matchTypeDefinition: Definition = {
+    id: "def_match",
+    name: "Match type",
+    platforms: ["google", "microsoft"],
+    entries: [{ label: "Broad", code: "brd" }, { label: "Exact", code: "exa" }],
+  };
+  const definitions = [marketDefinition, matchTypeDefinition];
+
+  const marketSegmentRef: EnumSegment = { id: "s_market_ref", kind: "enum", key: "market", label: "Market", required: true, allowedValues: [], definitionId: "def_market" };
+  const matchSegmentRef: EnumSegment = { id: "s_match_ref", kind: "enum", key: "match", label: "Match type", required: true, allowedValues: [], definitionId: "def_match" };
+
+  const googleCampaign: Rule = {
+    id: "r_g_campaign",
+    key: "google_campaign",
+    name: "Google Campaign",
+    tags: { platform: "google", entityType: "campaign" },
+    delimiter: "_",
+    segments: [typeSegment, marketSegmentRef],
+    source: { dataset: "marketing", table: "campaigns", nameColumn: "campaign_name" },
+  };
+  const googleAdGroup: Rule = {
+    id: "r_g_ad_group",
+    key: "google_ad_group",
+    name: "Google Ad Group",
+    tags: { platform: "google", entityType: "ad_group" },
+    delimiter: "_",
+    parent: { ruleId: "r_g_campaign", inheritSegmentIds: ["s_type", "s_market_ref"] },
+    segments: [matchSegmentRef],
+    source: { dataset: "marketing", table: "ad_groups", nameColumn: "ad_group_name" },
+  };
+  const ruleSet = ruleSetOf(googleCampaign, googleAdGroup);
+
+  it("fills a definition-backed segment with the definition's entries and drops the reference", () => {
+    const result = resolveRule(childOf(ruleSet, "r_g_campaign"), ruleSet, definitions);
+    expect(result.errors).toEqual([]);
+    const market = result.rule.segments[1] as EnumSegment;
+    expect(market.definitionId).toBeUndefined();
+    expect(market.allowedValues).toEqual(marketDefinition.entries);
+    expect(market.allowedValues).not.toBe(marketDefinition.entries);
+  });
+
+  it("inherits a definition-backed segment through the parent and fills its own", () => {
+    const result = resolveRule(childOf(ruleSet, "r_g_ad_group"), ruleSet, definitions);
+    expect(result.errors).toEqual([]);
+    expect(result.rule.segments.map((segment) => segment.key)).toEqual(["campaign_type", "market", "match"]);
+    expect(result.rule.segments.every((segment) => segment.kind !== "enum" || !segment.definitionId)).toBe(true);
+    const composed = compose(result.rule, { campaign_type: "perf", market: "de", match: "exa" });
+    expect(composed.errors).toEqual([]);
+    expect(composed.name).toBe("perf_de_exa");
+    expect(validate(result.rule, composed.name).valid).toBe(true);
+    // Labels never appear in names.
+    expect(validate(result.rule, "perf_Germany_exa").valid).toBe(false);
+  });
+
+  it("reports a missing, empty, ill-fitting or delimiter-clashing definition, and stays unresolved", () => {
+    const campaign = childOf(ruleSet, "r_g_campaign");
+    expect(resolveRule(campaign, ruleSet, []).errors).toEqual(["Market uses a shared definition that no longer exists."]);
+    expect(resolveRule(campaign, ruleSet, [{ ...marketDefinition, entries: [] }]).errors).toEqual(['Market uses "Market", which has no values yet.']);
+    expect(resolveRule(campaign, ruleSet, [{ ...marketDefinition, entries: [{ label: "Odd", code: "u_k" }] }]).errors).toEqual([
+      'Market uses "Market", whose code "u_k" contains the "_" delimiter.',
+    ]);
+    const meta = ruleSetOf({ ...googleCampaign, tags: { platform: "meta" }, segments: [typeSegment, matchSegmentRef] });
+    expect(resolveRule(childOf(meta, "r_g_campaign"), meta, definitions).errors).toEqual(['Match type uses "Match type", which is not available on Meta.']);
+    const untagged = ruleSetOf({ ...googleCampaign, tags: undefined, segments: [typeSegment, matchSegmentRef] });
+    expect(resolveRule(childOf(untagged, "r_g_campaign"), untagged, definitions).errors).toEqual([
+      'Match type uses "Match type", which is scoped to Google Ads, Microsoft Ads; give this Rule a platform.',
+    ]);
+    const failed = resolveRule(campaign, ruleSet, []);
+    expect(failed.rule).toBe(campaign);
+  });
+
+  it("requires a child to be on its parent's platform (D47)", () => {
+    const mismatched = ruleSetOf(googleCampaign, { ...googleAdGroup, tags: { platform: "meta" }, segments: [{ ...targetingSegment }] });
+    expect(resolveRule(childOf(mismatched, "r_g_ad_group"), mismatched, definitions).errors).toEqual([
+      'The platform must match parent "Google Campaign" (Google Ads); this Rule has Meta.',
+    ]);
+    const untaggedChild = ruleSetOf(googleCampaign, { ...googleAdGroup, tags: undefined, segments: [{ ...targetingSegment }] });
+    expect(resolveRule(childOf(untaggedChild, "r_g_ad_group"), untaggedChild, definitions).errors).toEqual([
+      'The platform must match parent "Google Campaign" (Google Ads); this Rule has no platform.',
+    ]);
+  });
+
+  it("refuses an unresolved Rule in compose and validate with one plain error, never a throw (D25)", () => {
+    const child = childOf(ruleSet, "r_g_ad_group");
+    expect(compose(child, { campaign_type: "perf", market: "de", match: "exa" })).toEqual({
+      name: "",
+      errors: ["This Rule inherits from a parent; resolve it with resolveRule before building or checking names."],
+    });
+    const campaign = childOf(ruleSet, "r_g_campaign");
+    const checked = validate(campaign, "perf_de");
+    expect(checked.valid).toBe(false);
+    expect(checked.violations).toEqual([
+      { segmentKey: "__name__", token: "perf_de", reason: "This Rule uses shared definitions; resolve it with resolveRule before building or checking names." },
+    ]);
+  });
+
+  it("lets checkRule ignore the empty own list of a definition-backed segment and checkRuleSet report resolution errors", () => {
+    expect(checkRule(childOf(ruleSet, "r_g_campaign"))).toEqual([]);
+    expect(checkRuleSet(ruleSet, definitions)).toEqual([]);
+    expect(checkRuleSet(ruleSet, [matchTypeDefinition])).toEqual([
+      "Rule 1: Market uses a shared definition that no longer exists.",
+      'Rule 2: Parent "Google Campaign" cannot be resolved: Market uses a shared definition that no longer exists.',
+    ]);
+  });
+
+  it("lists every Rule that depends on a definition", () => {
+    expect(definitionDependents([ruleSet], "def_market")).toEqual([
+      { ruleSetId: "rs_1", ruleSetName: "Acme", ruleId: "r_g_campaign", ruleName: "Google Campaign", segmentLabel: "Market" },
+    ]);
+    expect(definitionDependents([ruleSet], "def_none")).toEqual([]);
   });
 });

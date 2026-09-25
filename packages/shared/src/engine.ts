@@ -27,7 +27,12 @@ export type EnumSegment = {
   key: string;
   label: string;
   required: boolean;
+  // The segment's own list, or [] when the values come from a shared
+  // definition. resolveRule fills allowedValues from the definition and
+  // removes definitionId; compose and validate refuse a Rule that still
+  // carries one (D25, D46).
   allowedValues: EnumEntry[];
+  definitionId?: string;
 };
 
 export type FreeformSegment = {
@@ -276,7 +281,13 @@ export function checkRule(rule: Rule): string[] {
       errors.push(`${label} needs a key and a label.`);
     }
 
-    if (segment.kind === "enum") {
+    if (segment.kind === "enum" && segment.definitionId) {
+      // The values live in the shared definition; checkRuleSet and resolveRule
+      // check that it exists, fits the platform and has no delimiter in a code.
+      if (!segment.definitionId.trim()) {
+        errors.push(`${label} points at a shared definition but names none.`);
+      }
+    } else if (segment.kind === "enum") {
       if (segment.allowedValues.length === 0) {
         errors.push(`${label} needs at least one allowed value.`);
       }
@@ -302,8 +313,11 @@ export function checkRule(rule: Rule): string[] {
   return errors;
 }
 
-// Rule Set level checks, with each Rule's errors prefixed by its position.
-export function checkRuleSet(ruleSet: RuleSet): string[] {
+// Rule Set level checks, with each Rule's errors prefixed by its position:
+// every Rule's own checks, then whatever stops it resolving (a broken parent
+// link, a missing or ill-fitting shared definition). Pass the tenant's
+// definitions; a Rule that references one that is not in the list is an error.
+export function checkRuleSet(ruleSet: RuleSet, definitions: Definition[] = []): string[] {
   const errors: string[] = [];
 
   if (!ruleSet.name.trim()) {
@@ -311,12 +325,42 @@ export function checkRuleSet(ruleSet: RuleSet): string[] {
   }
 
   ruleSet.rules.forEach((rule, index) => {
-    for (const error of checkRule(rule)) {
+    const own = checkRule(rule);
+    for (const error of own) {
       errors.push(`Rule ${index + 1}: ${error}`);
+    }
+    if (own.length === 0) {
+      for (const error of resolveRule(rule, ruleSet, definitions).errors) {
+        errors.push(`Rule ${index + 1}: ${error}`);
+      }
     }
   });
 
   return errors;
+}
+
+// Every Rule whose segments take their values from the definition, for the
+// Dictionary's delete protection: a definition in use cannot be removed.
+export type DefinitionDependent = {
+  ruleSetId: string;
+  ruleSetName: string;
+  ruleId: string;
+  ruleName: string;
+  segmentLabel: string;
+};
+
+export function definitionDependents(ruleSets: RuleSet[], definitionId: string): DefinitionDependent[] {
+  const dependents: DefinitionDependent[] = [];
+  for (const ruleSet of ruleSets) {
+    for (const rule of ruleSet.rules) {
+      for (const segment of rule.segments) {
+        if (segment.kind === "enum" && segment.definitionId === definitionId) {
+          dependents.push({ ruleSetId: ruleSet.id, ruleSetName: ruleSet.name, ruleId: rule.id, ruleName: rule.name, segmentLabel: segment.label });
+        }
+      }
+    }
+  }
+  return dependents;
 }
 
 function copySegment(segment: Segment): Segment {
@@ -326,24 +370,67 @@ function copySegment(segment: Segment): Segment {
   return { ...segment, illegalChars: [...segment.illegalChars] };
 }
 
-// Flattens a child Rule into a self-contained one: the inherited parent
-// segments followed by the child's own, with `parent` removed. Pure and cheap;
-// callers resolve on demand and never store the result. A grandchild resolves
-// its parent first, so it can inherit segments the parent itself inherited.
-//
-// On any error the INPUT Rule comes back unchanged, parent still set, so a
-// caller that ignores `errors` is refused by the compose/validate guard rather
-// than validating names against the wrong segments.
-export function resolveRule(rule: Rule, ruleSet: RuleSet): ResolveResult {
-  return resolveWithin(rule, ruleSet, new Set());
+// Fills a Rule's definition-backed segments from the tenant's definitions
+// (D46): the segment gets the definition's entries as its allowedValues and
+// loses its definitionId. Errors when the definition is missing, empty, scoped
+// to platforms the Rule is not on (O13), or has a code containing the delimiter.
+function substituteDefinitions(rule: Rule, definitions: Definition[]): { segments: Segment[]; errors: string[] } {
+  const errors: string[] = [];
+  const segments = rule.segments.map((segment): Segment => {
+    if (segment.kind !== "enum" || !segment.definitionId) {
+      return copySegment(segment);
+    }
+    const definition = definitions.find((candidate) => candidate.id === segment.definitionId);
+    if (!definition) {
+      errors.push(`${segment.label} uses a shared definition that no longer exists.`);
+      return copySegment(segment);
+    }
+    if (definition.platforms.length > 0) {
+      const platform = rule.tags?.platform;
+      if (!platform) {
+        errors.push(`${segment.label} uses "${definition.name}", which is scoped to ${definition.platforms.map(platformName).join(", ")}; give this Rule a platform.`);
+      } else if (!definition.platforms.includes(platform)) {
+        errors.push(`${segment.label} uses "${definition.name}", which is not available on ${platformName(platform)}.`);
+      }
+    }
+    if (definition.entries.length === 0) {
+      errors.push(`${segment.label} uses "${definition.name}", which has no values yet.`);
+    }
+    const clash = definition.entries.find((entry) => rule.delimiter && entry.code.includes(rule.delimiter));
+    if (clash) {
+      errors.push(`${segment.label} uses "${definition.name}", whose code "${clash.code}" contains the "${rule.delimiter}" delimiter.`);
+    }
+    const { definitionId: _definitionId, ...own } = segment;
+    return { ...own, allowedValues: definition.entries.map((entry) => ({ ...entry })) };
+  });
+  return { segments, errors };
 }
 
-function resolveWithin(rule: Rule, ruleSet: RuleSet, visited: Set<string>): ResolveResult {
+// Flattens a Rule into a self-contained one: the inherited parent segments
+// followed by the Rule's own, every definition-backed segment filled from the
+// tenant's definitions, with `parent` and every `definitionId` removed (D46).
+// Pure and cheap; callers resolve on demand and never store the result. A
+// grandchild resolves its parent first, so it can inherit segments the parent
+// itself inherited.
+//
+// On any error the INPUT Rule comes back unchanged, so a caller that ignores
+// `errors` is refused by the compose/validate guard rather than validating
+// names against the wrong segments.
+export function resolveRule(rule: Rule, ruleSet: RuleSet, definitions: Definition[] = []): ResolveResult {
+  return resolveWithin(rule, ruleSet, definitions, new Set());
+}
+
+function resolveWithin(rule: Rule, ruleSet: RuleSet, definitions: Definition[], visited: Set<string>): ResolveResult {
+  const fail = (...errors: string[]): ResolveResult => ({ rule, errors });
+
   if (!rule.parent) {
-    return { rule: { ...rule, segments: rule.segments.map(copySegment) }, errors: [] };
+    const filled = substituteDefinitions(rule, definitions);
+    if (filled.errors.length > 0) {
+      return fail(...filled.errors);
+    }
+    return { rule: { ...rule, segments: filled.segments }, errors: [] };
   }
 
-  const fail = (...errors: string[]): ResolveResult => ({ rule, errors });
   const { ruleId, inheritSegmentIds } = rule.parent;
 
   const parent = ruleSet.rules.find((candidate) => candidate.id === ruleId);
@@ -356,7 +443,7 @@ function resolveWithin(rule: Rule, ruleSet: RuleSet, visited: Set<string>): Reso
     return fail(`Parent Rules form a cycle through "${parent.name}".`);
   }
 
-  const resolvedParent = resolveWithin(parent, ruleSet, visited);
+  const resolvedParent = resolveWithin(parent, ruleSet, definitions, visited);
   if (resolvedParent.errors.length > 0) {
     return fail(
       ...resolvedParent.errors.map((error) => `Parent "${parent.name}" cannot be resolved: ${error}`),
@@ -365,6 +452,20 @@ function resolveWithin(rule: Rule, ruleSet: RuleSet, visited: Set<string>): Reso
 
   const parentSegments = resolvedParent.rule.segments;
   const errors: string[] = [];
+
+  // D47: a child and its parent are on the same platform, both set or both
+  // unset, so an inherited segment can never come from a definition scoped to
+  // a platform the child is not on.
+  const ownPlatform = rule.tags?.platform ?? "";
+  const parentPlatform = parent.tags?.platform ?? "";
+  if (ownPlatform !== parentPlatform) {
+    errors.push(
+      `The platform must match parent "${parent.name}" (${parentPlatform ? platformName(parentPlatform) : "no platform"}); this Rule has ${ownPlatform ? platformName(ownPlatform) : "no platform"}.`,
+    );
+  }
+
+  const filled = substituteDefinitions(rule, definitions);
+  errors.push(...filled.errors);
 
   const missing = inheritSegmentIds.filter(
     (id) => !parentSegments.some((segment) => segment.id === id),
@@ -405,7 +506,7 @@ function resolveWithin(rule: Rule, ruleSet: RuleSet, visited: Set<string>): Reso
   const { parent: _parent, ...own } = rule;
   const combined: Rule = {
     ...own,
-    segments: [...leading.map(copySegment), ...rule.segments.map(copySegment)],
+    segments: [...leading.map(copySegment), ...filled.segments],
   };
 
   const structural = getRuleErrors(combined);
@@ -523,10 +624,29 @@ export function parse(rule: Rule, name: string): string[] {
   return name.split(rule.delimiter);
 }
 
+// D25: compose and validate take resolved Rules only. A Rule that still has a
+// parent link or a definition-backed segment would be judged against the wrong
+// segments, so both refuse it with one plain error instead of failing every
+// name. Never throws: the CSV checker calls validate per row with no catch.
+export function unresolvedReason(rule: Rule): string | null {
+  if (rule.parent) {
+    return "This Rule inherits from a parent; resolve it with resolveRule before building or checking names.";
+  }
+  if (rule.segments.some((segment) => segment.kind === "enum" && segment.definitionId)) {
+    return "This Rule uses shared definitions; resolve it with resolveRule before building or checking names.";
+  }
+  return null;
+}
+
 export function compose(
   rule: Rule,
   selections: Record<string, string>,
 ): ComposeResult {
+  const unresolved = unresolvedReason(rule);
+  if (unresolved) {
+    return { name: "", errors: [unresolved] };
+  }
+
   const errors = getRuleErrors(rule);
   const tokens: string[] = [];
   let optionalGap = false;
@@ -561,6 +681,11 @@ export function compose(
 }
 
 export function validate(rule: Rule, name: string): ValidateResult {
+  const unresolved = unresolvedReason(rule);
+  if (unresolved) {
+    return { valid: false, violations: [{ segmentKey: NAME_VIOLATION_KEY, token: name, reason: unresolved }] };
+  }
+
   const violations: Violation[] = getRuleErrors(rule).map((reason) => ({
     segmentKey: NAME_VIOLATION_KEY,
     token: name,

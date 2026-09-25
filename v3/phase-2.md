@@ -187,3 +187,71 @@ or Build blocking, which stay D42 phase 5).
   platforms; set it with `provision-user.ts --platforms` when the client's platforms are known.
 - `docs/spec-v3.md` still describes requests with `platforms[]` and `draftId` and puts the
   whole queue in phase 5; update in the Phase C spec pass.
+
+## Step 3: Rules take values from the Dictionary
+
+Definition-backed segments, the single resolve call (D46), the platform guard on parent
+links (D47), the runtime guard (D25) and delete protection for definitions in use. Build and
+Check look the same to a user; they now work on resolved Rules.
+
+### What changed
+
+- `packages/shared/src/engine.ts`: `EnumSegment.definitionId?` (own `allowedValues` is `[]`
+  when set). `resolveRule(rule, ruleSet, definitions = [])` fills every definition-backed
+  segment, own or inherited through a parent, with the definition's entries and drops the
+  reference; errors when the definition is missing, has no values, is scoped to platforms the
+  Rule is not on or the Rule has no platform (O13), or a code contains the delimiter. D47: a
+  child's platform must equal its parent's, both set or both unset. D25: `unresolvedReason`,
+  used by `compose` (returns it in `errors`) and `validate` (one violation on the name); neither
+  throws. `checkRule` skips the own-list checks for a definition-backed segment; `checkRuleSet`
+  takes the definitions and adds each Rule's resolution errors. `definitionDependents` lists the
+  Rules using a definition. 7 new tests, 45 in the engine.
+- `apps/web/src/components/RuleSetEditor.tsx`: each enum segment has a "Values from" select:
+  this Rule's own list, or a definition, offered only when it has no platforms or the Rule's
+  platform is among them (a chosen one that no longer fits stays offered so it can be changed).
+  A definition-backed segment shows its values read-only with a link to the Dictionary. The
+  editor passes the definitions to `checkRuleSet`, so a missing or ill-fitting definition
+  blocks the save.
+- `Builder.tsx` and `CsvChecker.tsx`: resolve first. Build shows the resolution errors and no
+  controls when a Rule cannot be resolved; Check fails every name of such a Rule with those
+  errors as the reason. The sample CSV is built from resolved Rules so it carries real codes.
+- `Dictionary.tsx`: a definition in use shows its dependents and cannot be deleted.
+- `functions/src/index.ts`: loads the tenant's definitions and passes them to `resolveRule`.
+- `scripts/seed-definitions.ts` (`pnpm seed:definitions --tenant <id> --as <admin email>
+  [--dry-run]`): four demonstration definitions (Market, Campaign objective, Funnel stage for
+  meta/tiktok/snapchat, Match type for google), skipping ids that exist. Run against `esports`
+  on 2026-09-25 with approval: all four written.
+- `scripts/lib/v3-transform.test.ts`: the fixture's child Rule gained its parent's platform,
+  which D47 now requires.
+- `apps/web/e2e/definitions-in-rules.spec.ts` (2 tests): Author points a segment at a
+  definition and Build offers its labels and writes the code; a definition in use cannot be
+  deleted and a search-only definition is not offered to a Meta Rule.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean everywhere |
+| `pnpm test` | 45 (engine, 7 new), 9 (functions), 13 (scripts) |
+| `pnpm test:e2e` | 23 of 23 (2 new) |
+| `pnpm --filter @taxo/web build` | Clean, 877 kB |
+| `pnpm --filter @taxo/functions build` | 9.3 kB, definitions resolution inlined |
+| Live seed | 4 definitions written to `tenants/esports/definitions` |
+
+### Decisions not spelled out in the plan
+
+- A resolved segment loses its `definitionId`, so "resolved" means no parent and no definition
+  reference, and the D25 guard tests exactly that.
+- `checkRuleSet` runs `resolveRule` per Rule only when the Rule's own checks pass, so an author
+  sees one layer of errors at a time. Its return stays a flat string list; the per-Rule shape
+  is step 4.
+- Deleting a definition in use is blocked outright rather than cascading; editing its values
+  stays allowed with the D44 confirm (D43).
+- `resolveRule` on a Rule with a missing definition returns the input unchanged, so Check
+  reports the resolution errors rather than the guard's generic message.
+
+### Leftovers
+
+- Step 4: `checkRuleSet` issues per Rule and `dependentsOf` for parent links (segment and Rule
+  delete protection inside a Rule Set), then the Author parent UI (step 5).
+- The live app is still on step 1 until the next deploy; steps 2a, 2b and 3 are local.

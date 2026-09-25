@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { compose, type Rule, type Segment } from '@taxo/shared';
+import { compose, resolveRule, type Definition, type Rule, type Segment } from '@taxo/shared';
 import { AlertCircle, Check, Copy, Database, Filter, Zap } from 'lucide-react';
 import type { RuleSet } from '@/data/store';
 import { PageHeading } from './PageHeading';
@@ -20,7 +20,7 @@ function EmptyState() {
 }
 
 // Feature 2: compose a compliant name from the Rule selected in the shell.
-export function Builder({ ruleSet, rule }: { ruleSet: RuleSet | undefined; rule: Rule | undefined }) {
+export function Builder({ ruleSet, rule, definitions }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[] }) {
   const ruleSetId = ruleSet?.id;
   const ruleId = rule?.id;
 
@@ -41,8 +41,20 @@ export function Builder({ ruleSet, rule }: { ruleSet: RuleSet | undefined; rule:
     );
   }
 
-  const segments = rule.segments ?? [];
-  const result = compose(rule, values);
+  // Build works on the resolved Rule: parent segments inherited and shared
+  // definitions filled in (D46). A Rule that cannot be resolved cannot be built.
+  const resolution = resolveRule(rule, ruleSet, definitions);
+  if (resolution.errors.length > 0) {
+    return (
+      <div>
+        <PageHeading eyebrow="Workspace" title="Compose a name" description={`${rule.name} cannot be built until Author fixes the problems below.`} />
+        <ul className="list-disc rounded-xl border border-destructive/30 bg-destructive/10 py-4 pl-9 pr-4 text-sm font-semibold text-destructive" data-testid="text-build-resolution-errors">{resolution.errors.map((message) => <li key={message}>{message}</li>)}</ul>
+      </div>
+    );
+  }
+  const active = resolution.rule;
+  const segments = active.segments ?? [];
+  const result = compose(active, values);
   const valid = result.errors.length === 0 && Boolean(segments.length);
   const displayOutput = result.name || 'Fill segments to generate a name';
   const missing = segments.filter((segment) => segment.required && !values[segment.key]?.trim());

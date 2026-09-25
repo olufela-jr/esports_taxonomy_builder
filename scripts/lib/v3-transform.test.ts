@@ -24,6 +24,8 @@ const legacy: LegacyRuleSet = {
       id: 'rule-ad-groups',
       key: 'google_ad_groups',
       name: 'Google Ad Groups',
+      // A child is on its parent's platform (D47); the engine refuses the link otherwise.
+      tags: { platform: 'google', entityType: 'ad_group' },
       delimiter: '_',
       parent: { ruleId: 'rule-google', inheritSegmentIds: ['seg-type'] },
       source: { dataset: 'marketing_dw', table: 'ad_groups', nameColumn: 'ad_group_name' },

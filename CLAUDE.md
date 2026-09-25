@@ -166,6 +166,7 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
 3. `definitionId` enum segments; `resolveRule(rule, ruleSet, definitions)` resolving parents
    and definitions in one call (D46) with the platform guard (D47); the runtime guard on
    `compose` and `validate` (D25: error result, never a throw).
+   Done 2026-09-25.
 4. `checkRuleSet` per Rule and `dependentsOf` (return shape changes from a flat string list
    to issues per Rule; one caller, the Author editor).
 5. Author: definitions screen with the label control (D39), definition picker on enum

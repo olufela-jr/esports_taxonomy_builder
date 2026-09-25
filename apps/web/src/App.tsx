@@ -161,9 +161,9 @@ function Workspace(props: WorkspaceProps) {
   }, [ui.ruleSetId]);
 
   const author = selectedRuleSet
-    ? <RuleSetEditor key={selectedRuleSet.id} existing={selectedRuleSet} readOnly={!canEdit} storeKind={storeKind} justCreated={selectedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => onSelectRuleSet(null)} />
+    ? <RuleSetEditor key={selectedRuleSet.id} existing={selectedRuleSet} definitions={definitions} readOnly={!canEdit} storeKind={storeKind} justCreated={selectedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => onSelectRuleSet(null)} />
     : creating && canEdit
-      ? <RuleSetEditor key="new" existing={null} storeKind={storeKind} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setCreating(false); setJustCreatedId(id); onSelectRuleSet(id); }} onClose={() => setCreating(false)} />
+      ? <RuleSetEditor key="new" existing={null} definitions={definitions} storeKind={storeKind} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setCreating(false); setJustCreatedId(id); onSelectRuleSet(id); }} onClose={() => setCreating(false)} />
       : <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
 
   return (
@@ -171,9 +171,9 @@ function Workspace(props: WorkspaceProps) {
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>
-          <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} /></Route>
-          <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
-          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} tenant={tenant} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} /></Route>
+          <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} /></Route>
+          <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
+          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} /></Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />
         </Switch>

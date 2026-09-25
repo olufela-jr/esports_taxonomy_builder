@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { BookOpen, Check, Plus, Trash2, X } from 'lucide-react';
-import { checkDefinition, platformName, PLATFORMS, type EnumEntry } from '@taxo/shared';
+import { checkDefinition, definitionDependents, platformName, PLATFORMS, type EnumEntry } from '@taxo/shared';
 import type { User } from '@/data/auth';
-import type { Definition, DefinitionDraft, Store, Tenant, ValueRequest, ValueRequestDraft } from '@/data/store';
+import type { Definition, DefinitionDraft, RuleSet, Store, Tenant, ValueRequest, ValueRequestDraft } from '@/data/store';
 import { newId } from '@/lib/ids';
 import { PageHeading } from './PageHeading';
 import { buttonDanger, buttonPrimary, buttonQuiet, iconButton, inputClass } from './styles';
@@ -17,6 +17,7 @@ type DictionaryProps = {
   canEdit: boolean;
   definitions: Definition[];
   requests: ValueRequest[];
+  ruleSets: RuleSet[]; // for delete protection: a definition in use stays
   tenant: Tenant | null;
   storeKind: Store['kind'];
   onCreateDefinition: (draft: DefinitionDraft) => Promise<Definition>;
@@ -50,7 +51,7 @@ function draftOf(request: ValueRequest): ValueRequestDraft {
 }
 
 export function Dictionary(props: DictionaryProps) {
-  const { user, canEdit, definitions, requests, tenant, storeKind, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
+  const { user, canEdit, definitions, requests, ruleSets, tenant, storeKind, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = definitions.find((definition) => definition.id === selectedId);
 
@@ -79,8 +80,8 @@ export function Dictionary(props: DictionaryProps) {
         </nav>
 
         <div>
-          {selectedId === NEW && canEdit && <DefinitionEditor key="new" existing={null} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
-          {selected && canEdit && <DefinitionEditor key={selected.id} existing={selected} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
+          {selectedId === NEW && canEdit && <DefinitionEditor key="new" existing={null} ruleSets={ruleSets} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
+          {selected && canEdit && <DefinitionEditor key={selected.id} existing={selected} ruleSets={ruleSets} tenant={tenant} storeKind={storeKind} onCreate={onCreateDefinition} onUpdate={onUpdateDefinition} onDelete={onDeleteDefinition} onDone={(id) => setSelectedId(id)} />}
           {selected && !canEdit && <DefinitionView key={selected.id} definition={selected} user={user} onCreateRequest={onCreateRequest} />}
           {!selected && selectedId !== NEW && <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center text-sm text-muted-foreground">Select a definition to see its values.</div>}
         </div>
@@ -99,7 +100,7 @@ function rowsOf(entries: EnumEntry[]): Row[] {
   return entries.map((entry) => ({ rowId: newId(), label: entry.label, code: entry.code }));
 }
 
-function DefinitionEditor({ existing, tenant, storeKind, onCreate, onUpdate, onDelete, onDone }: { existing: Definition | null; tenant: Tenant | null; storeKind: Store['kind']; onCreate: (draft: DefinitionDraft) => Promise<Definition>; onUpdate: (id: string, draft: DefinitionDraft, baseUpdatedAt: string) => Promise<string>; onDelete: (id: string) => Promise<void>; onDone: (id: string | null) => void }) {
+function DefinitionEditor({ existing, ruleSets, tenant, storeKind, onCreate, onUpdate, onDelete, onDone }: { existing: Definition | null; ruleSets: RuleSet[]; tenant: Tenant | null; storeKind: Store['kind']; onCreate: (draft: DefinitionDraft) => Promise<Definition>; onUpdate: (id: string, draft: DefinitionDraft, baseUpdatedAt: string) => Promise<string>; onDelete: (id: string) => Promise<void>; onDone: (id: string | null) => void }) {
   const isNew = existing === null;
   const [name, setName] = useState(existing?.name ?? '');
   const [platforms, setPlatforms] = useState<string[]>(existing?.platforms ?? []);
@@ -121,6 +122,9 @@ function DefinitionEditor({ existing, tenant, storeKind, onCreate, onUpdate, onD
   const draft: DefinitionDraft = { name: name.trim(), platforms, entries };
   const errors = checkDefinition({ id: existing?.id ?? '', ...draft });
   const stale = !isNew && existing.updatedAt !== baseUpdatedAt;
+  // A definition a Rule reads from cannot be deleted; the Rules must be moved
+  // off it first. Editing its values stays allowed (D43), with the confirm below.
+  const dependents = isNew ? [] : definitionDependents(ruleSets, existing.id);
   const isDirty = isNew || JSON.stringify(draft) !== JSON.stringify({ name: existing.name, platforms: existing.platforms, entries: existing.entries });
 
   const updateRow = (rowId: string, patch: Partial<Row>) => setRows((current) => current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row)));
@@ -159,12 +163,13 @@ function DefinitionEditor({ existing, tenant, storeKind, onCreate, onUpdate, onD
         <div><div className="font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New definition' : 'Edit definition'}</div><p className="mt-1 text-sm text-muted-foreground">Labels are what people pick; codes are what go into names.</p></div>
         <div className="flex items-center gap-2">
           {saved && <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary" data-testid="text-definition-saved"><Check className="h-4 w-4" /> {storeKind === 'firestore' ? 'Saved' : 'Saved locally'}</span>}
-          {!isNew && <button type="button" className={buttonDanger} disabled={saving} onClick={() => { if (window.confirm(`Delete the definition "${existing.name}"?`)) { void onDelete(existing.id); onDone(null); } }} data-testid="button-delete-definition"><Trash2 className="h-4 w-4" /> Delete</button>}
+          {!isNew && <button type="button" className={buttonDanger} disabled={saving || dependents.length > 0} title={dependents.length > 0 ? 'In use by a Rule; move the Rule off it first.' : undefined} onClick={() => { if (window.confirm(`Delete the definition "${existing.name}"?`)) { void onDelete(existing.id); onDone(null); } }} data-testid="button-delete-definition"><Trash2 className="h-4 w-4" /> Delete</button>}
           {isNew && <button type="button" className={buttonQuiet} onClick={() => onDone(null)} data-testid="button-cancel-definition">Cancel</button>}
           <button type="submit" className={buttonPrimary} disabled={saving || errors.length > 0 || !isDirty} data-testid="button-save-definition"><Check className="h-4 w-4" /> {saving ? 'Saving' : 'Save definition'}</button>
         </div>
       </div>
 
+      {dependents.length > 0 && <div className="mb-4 rounded-[4px] border border-border bg-muted/40 px-3 py-2 text-xs font-semibold text-muted-foreground" data-testid="text-definition-dependents">Used by {dependents.map((dependent) => `${dependent.ruleSetName} / ${dependent.ruleName} (${dependent.segmentLabel})`).join(', ')}. Changing a code here changes what those Rules accept; deleting is blocked while they use it.</div>}
       {stale && <div className="mb-4 rounded-[4px] border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900" data-testid="text-definition-stale">Someone else saved this definition since you opened it. <button type="button" className="underline" onClick={() => { setName(existing.name); setPlatforms(existing.platforms); setRows(rowsOf(existing.entries)); setBaseUpdatedAt(existing.updatedAt); setError(''); }}>Reload</button> to see their version, then reapply your edits.</div>}
       {error && <div className="mb-4 rounded-[4px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive" data-testid="text-definition-error">{error}</div>}
 
