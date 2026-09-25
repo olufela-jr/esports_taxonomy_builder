@@ -4,8 +4,10 @@ import {
   checkDefinition,
   checkRule,
   checkRuleSet,
+  checkRuleSetIssues,
   compose,
   definitionDependents,
+  dependentsOf,
   isPlatform,
   platformName,
   PLATFORMS,
@@ -733,5 +735,36 @@ describe("resolveRule with shared definitions", () => {
       { ruleSetId: "rs_1", ruleSetName: "Acme", ruleId: "r_g_campaign", ruleName: "Google Campaign", segmentLabel: "Market" },
     ]);
     expect(definitionDependents([ruleSet], "def_none")).toEqual([]);
+  });
+});
+
+// ---- issues per Rule and dependents ----------------------------------------------
+
+describe("checkRuleSetIssues and dependentsOf", () => {
+  const chain = ruleSetOf(campaignRule, adGroupRule, adRule);
+
+  it("groups problems by Rule id and leaves clean Rules out", () => {
+    const broken: Rule = { ...adGroupRule, delimiter: "-" };
+    const ruleSet = ruleSetOf({ ...campaignRule, key: "" }, broken, adRule);
+    const issues = checkRuleSetIssues({ ...ruleSet, name: "" });
+    expect(issues.ruleSet).toEqual(["Give this Rule Set a name."]);
+    expect(issues.rules["r_campaign"]).toEqual(["The rule needs a key and a name."]);
+    expect(issues.rules["r_ad_group"]).toEqual(['The delimiter "-" must match parent "Campaign", which uses "_".']);
+    expect(issues.rules["r_ad"]?.[0]).toContain('Parent "Ad Group" cannot be resolved');
+    expect(checkRuleSetIssues(chain)).toEqual({ ruleSet: [], rules: {} });
+    // The flat form is the same information with positions.
+    expect(checkRuleSet({ ...ruleSet, name: "" })[1]).toBe("Rule 1: The rule needs a key and a name.");
+  });
+
+  it("names the Rules that depend on a Rule or on one of its segments", () => {
+    expect(dependentsOf(chain, "r_campaign")).toEqual([{ ruleId: "r_ad_group", ruleName: "Ad Group" }]);
+    expect(dependentsOf(chain, "r_ad_group")).toEqual([{ ruleId: "r_ad", ruleName: "Ad" }]);
+    expect(dependentsOf(chain, "r_ad")).toEqual([]);
+    // A grandchild inherits the campaign's segments through the ad group, so both depend on them.
+    expect(dependentsOf(chain, "r_campaign", "s_type")).toEqual([
+      { ruleId: "r_ad_group", ruleName: "Ad Group" },
+      { ruleId: "r_ad", ruleName: "Ad" },
+    ]);
+    expect(dependentsOf(chain, "r_campaign", "s_custom")).toEqual([]);
   });
 });

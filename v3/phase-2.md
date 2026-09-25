@@ -255,3 +255,38 @@ Check look the same to a user; they now work on resolved Rules.
 - Step 4: `checkRuleSet` issues per Rule and `dependentsOf` for parent links (segment and Rule
   delete protection inside a Rule Set), then the Author parent UI (step 5).
 - The live app is still on step 1 until the next deploy; steps 2a, 2b and 3 are local.
+
+## Step 4: issues per Rule and delete protection in Author
+
+### What changed
+
+- `packages/shared/src/engine.ts`: `checkRuleSetIssues(ruleSet, definitions)` returns
+  `{ ruleSet: string[], rules: Record<ruleId, string[]> }`, each Rule's own checks or, once those
+  pass, its resolution errors. `checkRuleSet` keeps its flat, position-prefixed list, now derived
+  from the grouped form, so the migration script's `verifyRuleSet` is unchanged. `dependentsOf(
+  ruleSet, ruleId, segmentId?)` lists the Rules whose parent link names the Rule, or whose
+  inherited ids include the segment (a grandchild counts, since it inherits the id through its
+  parent). Two new tests.
+- `apps/web/src/components/RuleSetEditor.tsx`: the issues are computed live from the draft and
+  listed beside each Rule (and above the list for Rule Set level ones); Save is disabled while
+  any exist and the submit path says so instead of showing the first message only. A Rule other
+  Rules inherit from shows "Parent of ..." and its Remove button is disabled; a segment a child
+  inherits has its Remove disabled with the dependents in the tooltip. Renaming stays free.
+- `apps/web/e2e/author-hierarchy.spec.ts` (2 tests): a broken child delimiter lists the problem
+  on that Rule only and blocks Save until fixed; a parent Rule and an inherited segment cannot
+  be removed while other segments and Rules still can.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test` | 47 (engine, 2 new), 9, 13 |
+| `pnpm test:e2e` | 25 of 25 (2 new) |
+
+### Decisions not spelled out in the plan
+
+- Save is disabled on any issue rather than refusing on submit only; the message is live, so an
+  author sees the reason before reaching for the button.
+- Delete protection disables the control rather than showing a dialog: the reason is beside the
+  Rule already, and a dialog naming the same Rules would add a click.

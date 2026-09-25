@@ -313,30 +313,59 @@ export function checkRule(rule: Rule): string[] {
   return errors;
 }
 
-// Rule Set level checks, with each Rule's errors prefixed by its position:
-// every Rule's own checks, then whatever stops it resolving (a broken parent
-// link, a missing or ill-fitting shared definition). Pass the tenant's
+// Rule Set level checks, grouped: problems with the Rule Set itself, then each
+// Rule's own checks and, once those pass, whatever stops it resolving (a broken
+// parent link, a missing or ill-fitting shared definition). Keyed by the Rule's
+// immutable id so an editor can list them beside the Rule. Pass the tenant's
 // definitions; a Rule that references one that is not in the list is an error.
-export function checkRuleSet(ruleSet: RuleSet, definitions: Definition[] = []): string[] {
-  const errors: string[] = [];
+export type RuleSetIssues = {
+  ruleSet: string[];
+  rules: Record<string, string[]>;
+};
+
+export function checkRuleSetIssues(ruleSet: RuleSet, definitions: Definition[] = []): RuleSetIssues {
+  const issues: RuleSetIssues = { ruleSet: [], rules: {} };
 
   if (!ruleSet.name.trim()) {
-    errors.push("Give this Rule Set a name.");
+    issues.ruleSet.push("Give this Rule Set a name.");
   }
 
-  ruleSet.rules.forEach((rule, index) => {
+  for (const rule of ruleSet.rules) {
     const own = checkRule(rule);
-    for (const error of own) {
+    const errors = own.length > 0 ? own : resolveRule(rule, ruleSet, definitions).errors;
+    if (errors.length > 0) {
+      issues.rules[rule.id] = errors;
+    }
+  }
+
+  return issues;
+}
+
+// The same, as one flat list with each Rule's errors prefixed by its position.
+export function checkRuleSet(ruleSet: RuleSet, definitions: Definition[] = []): string[] {
+  const issues = checkRuleSetIssues(ruleSet, definitions);
+  const errors = [...issues.ruleSet];
+  ruleSet.rules.forEach((rule, index) => {
+    for (const error of issues.rules[rule.id] ?? []) {
       errors.push(`Rule ${index + 1}: ${error}`);
     }
-    if (own.length === 0) {
-      for (const error of resolveRule(rule, ruleSet, definitions).errors) {
-        errors.push(`Rule ${index + 1}: ${error}`);
-      }
-    }
   });
-
   return errors;
+}
+
+// The Rules in a Rule Set that would break if a Rule, or one of its segments,
+// were deleted: children whose parent link names the Rule, or whose inherited
+// segment ids include the segment. Powers Author's delete protection.
+// Relabelling stays safe because links hold ids, never keys.
+export type Dependent = {
+  ruleId: string;
+  ruleName: string;
+};
+
+export function dependentsOf(ruleSet: RuleSet, ruleId: string, segmentId?: string): Dependent[] {
+  return ruleSet.rules
+    .filter((rule) => rule.parent && rule.id !== ruleId && (segmentId ? rule.parent.inheritSegmentIds.includes(segmentId) : rule.parent.ruleId === ruleId))
+    .map((rule) => ({ ruleId: rule.id, ruleName: rule.name }));
 }
 
 // Every Rule whose segments take their values from the definition, for the

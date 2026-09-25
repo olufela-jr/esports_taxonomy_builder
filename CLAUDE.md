@@ -169,6 +169,7 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
    Done 2026-09-25.
 4. `checkRuleSet` per Rule and `dependentsOf` (return shape changes from a flat string list
    to issues per Rule; one caller, the Author editor).
+   Done 2026-09-25 (`checkRuleSetIssues`; the flat `checkRuleSet` stays for the scripts).
 5. Author: definitions screen with the label control (D39), definition picker on enum
    segments filtered by platform, parent UI. Code edits save with a plain warning until
    phase 4 (D44).
