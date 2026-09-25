@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { compose, resolveRule, type Definition, type Rule, type Segment } from '@taxo/shared';
-import { AlertCircle, Check, Copy, Database, Filter, Zap } from 'lucide-react';
+import { compose, parse, resolveRule, type Definition, type Rule, type Segment } from '@taxo/shared';
+import { AlertCircle, ArrowRight, Check, Copy, Database, Filter, Lock, Zap } from 'lucide-react';
 import type { RuleSet } from '@/data/store';
 import { PageHeading } from './PageHeading';
-import { buttonPrimary, inputClass } from './styles';
+import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 function EmptyState() {
   return (
@@ -20,12 +20,17 @@ function EmptyState() {
 }
 
 // Feature 2: compose a compliant name from the Rule selected in the shell.
-export function Builder({ ruleSet, rule, definitions }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[] }) {
+// onSelectRule: chaining ("Build <child> under this") is the one place the app
+// changes the persistent Rule selection for the user, by an explicit action.
+export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[]; onSelectRule: (id: string) => void }) {
   const ruleSetId = ruleSet?.id;
   const ruleId = rule?.id;
 
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
+  // The parent name each child Rule is being built under, kept per Rule so
+  // switching Rules (or chaining from a parent) never loses it.
+  const [parentNames, setParentNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setValues({});
@@ -54,11 +59,37 @@ export function Builder({ ruleSet, rule, definitions }: { ruleSet: RuleSet | und
   }
   const active = resolution.rule;
   const segments = active.segments ?? [];
-  const result = compose(active, values);
-  const valid = result.errors.length === 0 && Boolean(segments.length);
+
+  // The parent step (v2 Journey 2): a child Rule is built under a parent name,
+  // pasted or carried across from a build of the parent. The name is parsed
+  // against the resolved parent; its inherited selections fill and lock the
+  // child's inherited controls. A parent name that fails validation stops the
+  // flow with the parent's violations shown.
+  const parentRule = rule.parent ? ruleSet.rules.find((candidate) => candidate.id === rule.parent?.ruleId) : undefined;
+  const resolvedParent = parentRule ? resolveRule(parentRule, ruleSet, definitions).rule : undefined;
+  const parentName = parentNames[rule.id] ?? '';
+  const parentParse = resolvedParent ? parse(resolvedParent, parentName) : undefined;
+  const inheritedIds = new Set(rule.parent?.inheritSegmentIds ?? []);
+  const inheritedKeys = new Set(segments.filter((segment) => inheritedIds.has(segment.id)).map((segment) => segment.key));
+  const inheritedValues: Record<string, string> = {};
+  if (parentParse?.valid) {
+    for (const key of inheritedKeys) {
+      if (parentParse.selections[key] !== undefined) inheritedValues[key] = parentParse.selections[key];
+    }
+  }
+  const parentReady = !rule.parent || Boolean(parentName && parentParse?.valid);
+  const children = ruleSet.rules.filter((candidate) => candidate.parent?.ruleId === rule.id);
+
+  const selections = { ...values, ...inheritedValues };
+  const result = compose(active, selections);
+  const valid = parentReady && result.errors.length === 0 && Boolean(segments.length);
   const displayOutput = result.name || 'Fill segments to generate a name';
-  const missing = segments.filter((segment) => segment.required && !values[segment.key]?.trim());
+  const missing = segments.filter((segment) => segment.required && !selections[segment.key]?.trim());
   const copyName = async () => { if (!valid) return; await navigator.clipboard?.writeText(result.name); setCopied(true); window.setTimeout(() => setCopied(false), 1800); };
+  const buildChild = (childId: string) => {
+    setParentNames((current) => ({ ...current, [childId]: result.name }));
+    onSelectRule(childId);
+  };
 
   return (
     <div>
@@ -73,20 +104,34 @@ export function Builder({ ruleSet, rule, definitions }: { ruleSet: RuleSet | und
             <div className="flex h-5 w-5 items-center justify-center rounded-full border border-muted-foreground/30 text-muted-foreground"><Zap className="h-3 w-3" /></div>
           </div>
 
-          <div className="space-y-5">
+          {rule.parent && parentRule && (
+            <div className="mb-6 rounded-lg border border-border/50 bg-muted/20 p-4" data-testid="section-build-parent">
+              <label htmlFor="build-parent" className="text-[13px] font-bold text-foreground">Under {parentRule.name}:<span className="ml-2 font-normal text-muted-foreground">paste the {parentRule.name.toLowerCase()} name this belongs to</span></label>
+              <input id="build-parent" className={`${inputClass} mt-2 font-mono`} value={parentName} onChange={(event) => setParentNames((current) => ({ ...current, [rule.id]: event.target.value }))} placeholder={`e.g. ${resolvedParent?.segments.map((segment) => segment.kind === 'enum' ? segment.allowedValues[0]?.code ?? 'value' : segment.label.toLowerCase()).join(parentRule.delimiter) ?? ''}`} data-testid="input-build-parent" />
+              {parentName && parentParse && !parentParse.valid && (
+                <ul className="mt-3 list-disc pl-5 text-xs font-semibold text-destructive" data-testid="status-build-parent-violations">{parentParse.violations.map((violation) => <li key={`${violation.segmentKey}-${violation.reason}`}>{violation.segmentKey === '__name__' ? violation.reason : `${violation.segmentKey}: ${violation.reason}`}</li>)}</ul>
+              )}
+              {!parentName && <p className="mt-2 text-[11px] font-bold text-muted-foreground">The inherited segments fill in from the {parentRule.name.toLowerCase()} name.</p>}
+              {parentParse?.valid && <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-primary" data-testid="text-build-parent-ok"><Check className="h-3.5 w-3.5" /> Valid {parentRule.name.toLowerCase()} name; inherited segments locked.</p>}
+            </div>
+          )}
+
+          <div className="space-y-5" hidden={!parentReady} data-testid="section-build-segments">
             {segments.map((segment: Segment) => (
               <div key={segment.id}>
                 <div className="mb-2.5 flex items-center justify-between">
                   <label htmlFor={`build-${segment.key}`} className="text-[13px] font-bold text-foreground">
                     {segment.label}:<span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span>
                   </label>
-                  {segment.required ? <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-destructive" /><span className="text-[10px] font-bold text-foreground">Required</span></span> : <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /><span className="text-[10px] font-bold text-foreground">Optional</span></span>}
+                  {inheritedKeys.has(segment.key) ? <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2 py-0.5" data-testid={`badge-inherited-${segment.key}`}><Lock className="h-3 w-3 text-muted-foreground" /><span className="text-[10px] font-bold text-foreground">Inherited</span></span> : segment.required ? <span className="inline-flex items-center gap-1.5 rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-destructive" /><span className="text-[10px] font-bold text-foreground">Required</span></span> : <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /><span className="text-[10px] font-bold text-foreground">Optional</span></span>}
                 </div>
                 {segment.kind === 'enum' ? (
                   <select
                     id={`build-${segment.key}`}
                     className={inputClass}
-                    value={values[segment.key] ?? ''}
+                    value={selections[segment.key] ?? ''}
+                    disabled={inheritedKeys.has(segment.key)}
+                    title={inheritedKeys.has(segment.key) ? `From the ${parentRule?.name ?? 'parent'} name` : undefined}
                     onChange={(event) => setValues((current) => ({ ...current, [segment.key]: event.target.value }))}
                     data-testid={`select-build-${segment.key}`}
                   >
@@ -99,7 +144,9 @@ export function Builder({ ruleSet, rule, definitions }: { ruleSet: RuleSet | und
                     id={`build-${segment.key}`}
                     className={inputClass}
                     maxLength={segment.maxLength}
-                    value={values[segment.key] ?? ''}
+                    value={selections[segment.key] ?? ''}
+                    disabled={inheritedKeys.has(segment.key)}
+                    title={inheritedKeys.has(segment.key) ? `From the ${parentRule?.name ?? 'parent'} name` : undefined}
                     onChange={(event) => setValues((current) => ({ ...current, [segment.key]: event.target.value }))}
                     placeholder={`Enter ${segment.label.toLowerCase()}`}
                     data-testid={`input-build-${segment.key}`}
@@ -124,6 +171,11 @@ export function Builder({ ruleSet, rule, definitions }: { ruleSet: RuleSet | und
               <button type="button" className={`${buttonPrimary} mt-5 w-full`} disabled={!valid} onClick={copyName} data-testid="button-copy-build-name">
                 {copied ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy name</>}
               </button>
+              {children.length > 0 && (
+                <div className="mt-4 flex flex-col gap-2" data-testid="section-build-children">
+                  {children.map((child) => <button key={child.id} type="button" className={`${buttonQuiet} w-full justify-between`} disabled={!valid} onClick={() => buildChild(child.id)} data-testid={`button-build-child-${child.id}`}>Build {child.name} under this <ArrowRight className="h-4 w-4" /></button>)}
+                </div>
+              )}
             </div>
           </div>
           {result.errors.length > 0 && (

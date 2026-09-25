@@ -71,6 +71,23 @@ export const globalRuleSet = {
 // stays in localStorage; one test asserts on it directly.
 export const UI_STATE_KEY = 'campaign-tool-ui-state-v4';
 
+// A child Rule under Google Campaigns inheriting its first segment, for the
+// hierarchy tests (Author's parent picker, Build's parent step).
+export const googleAdGroupsRule = {
+  id: 'rule-google-ad-groups',
+  key: 'google_ad_groups',
+  name: 'Google Ad Groups',
+  tags: { platform: 'google', entityType: 'ad_group' },
+  delimiter: '_',
+  parent: { ruleId: 'rule-google', inheritSegmentIds: ['seg-type'] },
+  source: { dataset: 'marketing', table: 'ad_groups', nameColumn: 'ad_group_name' },
+  segments: [
+    { id: 'seg-match', kind: 'enum', key: 'match', label: 'Match type', required: true, allowedValues: [{ label: 'Broad', code: 'brd' }, { label: 'Exact', code: 'exa' }] },
+  ],
+};
+
+export const hierarchyRuleSet = { ...paidMediaRuleSet, rules: [paidMediaRuleSet.rules[0], googleAdGroupsRule, paidMediaRuleSet.rules[1]] };
+
 // Two shared definitions for the Dictionary tests: one for every platform, one
 // scoped to search platforms.
 export const marketDefinition = {

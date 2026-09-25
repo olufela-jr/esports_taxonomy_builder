@@ -9,6 +9,7 @@ import {
   definitionDependents,
   dependentsOf,
   isPlatform,
+  parse,
   platformName,
   PLATFORMS,
   entriesFromCodes,
@@ -766,5 +767,35 @@ describe("checkRuleSetIssues and dependentsOf", () => {
       { ruleId: "r_ad", ruleName: "Ad" },
     ]);
     expect(dependentsOf(chain, "r_campaign", "s_custom")).toEqual([]);
+  });
+});
+
+// ---- parse ------------------------------------------------------------------------
+
+describe("parse", () => {
+  it("reads a valid name back into selections keyed by segment key, holding codes", () => {
+    expect(parse(campaignRule, "perf_de_autumn24")).toEqual({
+      valid: true,
+      violations: [],
+      selections: { campaign_type: "perf", market: "de", custom_id: "autumn24" },
+    });
+    // An optional segment left out of the name is left out of the selections.
+    expect(parse(campaignRule, "brand_uk").selections).toEqual({ campaign_type: "brand", market: "uk" });
+  });
+
+  it("yields no selections and the validation violations for an invalid name", () => {
+    const result = parse(campaignRule, "perf_fr");
+    expect(result.valid).toBe(false);
+    expect(result.selections).toEqual({});
+    expect(result.violations.map((violation) => violation.segmentKey)).toEqual(["market"]);
+  });
+
+  it("round-trips with compose and refuses an unresolved Rule like validate does", () => {
+    const composed = compose(campaignRule, { campaign_type: "rtg", market: "us" });
+    expect(parse(campaignRule, composed.name).selections).toEqual({ campaign_type: "rtg", market: "us" });
+    const chain = ruleSetOf(campaignRule, adGroupRule);
+    const unresolved = parse(childOf(chain, "r_ad_group"), "perf_uk_broad_runners");
+    expect(unresolved.valid).toBe(false);
+    expect(unresolved.violations[0].reason).toContain("resolve it with resolveRule");
   });
 });

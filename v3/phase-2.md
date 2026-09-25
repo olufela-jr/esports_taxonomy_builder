@@ -321,3 +321,52 @@ Check look the same to a user; they now work on resolved Rules.
   which makes the leading-run rule (D28) impossible to break from the screen.
 - Cycles are not prevented by the select (every other Rule is offered); the engine's cycle
   error appears beside the Rule and blocks Save, which is simpler than hiding descendants.
+
+## Step 6: the Build parent step and chaining
+
+### What changed
+
+- `packages/shared/src/engine.ts`: `parse(rule, name)` now returns `{ valid, violations,
+  selections }`: a valid name read back into selections keyed by segment key, each holding the
+  code at that position, an omitted optional left out; an invalid name yields no selections and
+  the violations `validate` reports, including the D25 guard on an unresolved Rule. The raw split
+  is an internal `splitName`. Three new tests.
+- `apps/web/src/components/Builder.tsx`: a child Rule shows a parent step above its controls:
+  paste the parent name, which is parsed against the resolved parent. Until it parses, the
+  child's controls are hidden; a bad name lists the parent's violations. A good name fills the
+  inherited controls, locks them with an "Inherited" badge, and the name composes from the
+  inherited codes plus the child's own choices. After a valid build, "Build <child> under this"
+  appears for each child Rule; it carries the built name across and switches the persistent
+  Rule selection through `onSelectRule`, the one place the app changes that selection for the
+  user. Parent names are kept per Rule in component state, so switching Rules never loses one.
+- `apps/web/src/App.tsx`: Build receives `onSelectRule`.
+- `apps/web/e2e/fixtures.ts`: `googleAdGroupsRule` and `hierarchyRuleSet`, shared by the Author
+  and Build hierarchy specs. `apps/web/e2e/build-hierarchy.spec.ts` (2 tests): a child built
+  under a pasted parent, a non-compliant parent blocking it; chaining from a parent build into
+  the child, and the switched Rule surviving a refresh.
+
+### Verified
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | Clean |
+| `pnpm test` | 50 (engine, 3 new), 9, 13 |
+| `pnpm test:e2e` | 28 of 28 (2 new) |
+| `pnpm --filter @taxo/web build` | Clean |
+| `pnpm --filter @taxo/functions build` | Clean |
+
+### Decisions not spelled out in the plan
+
+- `parse` changed signature rather than gaining a sibling: nothing outside the engine called
+  the old split, and the D34 sheet's contract names `parse` as returning selections.
+- A grandchild's parent step asks for the immediate parent's name only, as the spec says; that
+  name already carries the grandparent's inherited segments because the parent is resolved
+  before parsing.
+- Chained parent names live in Build's own state, not the persistent context, so a refresh
+  keeps the child Rule selected but asks for the parent name again.
+
+### Leftovers
+
+- Steps 7 and 8 (UTM types, `buildTrackingUrl`, `validateUtmValue`, the Author UTM panel and
+  Build URL output) and step 9 (further Playwright) remain in phase 2.
+- Seven commits since the last deploy (steps 2a to 6); the live app is on step 1.

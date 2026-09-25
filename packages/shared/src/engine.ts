@@ -646,11 +646,37 @@ function levenshtein(left: string, right: string): number {
   return previous[right.length];
 }
 
-export function parse(rule: Rule, name: string): string[] {
+function splitName(rule: Rule, name: string): string[] {
   if (!rule.delimiter) {
     return [name];
   }
   return name.split(rule.delimiter);
+}
+
+// A valid name read back into selections keyed by segment key, each holding
+// the code found at that position; an optional segment left out of the name
+// is left out of the selections. An invalid name yields no selections and the
+// same violations validate reports. Used by the Build parent step: the parent
+// name's selections pre-fill the child's inherited controls.
+export type ParseResult = {
+  valid: boolean;
+  violations: Violation[];
+  selections: Record<string, string>;
+};
+
+export function parse(rule: Rule, name: string): ParseResult {
+  const checked = validate(rule, name);
+  if (!checked.valid) {
+    return { ...checked, selections: {} };
+  }
+  const tokens = splitName(rule, name);
+  const selections: Record<string, string> = {};
+  rule.segments.forEach((segment, index) => {
+    if (tokens[index] !== undefined) {
+      selections[segment.key] = tokens[index];
+    }
+  });
+  return { valid: true, violations: [], selections };
 }
 
 // D25: compose and validate take resolved Rules only. A Rule that still has a
@@ -730,7 +756,7 @@ export function validate(rule: Rule, name: string): ValidateResult {
     return { valid: false, violations };
   }
 
-  const tokens = parse(rule, name);
+  const tokens = splitName(rule, name);
   const requiredCount = rule.segments.filter((segment) => segment.required).length;
   if (tokens.length < requiredCount || tokens.length > rule.segments.length) {
     violations.push({

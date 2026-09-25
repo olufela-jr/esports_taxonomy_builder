@@ -175,7 +175,7 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
    phase 4 (D44).
    Done 2026-09-25 (the definitions screen is the Dictionary tab, step 2b).
 6. Build parent step and chaining; `parse` returns selections by code, failing on an
-   invalid name (today it is a plain split).
+   invalid name. Done 2026-09-25.
 7. UTM types, `buildTrackingUrl`, `validateUtmValue` and tests, plus the `checkRuleSet`
    UTM checks (literals, codes and delimiters under the mapping's policy).
 8. Author UTM panel; Build URL output.

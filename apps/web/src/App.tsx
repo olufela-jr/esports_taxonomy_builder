@@ -171,7 +171,7 @@ function Workspace(props: WorkspaceProps) {
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>
-          <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} /></Route>
+          <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} /></Route>
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
           <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} /></Route>
           <Route path="/">{author}</Route>

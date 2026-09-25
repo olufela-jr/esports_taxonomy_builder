@@ -1,23 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
+import { hierarchyRuleSet, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
 
 // v3 phase 2 step 4: Author lists every problem beside the Rule it belongs to
 // and protects Rules and segments that other Rules inherit from.
-
-const adGroupRule = {
-  id: 'rule-google-ad-groups',
-  key: 'google_ad_groups',
-  name: 'Google Ad Groups',
-  tags: { platform: 'google', entityType: 'ad_group' },
-  delimiter: '_',
-  parent: { ruleId: 'rule-google', inheritSegmentIds: ['seg-type'] },
-  source: { dataset: 'marketing', table: 'ad_groups', nameColumn: 'ad_group_name' },
-  segments: [
-    { id: 'seg-match', kind: 'enum', key: 'match', label: 'Match type', required: true, allowedValues: [{ label: 'Broad', code: 'brd' }, { label: 'Exact', code: 'exa' }] },
-  ],
-};
-
-export const hierarchyRuleSet = { ...paidMediaRuleSet, rules: [paidMediaRuleSet.rules[0], adGroupRule, paidMediaRuleSet.rules[1]] };
 
 test('problems are listed per Rule and block saving until fixed', async ({ page }) => {
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
