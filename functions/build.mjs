@@ -35,3 +35,7 @@ writeFileSync('deploy/package.json', `${JSON.stringify({
 }, null, 2)}\n`);
 
 if (!existsSync('deploy/node_modules')) symlinkSync('../node_modules', 'deploy/node_modules', 'dir');
+
+// For a deploy through gcloud (used when the Firebase CLI cannot reach the
+// Extensions API it queries): upload the bundle and manifest only.
+writeFileSync('deploy/.gcloudignore', 'node_modules\n*.map\n');
