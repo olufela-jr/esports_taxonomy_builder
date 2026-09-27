@@ -186,14 +186,16 @@ the D34 child batch in `docs/features/`: done 2026-09-25); phase 4 the BigQuery 
 the impact preview; phase 5 drafts and Build blocking.
 
 ## Stage 2 (only after the checklist)
-Callable Cloud Function `scanCampaigns` in `functions/`, importing `@taxo/shared`. The
-tenant guard is in place (v3 phase 1): the tenant comes from the token, the Rule Set is
-loaded from `tenants/{tenantId}/rulesets`, the Rule's dataset must be in the tenant's
-`config.allowedDatasets`, and the Rule is resolved with `resolveRule`. Stage 2 replaces the
-final `unimplemented` with the scan: read the chosen Rule's `source`, run
-`SELECT DISTINCT nameColumn` with the optional filter, validate each name, return exact
-counts over the FULL scan plus a capped annotated results list (~5,000 rows, `truncated`
-flag). Whitelist `dataset`, `table`,
+Callable Cloud Functions `scanCampaigns` and `previewImpact` in `functions/`, importing
+`@taxo/shared`, deployed 2026-09-27 in this project (BigQuery lives here too, O2; log in
+`v3/phase-4.md`). The tenant guard runs first: the tenant comes from the token, the Rule Set
+is loaded from `tenants/{tenantId}/rulesets`, the Rule's dataset must be in the tenant's
+`config.allowedDatasets`, and the Rule is resolved with `resolveRule` and the tenant's
+definitions. The scan reads the chosen Rule's `source`, runs `SELECT DISTINCT nameColumn`
+with the optional filter, validates each name, returns exact counts over the FULL scan plus
+a capped annotated results list (5,000 rows, `truncated` flag), with `maximumBytesBilled`
+at 1 GB. The web app calls both only through `apps/web/src/data/scan.ts`. Whitelist
+`dataset`, `table`,
 `nameColumn`, `filter.column` against `^[A-Za-z0-9_]+$`; pass `filter.in` as query
 parameters, never string-concatenated. Service account: `bigquery.dataViewer` +
 `bigquery.jobUser`, read-only. Bundle the Function with esbuild so `@taxo/shared` is

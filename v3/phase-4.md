@@ -75,3 +75,29 @@ app (O2 decided 2026-09-25: one project). One commit per step.
   `platform`) and 14 demonstration names shaped for the live "Google Laws" Rule: eight valid,
   six deliberately wrong (case, an unknown market, a missing title, an overlong title, a legacy
   name, the wrong join character).
+
+## Deploy (2026-09-26 to 27)
+
+Hosting and rules went out through `./deploy.sh` as usual. The first Functions deploy took
+several attempts from this machine:
+
+- The Firebase CLI queries the Extensions API and the Resource Manager API during a Functions
+  deploy; both had to be enabled, and the Extensions host was intermittently unreachable, so
+  three attempts died with the CLI's generic "Failed to make request".
+- The fourth attempt uploaded the source and created `previewImpact` (ACTIVE) but Cloud Run
+  returned a transient 500 creating `scanCampaigns`, leaving a half-created service.
+- `scanCampaigns` was then deployed with `gcloud functions deploy --gen2` from
+  `functions/deploy`, which the build now readies with a `.gcloudignore` (no `node_modules`
+  link, no maps). It reached ACTIVE at
+  `https://asia-south1-media-taxonomy-tool.cloudfunctions.net/scanCampaigns`, the address the
+  web SDK's `httpsCallable` uses, so the deploy path makes no difference to the app.
+
+Either path works from now on: `firebase deploy --only functions --force` when the CLI can reach
+its APIs (the `--force` sets the artifact cleanup policy it asks for), or the gcloud command per
+Function with `--trigger-http --allow-unauthenticated` (the guard in the code does the
+authentication, from the ID token). Runtime settings under gcloud are flags, not the SDK's
+`onCall` options: `--timeout=60s --memory=256MiB` for the scan, `--timeout=120s --memory=512MiB`
+for the preview.
+
+Verified: an unauthenticated POST to each URL returns the guard's `unauthenticated` error, so
+the bundle runs and the tenant guard is the first thing it does.
