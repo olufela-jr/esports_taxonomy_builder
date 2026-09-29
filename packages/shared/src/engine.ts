@@ -1010,6 +1010,334 @@ export function rollup(scans: RuleScan[]): Rollup {
   return { total, perRule, byPlatform, byEntityType };
 }
 
+// ---- compliance board -------------------------------------------------------------
+//
+// rollup answers "how many are valid". These answer "what is failing, and why",
+// over the same names. The board never counts anything itself: the grouping,
+// ranking and labelling all live here so the CSV source and the BigQuery scan
+// can only ever agree.
+
+// One name as the board sees it: what the CSV checker builds per row and what
+// the scan returns per row.
+export type NameAnnotation = {
+  name: string;
+  valid: boolean;
+  violations: Violation[];
+};
+
+// One Rule's scan for the board. `scanned` and `valid` are exact over every
+// name; `analysed` is the subset whose violations are available, which is
+// smaller when something capped the annotated list.
+export type RuleNameScan = {
+  rule: Rule;
+  scanned: number;
+  valid: number;
+  analysed: NameAnnotation[];
+  // Why this Rule contributed no names at all: a missing CSV column, a scan
+  // that failed. Not an engine cause, so it is never a ViolationCode.
+  skipped?: string;
+};
+
+export type CauseCount = {
+  code: ViolationCode;
+  label: string;
+  names: number;
+  violations: number;
+  sampleNames: string[];
+};
+
+export type SegmentCount = {
+  segmentId: string;
+  segmentKey: string;
+  segmentLabel: string;
+  names: number;
+  violations: number;
+  topCode: ViolationCode;
+  sampleNames: string[];
+};
+
+export type ValueCount = {
+  segmentId: string;
+  segmentKey: string;
+  value: string;
+  code: ViolationCode;
+  names: number;
+  suggestion?: string;
+  sampleNames: string[];
+};
+
+export type RuleCompliance = {
+  ruleId: string;
+  ruleKey: string;
+  ruleName: string;
+  tags?: Tags;
+  scanned: number;
+  valid: number;
+  invalid: number;
+  analysed: number;
+  analysedInvalid: number;
+  // The reasons below describe `analysed`, not `scanned`. When this is true
+  // they are a sample and the board must say so.
+  partial: boolean;
+  skipped?: string;
+  byCause: CauseCount[];
+  bySegment: SegmentCount[];
+  byValue: ValueCount[];
+  valuesCapped: boolean;
+  topCause?: ViolationCode;
+};
+
+export type ComplianceCoverage = {
+  scanned: number;
+  analysed: number;
+  partial: boolean;
+  partialRules: string[];
+};
+
+export type ComplianceBoard = {
+  rollup: Rollup;
+  perRule: RuleCompliance[];
+  byCause: CauseCount[];
+  bySegment: SegmentCount[];
+  byValue: ValueCount[];
+  valuesCapped: boolean;
+  coverage: ComplianceCoverage;
+};
+
+export type ComplianceOptions = {
+  sampleNames?: number;
+  topValues?: number;
+};
+
+const SAMPLE_NAMES = 5;
+const TOP_VALUES = 50;
+
+// A violation that reached us without a code came from a scan service older
+// than the codes. Bucket it honestly rather than guessing at its cause.
+function codeOf(violation: Violation): ViolationCode {
+  return violation.code ?? "unclassified";
+}
+
+function pushSample(samples: string[], name: string, cap: number): void {
+  if (samples.length < cap && !samples.includes(name)) {
+    samples.push(name);
+  }
+}
+
+// Ranked by how many names carry the cause, with the fixed board order breaking
+// ties so the same data always lists in the same order.
+function byNamesThen<T extends { names: number }>(tiebreak: (item: T) => number) {
+  return (left: T, right: T): number =>
+    right.names - left.names || tiebreak(left) - tiebreak(right);
+}
+
+function causeRank(code: ViolationCode): number {
+  const index = VIOLATION_CODES.indexOf(code);
+  return index === -1 ? VIOLATION_CODES.length : index;
+}
+
+export function complianceOfRule(scan: RuleNameScan, options: ComplianceOptions = {}): RuleCompliance {
+  const sampleCap = options.sampleNames ?? SAMPLE_NAMES;
+  const valueCap = options.topValues ?? TOP_VALUES;
+
+  const labels = new Map<string, string>();
+  for (const segment of scan.rule.segments) {
+    labels.set(segment.id, segment.label);
+  }
+
+  const causes = new Map<ViolationCode, CauseCount>();
+  const segments = new Map<string, SegmentCount & { codes: Map<ViolationCode, number> }>();
+  const values = new Map<string, ValueCount>();
+  let analysedInvalid = 0;
+
+  for (const annotation of scan.analysed) {
+    if (annotation.valid) continue;
+    analysedInvalid += 1;
+
+    // A name counts once per group however many of its violations land there,
+    // so "names" is always a count of names and "violations" of violations.
+    const seenCauses = new Set<ViolationCode>();
+    const seenSegments = new Set<string>();
+    const seenValues = new Set<string>();
+
+    for (const violation of annotation.violations) {
+      const code = codeOf(violation);
+
+      let cause = causes.get(code);
+      if (!cause) {
+        cause = { code, label: causeLabel(code), names: 0, violations: 0, sampleNames: [] };
+        causes.set(code, cause);
+      }
+      cause.violations += 1;
+      if (!seenCauses.has(code)) {
+        seenCauses.add(code);
+        cause.names += 1;
+      }
+      pushSample(cause.sampleNames, annotation.name, sampleCap);
+
+      // An inherited segment keeps the parent's id, so keying on it is what
+      // pools the same segment across Rules.
+      const segmentId = violation.segmentId ?? "";
+      const segmentGroup = segmentId || violation.segmentKey;
+      let segment = segments.get(segmentGroup);
+      if (!segment) {
+        segment = {
+          segmentId,
+          segmentKey: violation.segmentKey,
+          segmentLabel: labels.get(segmentId) ?? wholeNameLabel(violation.segmentKey),
+          names: 0,
+          violations: 0,
+          topCode: code,
+          sampleNames: [],
+          codes: new Map(),
+        };
+        segments.set(segmentGroup, segment);
+      }
+      segment.violations += 1;
+      segment.codes.set(code, (segment.codes.get(code) ?? 0) + 1);
+      if (!seenSegments.has(segmentGroup)) {
+        seenSegments.add(segmentGroup);
+        segment.names += 1;
+      }
+      pushSample(segment.sampleNames, annotation.name, sampleCap);
+
+      // Only a segment's own token is an offending value. A whole-name
+      // violation's token is the entire name, which would rank as noise.
+      if (!violation.segmentId) continue;
+      const valueGroup = `${violation.segmentId} ${violation.token}`;
+      let value = values.get(valueGroup);
+      if (!value) {
+        value = {
+          segmentId: violation.segmentId,
+          segmentKey: violation.segmentKey,
+          value: violation.token,
+          code,
+          names: 0,
+          ...(violation.suggestion ? { suggestion: violation.suggestion } : {}),
+          sampleNames: [],
+        };
+        values.set(valueGroup, value);
+      }
+      if (!seenValues.has(valueGroup)) {
+        seenValues.add(valueGroup);
+        value.names += 1;
+      }
+      pushSample(value.sampleNames, annotation.name, sampleCap);
+    }
+  }
+
+  const byCause = [...causes.values()].sort(byNamesThen((cause) => causeRank(cause.code)));
+  const bySegment = [...segments.values()]
+    .map(({ codes, ...segment }) => ({ ...segment, topCode: topCodeOf(codes) }))
+    .sort(byNamesThen((segment) => causeRank(segment.topCode)));
+  const ranked = [...values.values()].sort(byNamesThen((value) => causeRank(value.code)));
+
+  return {
+    ruleId: scan.rule.id,
+    ruleKey: scan.rule.key,
+    ruleName: scan.rule.name,
+    ...(scan.rule.tags ? { tags: scan.rule.tags } : {}),
+    scanned: scan.scanned,
+    valid: scan.valid,
+    invalid: scan.scanned - scan.valid,
+    analysed: scan.analysed.length,
+    analysedInvalid,
+    partial: scan.analysed.length < scan.scanned,
+    ...(scan.skipped ? { skipped: scan.skipped } : {}),
+    byCause,
+    bySegment,
+    byValue: ranked.slice(0, valueCap),
+    valuesCapped: ranked.length > valueCap,
+    ...(byCause.length > 0 ? { topCause: byCause[0].code } : {}),
+  };
+}
+
+function wholeNameLabel(segmentKey: string): string {
+  return segmentKey === NAME_VIOLATION_KEY ? "Whole name" : segmentKey;
+}
+
+function topCodeOf(codes: Map<ViolationCode, number>): ViolationCode {
+  let best: ViolationCode = "unclassified";
+  let bestCount = -1;
+  for (const [code, count] of codes) {
+    if (count > bestCount || (count === bestCount && causeRank(code) < causeRank(best))) {
+      best = code;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+// Pools the per-Rule breakdowns into one Rule-Set-wide board. The valid/scanned
+// side goes through rollup untouched, so the board and "All Rules" can never
+// report different numbers for the same names.
+export function complianceBoard(perRule: RuleCompliance[], options: ComplianceOptions = {}): ComplianceBoard {
+  const sampleCap = options.sampleNames ?? SAMPLE_NAMES;
+  const valueCap = options.topValues ?? TOP_VALUES;
+
+  const scans: RuleScan[] = perRule.map((rule) => ({
+    ruleId: rule.ruleId,
+    ruleKey: rule.ruleKey,
+    ruleName: rule.ruleName,
+    ...(rule.tags ? { tags: rule.tags } : {}),
+    scanned: rule.scanned,
+    valid: rule.valid,
+  }));
+
+  const causes = new Map<ViolationCode, CauseCount>();
+  const segments = new Map<string, SegmentCount & { codes: Map<ViolationCode, number> }>();
+  const values = new Map<string, ValueCount>();
+
+  for (const rule of perRule) {
+    for (const cause of rule.byCause) {
+      const merged = causes.get(cause.code) ?? { ...cause, names: 0, violations: 0, sampleNames: [] };
+      merged.names += cause.names;
+      merged.violations += cause.violations;
+      for (const name of cause.sampleNames) pushSample(merged.sampleNames, name, sampleCap);
+      causes.set(cause.code, merged);
+    }
+
+    for (const segment of rule.bySegment) {
+      const group = segment.segmentId || segment.segmentKey;
+      const merged = segments.get(group) ?? { ...segment, names: 0, violations: 0, sampleNames: [], codes: new Map() };
+      merged.names += segment.names;
+      merged.violations += segment.violations;
+      merged.codes.set(segment.topCode, (merged.codes.get(segment.topCode) ?? 0) + segment.violations);
+      for (const name of segment.sampleNames) pushSample(merged.sampleNames, name, sampleCap);
+      segments.set(group, merged);
+    }
+
+    for (const value of rule.byValue) {
+      const group = `${value.segmentId} ${value.value}`;
+      const merged = values.get(group) ?? { ...value, names: 0, sampleNames: [] };
+      merged.names += value.names;
+      if (!merged.suggestion && value.suggestion) merged.suggestion = value.suggestion;
+      for (const name of value.sampleNames) pushSample(merged.sampleNames, name, sampleCap);
+      values.set(group, merged);
+    }
+  }
+
+  const ranked = [...values.values()].sort(byNamesThen((value) => causeRank(value.code)));
+  const partialRules = perRule.filter((rule) => rule.partial).map((rule) => rule.ruleName);
+
+  return {
+    rollup: rollup(scans),
+    perRule,
+    byCause: [...causes.values()].sort(byNamesThen((cause) => causeRank(cause.code))),
+    bySegment: [...segments.values()]
+      .map(({ codes, ...segment }) => ({ ...segment, topCode: topCodeOf(codes) }))
+      .sort(byNamesThen((segment) => causeRank(segment.topCode))),
+    byValue: ranked.slice(0, valueCap),
+    valuesCapped: ranked.length > valueCap || perRule.some((rule) => rule.valuesCapped),
+    coverage: {
+      scanned: perRule.reduce((sum, rule) => sum + rule.scanned, 0),
+      analysed: perRule.reduce((sum, rule) => sum + rule.analysed, 0),
+      partial: partialRules.length > 0,
+      partialRules,
+    },
+  };
+}
+
 // ---- UTM tracking URLs (v2 D19, D23, D30) -----------------------------------------
 
 // RFC 3986 unreserved characters: a value made of these is never percent-

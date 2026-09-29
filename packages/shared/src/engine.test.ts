@@ -10,6 +10,8 @@ import {
   checkRuleSet,
   checkRuleSetIssues,
   checkUtmMapping,
+  complianceBoard,
+  complianceOfRule,
   compose,
   countCombinations,
   countUnderParents,
@@ -32,10 +34,13 @@ import {
   type Definition,
   type EnumSegment,
   type FreeformSegment,
+  type NameAnnotation,
   type Rule,
+  type RuleNameScan,
   type RuleScan,
   type RuleSet,
   type UtmMapping,
+  type Violation,
 } from "./engine";
 
 const typeSegment: EnumSegment = {
@@ -1123,5 +1128,169 @@ describe("violation codes", () => {
     expect(checked.valid).toBe(false);
     expect(checked.violations.map((violation) => violation.code)).toEqual(["unresolvedParent"]);
     expect(checked.violations[0].segmentKey).toBe(NAME_VIOLATION_KEY);
+  });
+});
+
+// ---- compliance board -------------------------------------------------------------
+
+const annotate = (rule: Rule, names: string[]): NameAnnotation[] =>
+  names.map((name) => ({ name, ...validate(rule, name) }));
+
+const scanOf = (rule: Rule, names: string[], extra: Partial<RuleNameScan> = {}): RuleNameScan => {
+  const analysed = annotate(rule, names);
+  return {
+    rule,
+    scanned: names.length,
+    valid: analysed.filter((entry) => entry.valid).length,
+    analysed,
+    ...extra,
+  };
+};
+
+describe("compliance board", () => {
+  it("ranks causes, segments and offending values for one Rule", () => {
+    const compliance = complianceOfRule(
+      scanOf(campaignRule, ["brand_uk", "nope_uk", "alsonope_uk", "brand_uk_a/b", "brand_uk_a_b"]),
+    );
+
+    expect(compliance).toMatchObject({
+      ruleId: "r_campaign",
+      ruleName: "Campaign",
+      scanned: 5,
+      valid: 1,
+      invalid: 4,
+      analysed: 5,
+      analysedInvalid: 4,
+      partial: false,
+      valuesCapped: false,
+      topCause: "valueNotAllowed",
+    });
+
+    expect(compliance.byCause).toEqual([
+      { code: "valueNotAllowed", label: "Value is not in the allowed list", names: 2, violations: 2, sampleNames: ["nope_uk", "alsonope_uk"] },
+      { code: "illegalCharacter", label: "Value contains an illegal character", names: 1, violations: 1, sampleNames: ["brand_uk_a/b"] },
+      { code: "segmentCount", label: "Wrong number of segments", names: 1, violations: 1, sampleNames: ["brand_uk_a_b"] },
+    ]);
+
+    expect(compliance.bySegment).toEqual([
+      { segmentId: "s_type", segmentKey: "campaign_type", segmentLabel: "Campaign Type", names: 2, violations: 2, topCode: "valueNotAllowed", sampleNames: ["nope_uk", "alsonope_uk"] },
+      { segmentId: "s_custom", segmentKey: "custom_id", segmentLabel: "Custom ID", names: 1, violations: 1, topCode: "illegalCharacter", sampleNames: ["brand_uk_a/b"] },
+      { segmentId: "", segmentKey: NAME_VIOLATION_KEY, segmentLabel: "Whole name", names: 1, violations: 1, topCode: "segmentCount", sampleNames: ["brand_uk_a_b"] },
+    ]);
+
+    // The whole-name failure contributes no offending value: its token is the
+    // entire name, which would rank as noise.
+    expect(compliance.byValue.map((value) => value.value)).toEqual(["nope", "alsonope", "a/b"]);
+  });
+
+  it("carries the engine's suggestion onto the offending value row", () => {
+    const compliance = complianceOfRule(scanOf(campaignRule, ["brend_uk", "brend_uk"]));
+    expect(compliance.byValue).toEqual([
+      {
+        segmentId: "s_type",
+        segmentKey: "campaign_type",
+        value: "brend",
+        code: "valueNotAllowed",
+        names: 2,
+        suggestion: 'Did you mean "brand"?',
+        sampleNames: ["brend_uk"],
+      },
+    ]);
+  });
+
+  it("pools the board through rollup so All Rules can never disagree", () => {
+    // The migration checklist's own figures: Rule A 1 valid + 1 invalid,
+    // Rule B 2 valid + 1 invalid, pooled 3 of 5.
+    const other: Rule = { ...campaignRule, id: "r_other", key: "other", name: "Other", tags: { platform: "meta" } };
+    const perRule = [
+      complianceOfRule(scanOf(campaignRule, ["brand_uk", "nope_uk"])),
+      complianceOfRule(scanOf(other, ["brand_uk", "brand_us", "nope_uk"])),
+    ];
+    const board = complianceBoard(perRule);
+
+    expect(board.rollup.total).toEqual({ scanned: 5, valid: 3, invalid: 2 });
+    expect(board.rollup).toEqual(
+      rollup([
+        { ruleId: "r_campaign", ruleKey: "campaign", ruleName: "Campaign", scanned: 2, valid: 1 },
+        { ruleId: "r_other", ruleKey: "other", ruleName: "Other", tags: { platform: "meta" }, scanned: 3, valid: 2 },
+      ]),
+    );
+    expect(board.byCause).toEqual([
+      { code: "valueNotAllowed", label: "Value is not in the allowed list", names: 2, violations: 2, sampleNames: ["nope_uk"] },
+    ]);
+  });
+
+  it("merges the same inherited segment across Rules into one row", () => {
+    const renamed: Rule = {
+      ...adGroupRule,
+      parent: { ruleId: "r_campaign", inheritSegmentIds: ["s_type"] },
+      segments: [{ ...targetingSegment, key: "targeting_mode" }],
+    };
+    const ruleSet = ruleSetOf(campaignRule, renamed);
+    const parent = resolveRule(childOf(ruleSet, "r_campaign"), ruleSet).rule;
+    const child = resolveRule(childOf(ruleSet, "r_ad_group"), ruleSet).rule;
+
+    const board = complianceBoard([
+      complianceOfRule(scanOf(parent, ["nope_uk"])),
+      complianceOfRule(scanOf(child, ["nope_broad"])),
+    ]);
+
+    expect(board.bySegment).toEqual([
+      { segmentId: "s_type", segmentKey: "campaign_type", segmentLabel: "Campaign Type", names: 2, violations: 2, topCode: "valueNotAllowed", sampleNames: ["nope_uk", "nope_broad"] },
+    ]);
+    expect(board.byValue.map((value) => ({ value: value.value, names: value.names }))).toEqual([
+      { value: "nope", names: 2 },
+    ]);
+  });
+
+  it("says the reasons are a sample when a Rule's names were only partly analysed", () => {
+    const analysed = annotate(campaignRule, ["nope_uk"]);
+    const compliance = complianceOfRule({ rule: campaignRule, scanned: 100, valid: 60, analysed });
+
+    expect(compliance).toMatchObject({ scanned: 100, valid: 60, invalid: 40, analysed: 1, analysedInvalid: 1, partial: true });
+
+    const board = complianceBoard([compliance]);
+    // The counts stay exact even though the reasons do not.
+    expect(board.rollup.total).toEqual({ scanned: 100, valid: 60, invalid: 40 });
+    expect(board.coverage).toEqual({ scanned: 100, analysed: 1, partial: true, partialRules: ["Campaign"] });
+  });
+
+  it("counts a Rule that scanned nothing and a Rule that was skipped", () => {
+    const skipped = complianceOfRule({ rule: campaignRule, scanned: 0, valid: 0, analysed: [], skipped: "Missing mapped column: campaign_name" });
+    expect(skipped).toMatchObject({ scanned: 0, valid: 0, invalid: 0, analysed: 0, partial: false, skipped: "Missing mapped column: campaign_name", byCause: [] });
+    expect(skipped.topCause).toBeUndefined();
+
+    const board = complianceBoard([skipped, complianceOfRule(scanOf(campaignRule, ["nope_uk"]))]);
+    expect(board.perRule).toHaveLength(2);
+    expect(board.rollup.total).toEqual({ scanned: 1, valid: 0, invalid: 1 });
+    expect(board.coverage.partial).toBe(false);
+  });
+
+  it("treats a violation that arrives with no code as unclassified", () => {
+    // What an older scan service, deployed before the codes, still sends.
+    const legacy = { segmentKey: "campaign_type", token: "nope", reason: "Value is not in the allowed list." } as Violation;
+    const compliance = complianceOfRule({
+      rule: campaignRule,
+      scanned: 1,
+      valid: 0,
+      analysed: [{ name: "nope_uk", valid: false, violations: [legacy] }],
+    });
+
+    expect(compliance.byCause).toEqual([
+      { code: "unclassified", label: "Unclassified", names: 1, violations: 1, sampleNames: ["nope_uk"] },
+    ]);
+    expect(compliance.bySegment[0].segmentLabel).toBe("campaign_type");
+    expect(compliance.byValue).toEqual([]);
+  });
+
+  it("caps the sample names and the value rows, and says that it capped them", () => {
+    const names = Array.from({ length: 9 }, (_, index) => `nope${index}_uk`);
+    const compliance = complianceOfRule(scanOf(campaignRule, names), { sampleNames: 2, topValues: 3 });
+
+    expect(compliance.byCause[0]).toMatchObject({ names: 9, violations: 9 });
+    expect(compliance.byCause[0].sampleNames).toEqual(["nope0_uk", "nope1_uk"]);
+    expect(compliance.byValue).toHaveLength(3);
+    expect(compliance.valuesCapped).toBe(true);
+    expect(complianceBoard([compliance], { topValues: 3 }).valuesCapped).toBe(true);
   });
 });
