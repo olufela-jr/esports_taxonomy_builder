@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Download, Play, X } from 'lucide-react';
-import { ancestorsOf, buildTrackingUrl, checkParents, countUnderParents, enumerateUnderParents, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
+import { ancestorsOf, buildTrackingUrl, checkParents, countUnderParents, enumerateUnderParents, NAME_VIOLATION_KEY, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
 import type { RuleSet } from '@/data/store';
 import { BATCH_ROW_CAP } from './BatchBuilder';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
@@ -180,7 +180,7 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
               {failing.map((entry) => {
                 const line = parents.find((item) => item.name === entry.name);
                 const missing = line ? missingAncestor(line) : [];
-                return <li key={entry.name} className="flex items-start justify-between gap-3 rounded-[4px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px]" data-testid={`row-parent-failure-${entry.name}`}><div><span className="font-mono font-bold text-foreground">{entry.name}</span><ul className="mt-1 list-disc pl-4 font-semibold text-destructive">{entry.result.violations.map((violation) => <li key={`${violation.segmentKey}-${violation.reason}`}>{violation.segmentKey === '__name__' ? violation.reason : `${violation.segmentKey}: ${violation.reason}`}</li>)}{missing.map((ancestor) => <li key={ancestor.id}>Missing the {ancestor.name.toLowerCase()} name column.</li>)}</ul></div><button type="button" className="rounded-md p-1 text-muted-foreground hover:text-destructive" onClick={() => removeLine(entry.name)} aria-label={`Remove ${entry.name}`} data-testid={`button-remove-parent-${entry.name}`}><X className="h-4 w-4" /></button></li>;
+                return <li key={entry.name} className="flex items-start justify-between gap-3 rounded-[4px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px]" data-testid={`row-parent-failure-${entry.name}`}><div><span className="font-mono font-bold text-foreground">{entry.name}</span><ul className="mt-1 list-disc pl-4 font-semibold text-destructive">{entry.result.violations.map((violation) => <li key={`${violation.segmentKey}-${violation.reason}`}>{violation.segmentKey === NAME_VIOLATION_KEY ? violation.reason : `${violation.segmentKey}: ${violation.reason}`}</li>)}{missing.map((ancestor) => <li key={ancestor.id}>Missing the {ancestor.name.toLowerCase()} name column.</li>)}</ul></div><button type="button" className="rounded-md p-1 text-muted-foreground hover:text-destructive" onClick={() => removeLine(entry.name)} aria-label={`Remove ${entry.name}`} data-testid={`button-remove-parent-${entry.name}`}><X className="h-4 w-4" /></button></li>;
               })}
             </ul>
           )}

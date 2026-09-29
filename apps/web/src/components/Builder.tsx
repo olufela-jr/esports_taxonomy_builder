@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { buildTrackingUrl, checkDefinition, compose, parse, resolveRule, type Definition, type ParentLine, type Rule, type Segment } from '@taxo/shared';
+import { buildTrackingUrl, checkDefinition, compose, parse, resolveRule, NAME_VIOLATION_KEY, type Definition, type ParentLine, type Rule, type Segment } from '@taxo/shared';
 import { AlertCircle, ArrowRight, Check, Clock, Copy, Database, Filter, Link2, Lock, Zap } from 'lucide-react';
 import type { User } from '@/data/auth';
 import type { BuildDraft, BuildDraftDraft, RuleSet, ValueRequest, ValueRequestDraft } from '@/data/store';
@@ -224,7 +224,7 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
               <label htmlFor="build-parent" className="text-[13px] font-bold text-foreground">Under {parentRule.name}:<span className="ml-2 font-normal text-muted-foreground">paste the {parentRule.name.toLowerCase()} name this belongs to</span></label>
               <input id="build-parent" className={`${inputClass} mt-2 font-mono`} value={parentName} onChange={(event) => setParentNames((current) => ({ ...current, [rule.id]: event.target.value }))} placeholder={`e.g. ${resolvedParent?.segments.map((segment) => segment.kind === 'enum' ? segment.allowedValues[0]?.code ?? 'value' : segment.label.toLowerCase()).join(parentRule.delimiter) ?? ''}`} data-testid="input-build-parent" />
               {parentName && parentParse && !parentParse.valid && (
-                <ul className="mt-3 list-disc pl-5 text-xs font-semibold text-destructive" data-testid="status-build-parent-violations">{parentParse.violations.map((violation) => <li key={`${violation.segmentKey}-${violation.reason}`}>{violation.segmentKey === '__name__' ? violation.reason : `${violation.segmentKey}: ${violation.reason}`}</li>)}</ul>
+                <ul className="mt-3 list-disc pl-5 text-xs font-semibold text-destructive" data-testid="status-build-parent-violations">{parentParse.violations.map((violation) => <li key={`${violation.segmentKey}-${violation.reason}`}>{violation.segmentKey === NAME_VIOLATION_KEY ? violation.reason : `${violation.segmentKey}: ${violation.reason}`}</li>)}</ul>
               )}
               {!parentName && <p className="mt-2 text-[11px] font-bold text-muted-foreground">The inherited segments fill in from the {parentRule.name.toLowerCase()} name.</p>}
               {parentParse?.valid && <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-primary" data-testid="text-build-parent-ok"><Check className="h-3.5 w-3.5" /> Valid {parentRule.name.toLowerCase()} name; inherited segments locked.</p>}

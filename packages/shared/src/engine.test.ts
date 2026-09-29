@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTrackingUrl,
+  causeLabel,
   checkBatchChoices,
   checkDefinition,
   checkParents,
@@ -17,6 +18,7 @@ import {
   enumerate,
   enumerateUnderParents,
   isPlatform,
+  NAME_VIOLATION_KEY,
   parse,
   platformName,
   PLATFORMS,
@@ -24,7 +26,9 @@ import {
   resolveRule,
   rollup,
   validate,
+  validateInRuleSet,
   validateUtmValue,
+  VIOLATION_CODES,
   type Definition,
   type EnumSegment,
   type FreeformSegment,
@@ -728,7 +732,7 @@ describe("resolveRule with shared definitions", () => {
     const checked = validate(campaign, "perf_de");
     expect(checked.valid).toBe(false);
     expect(checked.violations).toEqual([
-      { segmentKey: "__name__", token: "perf_de", reason: "This Rule uses shared definitions; resolve it with resolveRule before building or checking names." },
+      { code: "unresolvedDefinition", segmentKey: NAME_VIOLATION_KEY, token: "perf_de", reason: "This Rule uses shared definitions; resolve it with resolveRule before building or checking names." },
     ]);
   });
 
@@ -1005,5 +1009,119 @@ describe("child batch across parents", () => {
     const leafResolved = resolveRule(childOf(three, "r_leaf"), three).rule;
     expect(() => countUnderParents(leafResolved, midResolved, { parents: [{ name: "perf_uk" }], choices })).toThrow('missing an ancestor name the tracking URL needs: "perf_uk"');
     expect(countUnderParents(leafResolved, midResolved, { parents: [{ name: "perf_uk", ancestors: { r_grand: "perf" } }], choices }).total).toBe(4);
+  });
+});
+
+// ---- violation codes --------------------------------------------------------------
+
+describe("violation codes", () => {
+  it("gives every violation a machine-readable code while keeping the sentence in reason", () => {
+    expect(validate(campaignRule, "nope_uk").violations).toEqual([
+      {
+        code: "valueNotAllowed",
+        segmentKey: "campaign_type",
+        segmentId: "s_type",
+        token: "nope",
+        reason: "Value is not in the allowed list.",
+        detail: { allowedCount: 3 },
+      },
+    ]);
+
+    expect(validate(campaignRule, "brand_uk_waytoolongcustom").violations.map((violation) => violation.code)).toEqual([
+      "valueTooLong",
+    ]);
+    expect(validate(campaignRule, "brand_uk_a/b").violations.map((violation) => violation.code)).toEqual([
+      "illegalCharacter",
+    ]);
+    expect(validate(campaignRule, "").violations.map((violation) => violation.code)).toEqual(["emptyName"]);
+    expect(validate(campaignRule, "brand_uk_a_b").violations.map((violation) => violation.code)).toEqual([
+      "segmentCount",
+    ]);
+    expect(validate(adGroupRule, "brand_uk_exact_women").violations.map((violation) => violation.code)).toEqual([
+      "unresolvedParent",
+    ]);
+
+    // The sentences are what they always were: the code is an addition, not a
+    // replacement, so every existing renderer keeps working.
+    expect(validate(campaignRule, "brand_uk_a/b").violations[0].reason).toBe(
+      'Value contains an illegal character: "/".',
+    );
+    expect(validate(campaignRule, "brand_uk_a_b").violations[0].reason).toBe(
+      "Expected 2 to 3 segments, found 4.",
+    );
+  });
+
+  it("covers every code the board can group on", () => {
+    expect(new Set(VIOLATION_CODES).size).toBe(VIOLATION_CODES.length);
+    for (const code of VIOLATION_CODES) {
+      expect(causeLabel(code)).not.toBe("");
+    }
+  });
+
+  it("puts the interpolated numbers in detail rather than only in the sentence", () => {
+    expect(validate(campaignRule, "brand_uk_waytoolongcustom").violations[0]).toMatchObject({
+      code: "valueTooLong",
+      detail: { maxLength: 12, length: 16 },
+    });
+    expect(validate(campaignRule, "brand_uk_a/b").violations[0]).toMatchObject({
+      code: "illegalCharacter",
+      detail: { character: "/" },
+    });
+    expect(validate(campaignRule, "brand_uk_a_b").violations[0]).toMatchObject({
+      code: "segmentCount",
+      detail: { minSegments: 2, maxSegments: 3, foundSegments: 4 },
+    });
+  });
+
+  it("carries the resolved segment id so an inherited segment groups across Rules", () => {
+    // The child renames the inherited segment's editable key. Its id is the
+    // parent's, because that is the segment it is.
+    const renamed: Rule = {
+      ...adGroupRule,
+      parent: { ruleId: "r_campaign", inheritSegmentIds: ["s_type"] },
+      segments: [{ ...targetingSegment, key: "targeting_mode" }],
+    };
+    const ruleSet = ruleSetOf(campaignRule, renamed);
+    const parent = resolveRule(childOf(ruleSet, "r_campaign"), ruleSet).rule;
+    const child = resolveRule(childOf(ruleSet, "r_ad_group"), ruleSet).rule;
+
+    const onParent = validate(parent, "nope_uk").violations[0];
+    const onChild = validate(child, "nope_broad").violations[0];
+
+    expect(onParent.segmentId).toBe("s_type");
+    expect(onChild.segmentId).toBe("s_type");
+    expect(onParent.segmentKey).toBe("campaign_type");
+    expect(onChild.segmentKey).toBe("campaign_type");
+  });
+
+  it("still returns exactly one violation for a wrong segment count, with no per-segment detail", () => {
+    const checked = validate(campaignRule, "nope_nowhere_also_far_too_many");
+    expect(checked.violations).toHaveLength(1);
+    expect(checked.violations[0].code).toBe("segmentCount");
+    expect(checked.violations[0].segmentId).toBeUndefined();
+  });
+
+  it("prefixes every row with the Rule-level configuration violations without short-circuiting", () => {
+    const broken: Rule = {
+      ...campaignRule,
+      segments: [typeSegment, { ...marketSegment, key: "campaign_type" }, customSegment],
+    };
+    const codes = validate(broken, "nope_uk_x").violations.map((violation) => violation.code);
+    expect(codes).toEqual(["duplicateSegmentKey", "valueNotAllowed"]);
+  });
+
+  it("resolves and validates in one call, failing every name when the Rule cannot be resolved", () => {
+    const ruleSet = ruleSetOf(campaignRule, adGroupRule);
+    expect(validateInRuleSet(childOf(ruleSet, "r_ad_group"), ruleSet, [], "brand_uk_exact_women")).toEqual({
+      valid: true,
+      violations: [],
+    });
+
+    const orphan: Rule = { ...adGroupRule, parent: { ruleId: "r_missing", inheritSegmentIds: ["s_type"] } };
+    const broken = ruleSetOf(campaignRule, orphan);
+    const checked = validateInRuleSet(childOf(broken, "r_ad_group"), broken, [], "brand_uk_exact_women");
+    expect(checked.valid).toBe(false);
+    expect(checked.violations.map((violation) => violation.code)).toEqual(["unresolvedParent"]);
+    expect(checked.violations[0].segmentKey).toBe(NAME_VIOLATION_KEY);
   });
 });

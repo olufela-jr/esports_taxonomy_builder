@@ -138,11 +138,51 @@ export type RuleSet = {
   rules: Rule[];
 };
 
+// The machine-readable cause of a violation. `reason` stays the human sentence;
+// this is what the compliance board groups on, so rewording a sentence can never
+// scatter one cause across two rows.
+export type ViolationCode =
+  | "unresolvedParent"
+  | "unresolvedDefinition"
+  | "noDelimiter"
+  | "delimiterNotSingle"
+  | "duplicateSegmentKey"
+  | "optionalNotLast"
+  | "emptyName"
+  | "segmentCount"
+  | "delimiterInValue"
+  | "valueNotAllowed"
+  | "valueTooLong"
+  | "illegalCharacter"
+  // Never emitted here: what the board calls a violation that reached it without
+  // a code, from a scan service deployed before the codes existed.
+  | "unclassified";
+
+// The numbers and characters that otherwise live only inside the sentence. A flat
+// bag of optional fields rather than a union keyed on `code`: plain TypeScript, and
+// JSON-safe with keys left out rather than set to undefined.
+export type ViolationDetail = {
+  delimiter?: string;
+  character?: string;
+  maxLength?: number;
+  length?: number;
+  minSegments?: number;
+  maxSegments?: number;
+  foundSegments?: number;
+  allowedCount?: number;
+};
+
 export type Violation = {
+  code: ViolationCode;
   segmentKey: string;
+  // The resolved segment's immutable id. An inherited segment keeps the parent's
+  // id even when the child renamed the key, so this is what pools the same
+  // segment across Rules. Absent on a whole-name violation.
+  segmentId?: string;
   token: string;
   reason: string;
   suggestion?: string;
+  detail?: ViolationDetail;
 };
 
 export type ComposeResult = {
@@ -186,7 +226,60 @@ export type Rollup = {
 
 export const UNTAGGED = "untagged";
 
-const NAME_VIOLATION_KEY = "__name__";
+// The segmentKey a violation carries when it is about the whole name rather than
+// one segment. Exported so nothing has to hardcode the literal.
+export const NAME_VIOLATION_KEY = "__name__";
+
+// Board order: the causes an author can act on first, whole-name problems next,
+// rule configuration last.
+export const VIOLATION_CODES: ViolationCode[] = [
+  "valueNotAllowed",
+  "valueTooLong",
+  "illegalCharacter",
+  "delimiterInValue",
+  "segmentCount",
+  "emptyName",
+  "unresolvedParent",
+  "unresolvedDefinition",
+  "noDelimiter",
+  "delimiterNotSingle",
+  "duplicateSegmentKey",
+  "optionalNotLast",
+  "unclassified",
+];
+
+// One wording for a cause, in one place. The violation's own `reason` names the
+// offending value; this names the cause a group of them share.
+export function causeLabel(code: ViolationCode): string {
+  switch (code) {
+    case "valueNotAllowed":
+      return "Value is not in the allowed list";
+    case "valueTooLong":
+      return "Value is too long";
+    case "illegalCharacter":
+      return "Value contains an illegal character";
+    case "delimiterInValue":
+      return "Value contains the delimiter";
+    case "segmentCount":
+      return "Wrong number of segments";
+    case "emptyName":
+      return "Name is empty";
+    case "unresolvedParent":
+      return "Rule was not resolved against its parent";
+    case "unresolvedDefinition":
+      return "Rule was not resolved against its definitions";
+    case "noDelimiter":
+      return "Rule has no delimiter";
+    case "delimiterNotSingle":
+      return "Rule delimiter is more than one character";
+    case "duplicateSegmentKey":
+      return "Rule repeats a segment key";
+    case "optionalNotLast":
+      return "Rule has an optional segment before a required one";
+    case "unclassified":
+      return "Unclassified";
+  }
+}
 
 // An entry whose label is its code: the shape a flat value list migrates to,
 // and what the Author editor writes until labels get their own control.
@@ -198,34 +291,42 @@ export function entriesFromCodes(codes: string[]): EnumEntry[] {
   return codes.map(entryFromCode);
 }
 
-function getRuleErrors(rule: Rule): string[] {
-  const errors: string[] = [];
+// A cause paired with its sentence. Callers that only report text map to
+// `.reason`; validate() carries the code through onto the violation.
+type CodedError = { code: ViolationCode; reason: string };
+
+function getRuleErrors(rule: Rule): CodedError[] {
+  const errors: CodedError[] = [];
 
   if (!rule.delimiter) {
-    errors.push("Choose a delimiter before adding segments.");
+    errors.push({ code: "noDelimiter", reason: "Choose a delimiter before adding segments." });
   }
 
   const delimiterCount = [...rule.delimiter].length;
   if (delimiterCount > 1) {
-    errors.push("The delimiter must be a single character.");
+    errors.push({ code: "delimiterNotSingle", reason: "The delimiter must be a single character." });
   }
 
   let optionalSeen = false;
   const keys = new Set<string>();
   for (const segment of rule.segments) {
     if (keys.has(segment.key)) {
-      errors.push(`Segment keys must be unique: "${segment.key}".`);
+      errors.push({ code: "duplicateSegmentKey", reason: `Segment keys must be unique: "${segment.key}".` });
     }
     keys.add(segment.key);
 
     if (!segment.required) {
       optionalSeen = true;
     } else if (optionalSeen) {
-      errors.push("Optional segments must appear at the end of a rule.");
+      errors.push({ code: "optionalNotLast", reason: "Optional segments must appear at the end of a rule." });
     }
   }
 
   return errors;
+}
+
+function ruleErrorText(rule: Rule): string[] {
+  return getRuleErrors(rule).map((error) => error.reason);
 }
 
 // The one entry-list check (v3 O14), shared by a Rule's inline list and a
@@ -295,7 +396,7 @@ export function checkRule(rule: Rule): string[] {
     errors.push("The rule needs a key and a name.");
   }
 
-  errors.push(...getRuleErrors(rule));
+  errors.push(...ruleErrorText(rule));
 
   if (rule.segments.length === 0) {
     errors.push("The rule needs at least one segment.");
@@ -567,7 +668,7 @@ function resolveWithin(rule: Rule, ruleSet: RuleSet, definitions: Definition[], 
     segments: [...leading.map(copySegment), ...filled.segments],
   };
 
-  const structural = getRuleErrors(combined);
+  const structural = ruleErrorText(combined);
   const ids = new Set<string>();
   for (const segment of combined.segments) {
     if (ids.has(segment.id)) {
@@ -591,9 +692,12 @@ function valueViolations(
 
   if (token.includes(rule.delimiter)) {
     violations.push({
+      code: "delimiterInValue",
       segmentKey: segment.key,
+      segmentId: segment.id,
       token,
       reason: `Value cannot contain the "${rule.delimiter}" delimiter.`,
+      detail: { delimiter: rule.delimiter },
     });
   }
 
@@ -603,18 +707,24 @@ function valueViolations(
     if (!codes.includes(token)) {
       const suggestion = findSuggestion(token, codes);
       violations.push({
+        code: "valueNotAllowed",
         segmentKey: segment.key,
+        segmentId: segment.id,
         token,
         reason: "Value is not in the allowed list.",
         ...(suggestion ? { suggestion } : {}),
+        detail: { allowedCount: codes.length },
       });
     }
   } else {
     if (token.length > segment.maxLength) {
       violations.push({
+        code: "valueTooLong",
         segmentKey: segment.key,
+        segmentId: segment.id,
         token,
         reason: `Value is longer than ${segment.maxLength} characters.`,
+        detail: { maxLength: segment.maxLength, length: token.length },
       });
     }
 
@@ -623,9 +733,12 @@ function valueViolations(
     );
     if (illegalCharacter) {
       violations.push({
+        code: "illegalCharacter",
         segmentKey: segment.key,
+        segmentId: segment.id,
         token,
         reason: `Value contains an illegal character: "${illegalCharacter}".`,
+        detail: { character: illegalCharacter },
       });
     }
   }
@@ -712,14 +825,24 @@ export function parse(rule: Rule, name: string): ParseResult {
 // parent link or a definition-backed segment would be judged against the wrong
 // segments, so both refuse it with one plain error instead of failing every
 // name. Never throws: the CSV checker calls validate per row with no catch.
-export function unresolvedReason(rule: Rule): string | null {
+export function unresolvedViolation(rule: Rule): CodedError | null {
   if (rule.parent) {
-    return "This Rule inherits from a parent; resolve it with resolveRule before building or checking names.";
+    return {
+      code: "unresolvedParent",
+      reason: "This Rule inherits from a parent; resolve it with resolveRule before building or checking names.",
+    };
   }
   if (rule.segments.some((segment) => segment.kind === "enum" && segment.definitionId)) {
-    return "This Rule uses shared definitions; resolve it with resolveRule before building or checking names.";
+    return {
+      code: "unresolvedDefinition",
+      reason: "This Rule uses shared definitions; resolve it with resolveRule before building or checking names.",
+    };
   }
   return null;
+}
+
+export function unresolvedReason(rule: Rule): string | null {
+  return unresolvedViolation(rule)?.reason ?? null;
 }
 
 export function compose(
@@ -731,7 +854,7 @@ export function compose(
     return { name: "", errors: [unresolved] };
   }
 
-  const errors = getRuleErrors(rule);
+  const errors = ruleErrorText(rule);
   const tokens: string[] = [];
   let optionalGap = false;
 
@@ -765,19 +888,24 @@ export function compose(
 }
 
 export function validate(rule: Rule, name: string): ValidateResult {
-  const unresolved = unresolvedReason(rule);
+  const unresolved = unresolvedViolation(rule);
   if (unresolved) {
-    return { valid: false, violations: [{ segmentKey: NAME_VIOLATION_KEY, token: name, reason: unresolved }] };
+    return {
+      valid: false,
+      violations: [{ code: unresolved.code, segmentKey: NAME_VIOLATION_KEY, token: name, reason: unresolved.reason }],
+    };
   }
 
-  const violations: Violation[] = getRuleErrors(rule).map((reason) => ({
+  const violations: Violation[] = getRuleErrors(rule).map((error) => ({
+    code: error.code,
     segmentKey: NAME_VIOLATION_KEY,
     token: name,
-    reason,
+    reason: error.reason,
   }));
 
   if (!name) {
     violations.push({
+      code: "emptyName",
       segmentKey: NAME_VIOLATION_KEY,
       token: name,
       reason: "Name cannot be empty.",
@@ -789,9 +917,15 @@ export function validate(rule: Rule, name: string): ValidateResult {
   const requiredCount = rule.segments.filter((segment) => segment.required).length;
   if (tokens.length < requiredCount || tokens.length > rule.segments.length) {
     violations.push({
+      code: "segmentCount",
       segmentKey: NAME_VIOLATION_KEY,
       token: name,
       reason: `Expected ${requiredCount} to ${rule.segments.length} segments, found ${tokens.length}.`,
+      detail: {
+        minSegments: requiredCount,
+        maxSegments: rule.segments.length,
+        foundSegments: tokens.length,
+      },
     });
     return { valid: false, violations };
   }
@@ -808,6 +942,33 @@ export function validate(rule: Rule, name: string): ValidateResult {
     valid: violations.length === 0,
     violations,
   };
+}
+
+// Resolve then validate in one call, for the callers that hold a Rule Set rather
+// than a resolved Rule. A Rule that cannot be resolved fails every name with the
+// resolution errors as the reason, never a silent mismatch against the wrong
+// segments. A Rule with nothing to resolve falls through to validate, which
+// reports its own structural problems with their own codes.
+export function validateInRuleSet(
+  rule: Rule,
+  ruleSet: RuleSet,
+  definitions: Definition[],
+  name: string,
+): ValidateResult {
+  const resolved = resolveRule(rule, ruleSet, definitions);
+  const unresolved = unresolvedViolation(rule);
+  if (resolved.errors.length > 0 && unresolved) {
+    return {
+      valid: false,
+      violations: resolved.errors.map((reason) => ({
+        code: unresolved.code,
+        segmentKey: NAME_VIOLATION_KEY,
+        token: name,
+        reason,
+      })),
+    };
+  }
+  return validate(resolved.rule, name);
 }
 
 function emptyCounts(): Counts {
@@ -1085,7 +1246,7 @@ export type BatchRow = {
 export function checkBatchChoices(rule: Rule, choices: BatchChoices): string[] {
   const unresolved = unresolvedReason(rule);
   if (unresolved) return [unresolved];
-  const errors: string[] = [...getRuleErrors(rule)];
+  const errors: string[] = ruleErrorText(rule);
   for (const segment of rule.segments) {
     const values = choices[segment.key] ?? [];
     const filled = values.filter((value) => value !== "");

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { resolveRule, rollup, validate, UNTAGGED, type Counts, type Definition, type Rollup, type Rule, type RuleScan, type ValidateResult, type Violation } from '@taxo/shared';
+import { resolveRule, rollup, validate, validateInRuleSet, UNTAGGED, type Counts, type Definition, type Rollup, type Rule, type RuleScan, type ValidateResult, type Violation } from '@taxo/shared';
 import { ClipboardCheck, Database, Download, FileSpreadsheet, Filter, Upload, CheckCircle2, XCircle, AlertCircle, AlertTriangle } from 'lucide-react';
 import type { Scanner, ScanOutcome } from '@/data/scan';
 import type { RuleSet } from '@/data/store';
@@ -105,14 +105,8 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
   // definitions filled in, D46). A Rule that cannot be resolved fails every
   // name with the resolution errors as the reason, never a silent mismatch.
   const resolvedRuleSet = ruleSet ? { ...ruleSet, rules: ruleSet.rules.map((item) => resolveRule(item, ruleSet, definitions).rule) } : undefined;
-  const checkName = (target: Rule, name: string): ValidateResult => {
-    if (!ruleSet) return validate(target, name);
-    const resolution = resolveRule(target, ruleSet, definitions);
-    if (resolution.errors.length > 0) {
-      return { valid: false, violations: resolution.errors.map((reason) => ({ segmentKey: '__rule__', token: name, reason })) };
-    }
-    return validate(resolution.rule, name);
-  };
+  const checkName = (target: Rule, name: string): ValidateResult =>
+    ruleSet ? validateInRuleSet(target, ruleSet, definitions, name) : validate(target, name);
   const ruleSetId = ruleSet?.id;
   const ruleId = rule?.id;
   const isAllRules = checkMode === 'all';
@@ -203,7 +197,8 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
           const colMissing = colIdx === -1;
           const name = colMissing ? '' : (row[colIdx] ?? '');
 
-          let validation = { valid: false, violations: [{ segmentKey: 'N/A', token: '', reason: `Missing mapped column: ${r.source.nameColumn}` }] };
+          // Not an engine cause: the CSV never offered this Rule a name to judge.
+          let validation: ValidateResult = { valid: false, violations: [{ code: 'unclassified', segmentKey: 'N/A', token: '', reason: `Missing mapped column: ${r.source.nameColumn}` }] };
           if (!colMissing) {
             validation = checkName(r, name);
           }
@@ -234,7 +229,7 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
           row: 0,
           name: '',
           valid: false,
-          violations: [{ segmentKey: 'N/A', token: '', reason: `Missing mapped column: ${nameColumn}` }]
+          violations: [{ code: 'unclassified', segmentKey: 'N/A', token: '', reason: `Missing mapped column: ${nameColumn}` }]
         }]);
         setAllRulesResults(null);
         return;
