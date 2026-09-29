@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { buildTrackingUrl, compose, parse, resolveRule, type Definition, type ParentLine, type Rule, type Segment } from '@taxo/shared';
-import { AlertCircle, ArrowRight, Check, Copy, Database, Filter, Link2, Lock, Zap } from 'lucide-react';
-import type { RuleSet } from '@/data/store';
+import { buildTrackingUrl, checkDefinition, compose, parse, resolveRule, type Definition, type ParentLine, type Rule, type Segment } from '@taxo/shared';
+import { AlertCircle, ArrowRight, Check, Clock, Copy, Database, Filter, Link2, Lock, Zap } from 'lucide-react';
+import type { User } from '@/data/auth';
+import type { BuildDraft, BuildDraftDraft, RuleSet, ValueRequest, ValueRequestDraft } from '@/data/store';
 import { BatchBuilder } from './BatchBuilder';
 import { ChildBatchBuilder } from './ChildBatchBuilder';
 import { PageHeading } from './PageHeading';
@@ -24,7 +25,26 @@ function EmptyState() {
 // Feature 2: compose a compliant name from the Rule selected in the shell.
 // onSelectRule: chaining ("Build <child> under this") is the one place the app
 // changes the persistent Rule selection for the user, by an explicit action.
-export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[]; onSelectRule: (id: string) => void }) {
+type BuilderProps = {
+  ruleSet: RuleSet | undefined;
+  rule: Rule | undefined;
+  definitions: Definition[];
+  onSelectRule: (id: string) => void;
+  // v3 D42: requests for a missing value and the drafts that wait on them.
+  user: User;
+  requests: ValueRequest[];
+  drafts: BuildDraft[];
+  onCreateRequest: (draft: ValueRequestDraft) => Promise<ValueRequest>;
+  onCreateDraft: (draft: BuildDraftDraft) => Promise<BuildDraft>;
+  onUpdateDraft: (id: string, draft: BuildDraftDraft, baseUpdatedAt: string) => Promise<string>;
+  onDeleteDraft: (id: string) => Promise<void>;
+};
+
+function buildDraftOf(draft: BuildDraft): BuildDraftDraft {
+  return { ruleSetId: draft.ruleSetId, ruleId: draft.ruleId, selections: draft.selections, parentName: draft.parentName, blockedSegmentId: draft.blockedSegmentId, blockedSegmentKey: draft.blockedSegmentKey, requestId: draft.requestId, status: draft.status };
+}
+
+export function Builder({ ruleSet, rule, definitions, onSelectRule, user, requests, drafts, onCreateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft }: BuilderProps) {
   const ruleSetId = ruleSet?.id;
   const ruleId = rule?.id;
 
@@ -40,10 +60,20 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
   const [mode, setMode] = useState<'single' | 'batch'>('single');
   // Parent names carried from a parent-level batch into a child batch, per child Rule (D34).
   const [carried, setCarried] = useState<Record<string, ParentLine[]>>({});
+  // The draft this build is, once a value has been requested or a draft resumed.
+  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState<string | null>(null); // segment key with the form open
+  const [requestLabel, setRequestLabel] = useState('');
+  const [requestCode, setRequestCode] = useState('');
+  const [requestNote, setRequestNote] = useState('');
+  const [requestError, setRequestError] = useState('');
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setValues({});
     setCopied(false);
+    setActiveDraftId(null);
+    setRequesting(null);
   }, [ruleSetId, ruleId]);
 
   if (!ruleSet || !rule) {
@@ -91,10 +121,68 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
 
   const selections = { ...values, ...inheritedValues };
   const result = compose(active, selections);
-  const valid = parentReady && result.errors.length === 0 && Boolean(segments.length);
+  const blockedKeyPlaceholder = drafts.some((draft) => draft.id === activeDraftId && draft.status === 'blocked');
+  const valid = parentReady && result.errors.length === 0 && Boolean(segments.length) && !blockedKeyPlaceholder;
   const displayOutput = result.name || 'Fill segments to generate a name';
   const missing = segments.filter((segment) => segment.required && !selections[segment.key]?.trim());
   const copyName = async () => { if (!valid) return; await navigator.clipboard?.writeText(result.name); setCopied(true); window.setTimeout(() => setCopied(false), 1800); };
+  // D42: the active draft and the segment it blocks. While the request is
+  // pending (or was rejected) the segment is locked and the name cannot be
+  // copied; an approved request makes the draft ready to resume.
+  const activeDraft = drafts.find((draft) => draft.id === activeDraftId && draft.status !== 'done');
+  const activeRequest = activeDraft ? requests.find((request) => request.id === activeDraft.requestId) : undefined;
+  const blockedKey = activeDraft && activeDraft.status === 'blocked' ? activeDraft.blockedSegmentKey : null;
+  const myDrafts = drafts.filter((draft) => draft.ruleId === rule.id && draft.createdBy === user.uid && draft.status !== 'done');
+
+  const openRequest = (segment: Segment) => {
+    setRequesting(segment.key);
+    setRequestLabel(''); setRequestCode(''); setRequestNote(''); setRequestError('');
+  };
+  // Which shared definition a segment reads, from the stored Rule (the
+  // resolved one no longer says).
+  const definitionFor = (segment: Segment): Definition | undefined => {
+    const stored = rule.segments.find((item) => item.id === segment.id);
+    const definitionId = stored && stored.kind === 'enum' ? stored.definitionId : undefined;
+    return definitionId ? definitions.find((definition) => definition.id === definitionId) : undefined;
+  };
+  const submitRequest = async (segment: Segment) => {
+    const definition = definitionFor(segment);
+    if (!definition || busy) return;
+    const proposal = { label: requestLabel.trim(), code: requestCode.trim() };
+    const collision = checkDefinition({ ...definition, entries: [...definition.entries, proposal] });
+    if (!proposal.label || !proposal.code) { setRequestError('A label and a code are needed.'); return; }
+    if (collision.length > 0) { setRequestError(collision[0]); return; }
+    setBusy(true);
+    setRequestError('');
+    try {
+      const request = await onCreateRequest({ definitionId: definition.id, label: proposal.label, code: proposal.code, note: requestNote.trim(), requestedByName: user.name, status: 'pending', reason: '' });
+      const draft = await onCreateDraft({ ruleSetId: ruleSet.id, ruleId: rule.id, selections: values, parentName, blockedSegmentId: segment.id, blockedSegmentKey: segment.key, requestId: request.id, status: 'blocked' });
+      setActiveDraftId(draft.id);
+      setRequesting(null);
+    } catch (cause) {
+      setRequestError(cause instanceof Error ? cause.message : 'Sending the request failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const resumeDraft = async (draft: BuildDraft) => {
+    const request = requests.find((item) => item.id === draft.requestId);
+    setValues(draft.status === 'ready' && request ? { ...draft.selections, [draft.blockedSegmentKey]: request.code } : draft.selections);
+    if (draft.parentName) setParentNames((current) => ({ ...current, [rule.id]: draft.parentName }));
+    if (draft.status === 'ready') {
+      // The approved value is in the definition now; the draft has done its job.
+      setActiveDraftId(null);
+      await onUpdateDraft(draft.id, { ...buildDraftOf(draft), status: 'done' }, draft.updatedAt);
+    } else {
+      setActiveDraftId(draft.id);
+    }
+  };
+  const discardDraft = async (draft: BuildDraft) => {
+    if (!window.confirm('Discard this draft? The request stays with the admins.')) return;
+    if (activeDraftId === draft.id) setActiveDraftId(null);
+    await onDeleteDraft(draft.id);
+  };
+
   // Step 8: the tracking URL, from the built names of this Rule and its parent
   // (the parent step's name), the selections and the base URL in use.
   const mapping = active.utm;
@@ -157,8 +245,8 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
                     id={`build-${segment.key}`}
                     className={inputClass}
                     value={selections[segment.key] ?? ''}
-                    disabled={inheritedKeys.has(segment.key)}
-                    title={inheritedKeys.has(segment.key) ? `From the ${parentRule?.name ?? 'parent'} name` : undefined}
+                    disabled={inheritedKeys.has(segment.key) || blockedKey === segment.key}
+                    title={inheritedKeys.has(segment.key) ? `From the ${parentRule?.name ?? 'parent'} name` : blockedKey === segment.key ? 'Waiting for an admin to approve the requested value' : undefined}
                     onChange={(event) => setValues((current) => ({ ...current, [segment.key]: event.target.value }))}
                     data-testid={`select-build-${segment.key}`}
                   >
@@ -179,9 +267,48 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule }: { ruleSet:
                     data-testid={`input-build-${segment.key}`}
                   />
                 )}
+                {blockedKey === segment.key && activeRequest && (
+                  <div className="mt-2 rounded-[4px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-900" data-testid={`status-build-blocked-${segment.key}`}>
+                    <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {activeRequest.status === 'rejected' ? `Your request for "${activeRequest.label}" (${activeRequest.code}) was rejected${activeRequest.reason ? `: ${activeRequest.reason}` : '.'}` : `Waiting for an admin to approve "${activeRequest.label}" (${activeRequest.code}). This build is saved as a draft.`}</span>
+                    {activeDraft && <button type="button" className="ml-3 underline" onClick={() => void discardDraft(activeDraft)} data-testid="button-discard-draft">Discard draft</button>}
+                  </div>
+                )}
+                {segment.kind === 'enum' && !inheritedKeys.has(segment.key) && blockedKey !== segment.key && definitionFor(segment) && (
+                  requesting === segment.key ? (
+                    <div className="mt-3 rounded-lg border border-border/50 bg-muted/20 p-4" data-testid={`form-request-${segment.key}`}>
+                      <div className="text-[12px] font-bold text-foreground">Request a value for {segment.label}</div>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <input className={inputClass} value={requestLabel} onChange={(event) => setRequestLabel(event.target.value)} placeholder="Label, e.g. Germany" aria-label="Requested label" data-testid={`input-request-label-${segment.key}`} />
+                        <input className={`${inputClass} font-mono`} value={requestCode} onChange={(event) => setRequestCode(event.target.value)} placeholder="Code, e.g. de" aria-label="Requested code" data-testid={`input-request-code-${segment.key}`} />
+                      </div>
+                      <input className={`${inputClass} mt-2`} value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Why it is needed (optional)" aria-label="Note" data-testid={`input-request-note-${segment.key}`} />
+                      {requestError && <p className="mt-2 text-[12px] font-semibold text-destructive" data-testid={`text-request-error-${segment.key}`}>{requestError}</p>}
+                      <div className="mt-3 flex gap-2"><button type="button" className={buttonPrimary} disabled={busy} onClick={() => void submitRequest(segment)} data-testid={`button-submit-request-${segment.key}`}>{busy ? 'Sending' : 'Send request and save draft'}</button><button type="button" className={buttonQuiet} onClick={() => setRequesting(null)}>Cancel</button></div>
+                    </div>
+                  ) : (
+                    <button type="button" className="mt-2 text-[12px] font-bold text-primary underline-offset-2 hover:underline" onClick={() => openRequest(segment)} data-testid={`button-request-value-${segment.key}`}>Value missing? Request it</button>
+                  )
+                )}
               </div>
             ))}
           </div>
+          {myDrafts.length > 0 && (
+            <div className="mt-6 rounded-lg border border-border/50 bg-muted/20 p-4" data-testid="section-build-drafts">
+              <div className="text-[12px] font-bold text-foreground">Your drafts for {rule.name}</div>
+              <ul className="mt-2 flex flex-col gap-2">
+                {myDrafts.map((draft) => {
+                  const request = requests.find((item) => item.id === draft.requestId);
+                  const label = request ? `"${request.label}" (${request.code})` : 'a value';
+                  return (
+                    <li key={draft.id} className="flex flex-col gap-2 rounded-[4px] bg-card px-3 py-2 text-[12px] sm:flex-row sm:items-center sm:justify-between" data-testid={`row-draft-${draft.id}`}>
+                      <span className="font-semibold text-foreground">{Object.values(draft.selections).filter(Boolean).join(active.delimiter) || 'Nothing chosen yet'} <span className="ml-2 font-normal text-muted-foreground" data-testid={`text-draft-status-${draft.id}`}>{draft.status === 'ready' ? `${label} approved, ready to resume` : request?.status === 'rejected' ? `${label} rejected${request.reason ? `: ${request.reason}` : ''}` : `waiting for ${label}`}</span></span>
+                      <span className="flex gap-2"><button type="button" className={buttonQuiet} onClick={() => void resumeDraft(draft)} data-testid={`button-resume-draft-${draft.id}`}>{draft.status === 'ready' ? 'Resume' : 'Open'}</button><button type="button" className={buttonQuiet} onClick={() => void discardDraft(draft)} data-testid={`button-delete-draft-${draft.id}`}>Discard</button></span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </section>
         <section className="self-start xl:sticky xl:top-[92px]">
           <div className="overflow-hidden rounded-xl bg-card p-6 shadow-sm border border-border/30">

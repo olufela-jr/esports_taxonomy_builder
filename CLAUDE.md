@@ -183,7 +183,8 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
 9. Playwright additions.
 Phase 3 is batch (`enumerate`, `countCombinations`: done 2026-09-25, log in `v3/phase-3.md`;
 the D34 child batch in `docs/features/`: done 2026-09-25); phase 4 the BigQuery scan and
-the impact preview; phase 5 drafts and Build blocking.
+the impact preview (done 2026-09-27, `v3/phase-4.md`); phase 5 drafts and Build blocking
+(done 2026-09-29, `v3/phase-5.md`). Every v3 release phase is built.
 
 ## Stage 2 (only after the checklist)
 Callable Cloud Functions `scanCampaigns` and `previewImpact` in `functions/`, importing
@@ -207,8 +208,8 @@ inlined: pnpm's symlinked `node_modules` makes this essential, do not rely on ho
 - Inheritance by reference at build time is in scope; cross-level validation is not.
 - Do not add server-side CSV processing.
 - Do not build scheduled scanning or an exceptions list. (Legacy noise is handled by a
-  Rule's `source.filter`.) Roles are done (v3 phase 1); request submit and approve are
-  done in the Dictionary (phase 2); drafts and Build blocking are v3 phase 5, not before.
-  No versioning and no retired codes, anywhere (D43).
+  Rule's `source.filter`.) Roles (phase 1), requests with approval (phase 2) and drafts
+  with Build blocking (phase 5, `v3/phase-5.md`) are all done. No versioning and no retired
+  codes, anywhere (D43).
 - Do not let the prototype's "suggested next prompts" reopen settled decisions:
   the items above are deferred (decided).
