@@ -55,6 +55,46 @@ describe('evaluateNames', () => {
     expect(capped.truncated).toBe(true);
     expect(capped.results).toHaveLength(RESULT_CAP);
   });
+
+  it('builds the breakdown over every name, not just the annotated ones', () => {
+    // Every failure sits beyond the cap, so a breakdown built from `results`
+    // would report nothing wrong at all.
+    const many = [
+      ...Array.from({ length: RESULT_CAP }, () => 'brand_uk'),
+      'nope_uk',
+      'nope_uk',
+      'brand_fr',
+    ];
+    const result = evaluateNames(rule, many);
+
+    expect(result.results.every((item) => item.valid)).toBe(true);
+    expect(result.breakdown).toMatchObject({
+      ruleId: 'r1',
+      scanned: RESULT_CAP + 3,
+      valid: RESULT_CAP,
+      invalid: 3,
+      analysed: RESULT_CAP + 3,
+      analysedInvalid: 3,
+      partial: false,
+      topCause: 'valueNotAllowed',
+    });
+    expect(result.breakdown.byCause).toEqual([
+      { code: 'valueNotAllowed', label: 'Value is not in the allowed list', names: 3, violations: 3, sampleNames: ['nope_uk', 'brand_fr'] },
+    ]);
+    expect(result.breakdown.byValue.map((value) => ({ value: value.value, names: value.names }))).toEqual([
+      { value: 'nope', names: 2 },
+      { value: 'fr', names: 1 },
+    ]);
+  });
+
+  it('keeps the annotated list in query order regardless of validity', () => {
+    // The cap takes the first names the query returned, not the failing ones,
+    // which is why the drill panel calls itself a sample.
+    const names = ['bad', ...Array.from({ length: RESULT_CAP }, () => 'brand_uk'), 'alsobad'];
+    const result = evaluateNames(rule, names);
+    expect(result.results[0].name).toBe('bad');
+    expect(result.results.map((item) => item.name)).not.toContain('alsobad');
+  });
 });
 
 describe('impactOf', () => {

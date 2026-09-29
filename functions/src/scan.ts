@@ -2,7 +2,7 @@
 // with a fake reader: the query is built from a whitelisted source, names are
 // judged by the engine, and the impact of a definition edit is counted.
 import { HttpsError } from 'firebase-functions/v2/https';
-import { validate, type Rule, type Source, type Violation } from '@taxo/shared';
+import { complianceOfRule, validate, type NameAnnotation, type Rule, type RuleCompliance, type Source, type Violation } from '@taxo/shared';
 
 // Identifiers are whitelisted, never escaped: anything else is refused.
 const IDENTIFIER = /^[A-Za-z0-9_]+$/;
@@ -53,19 +53,32 @@ export type ScanResult = {
   invalid: number;
   truncated: boolean;
   results: Array<{ name: string; valid: boolean; violations: Violation[] }>;
+  // The compliance breakdown over EVERY name, not just the annotated ones. The
+  // cap below biases `results` towards whatever came first in query order, so
+  // the board must group from here, never from `results`.
+  breakdown: RuleCompliance;
 };
 
-// Every name judged by the engine; exact counts over all of them, the first
-// RESULT_CAP annotated.
+// Every name judged by the engine; exact counts and an exact breakdown over all
+// of them, the first RESULT_CAP annotated.
 export function evaluateNames(rule: Rule, names: string[]): ScanResult {
   let valid = 0;
+  const analysed: NameAnnotation[] = [];
   const results: ScanResult['results'] = [];
   for (const name of names) {
     const checked = validate(rule, name);
     if (checked.valid) valid += 1;
+    analysed.push({ name, valid: checked.valid, violations: checked.violations });
     if (results.length < RESULT_CAP) results.push({ name, valid: checked.valid, violations: checked.violations });
   }
-  return { scanned: names.length, valid, invalid: names.length - valid, truncated: names.length > RESULT_CAP, results };
+  return {
+    scanned: names.length,
+    valid,
+    invalid: names.length - valid,
+    truncated: names.length > RESULT_CAP,
+    results,
+    breakdown: complianceOfRule({ rule, scanned: names.length, valid, analysed }),
+  };
 }
 
 export type ImpactResult = {

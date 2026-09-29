@@ -2,7 +2,7 @@
 // owns storage and auth.ts owns sign-in. The Functions exist only for the
 // shared workspace: in memory mode there is no scanner, and the screens say so.
 import { httpsCallable } from 'firebase/functions';
-import type { EnumEntry, Violation } from '@taxo/shared';
+import type { EnumEntry, RuleCompliance, Violation } from '@taxo/shared';
 import { getFirebase } from '@/lib/firebase';
 import type { Mode } from './mode';
 
@@ -13,6 +13,10 @@ export type ScanOutcome = {
   invalid: number;
   truncated: boolean;
   results: Array<{ name: string; valid: boolean; violations: Violation[] }>;
+  // Computed over the whole scan, not the capped `results`. Optional because a
+  // scan service deployed before this field still answers without it; the board
+  // falls back to the capped list and says the reasons are a sample.
+  breakdown?: RuleCompliance;
 };
 
 export type ImpactOutcome = {
