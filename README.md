@@ -127,5 +127,19 @@ pnpm migrate:v3 --tenant <id> --delete-legacy                  # later, once eve
 After provisioning, the user signs out and in (or presses Retry on the "No workspace yet"
 screen) so the token carries the claims.
 
+Two seed scripts fill a tenant with demonstration data (`scripts/demo/`), skipping anything
+whose id already exists. `seed:ruleset` writes "Paid search (demo)", two Google Rules with a
+parent link, definition-backed segments and tracking URLs, and checks it against the tenant's
+live Dictionary first; `scripts/demo/paid-search-names.csv` is the matching sample for Check,
+and the same file loaded into BigQuery gives the live scan the same 14 of 24 result
+(`v3/demo-data.md`).
+
+```
+pnpm seed:definitions --tenant <id> --as <admin email> [--dry-run]   # the demo Dictionary entries
+pnpm seed:ruleset --tenant <id> --as <admin email> [--dry-run]       # "Paid search (demo)" plus the Game title definition
+bq --project_id=<project> --location=asia-south1 load --source_format=CSV --skip_leading_rows=1 --replace \
+  marketing.paid_search_names scripts/demo/paid-search-names.csv campaign_name:STRING,ad_group_name:STRING
+```
+
 Do not run `firebase deploy` against a project that has no Firestore database yet: the deploy
 creates one in a default location, and a database's location is permanent.

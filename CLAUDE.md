@@ -184,7 +184,9 @@ enabled on the production database on 2026-09-24 (D43). Build in this order:
 Phase 3 is batch (`enumerate`, `countCombinations`: done 2026-09-25, log in `v3/phase-3.md`;
 the D34 child batch in `docs/features/`: done 2026-09-25); phase 4 the BigQuery scan and
 the impact preview (done 2026-09-27, `v3/phase-4.md`); phase 5 drafts and Build blocking
-(done 2026-09-29, `v3/phase-5.md`). Every v3 release phase is built.
+(done 2026-09-29, `v3/phase-5.md`). Every v3 release phase is built. Demo data for testing
+it all end to end: the "Paid search (demo)" Rule Set (`scripts/demo/`, `pnpm seed:ruleset`,
+BigQuery table `marketing.paid_search_names`), log in `v3/demo-data.md`.
 
 ## Stage 2 (only after the checklist)
 Callable Cloud Functions `scanCampaigns` and `previewImpact` in `functions/`, importing

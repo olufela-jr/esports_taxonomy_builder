@@ -8,24 +8,10 @@
 // --as names the admin recorded as creator; the account must exist in Auth.
 import { parseArgs } from 'node:util';
 import { getAuth } from 'firebase-admin/auth';
-import { checkDefinition, type Definition as EngineDefinition } from '@taxo/shared';
+import { checkDefinition } from '@taxo/shared';
 import type { Definition } from '../apps/web/src/data/types';
+import { demoDefinitions as demo } from './demo/definitions';
 import { connect, defaultProjectId, fail } from './lib/admin';
-
-const demo: EngineDefinition[] = [
-  { id: 'demo-market', name: 'Market', platforms: [], entries: [
-    { label: 'United Kingdom', code: 'uk' }, { label: 'United States', code: 'us' }, { label: 'Germany', code: 'de' }, { label: 'France', code: 'fr' },
-  ] },
-  { id: 'demo-objective', name: 'Campaign objective', platforms: [], entries: [
-    { label: 'Awareness', code: 'AWA' }, { label: 'Consideration', code: 'CON' }, { label: 'Conversion', code: 'CNV' },
-  ] },
-  { id: 'demo-funnel', name: 'Funnel stage', platforms: ['meta', 'tiktok', 'snapchat'], entries: [
-    { label: 'Top of funnel', code: 'tof' }, { label: 'Mid funnel', code: 'mof' }, { label: 'Bottom of funnel', code: 'bof' },
-  ] },
-  { id: 'demo-match-type', name: 'Match type', platforms: ['google'], entries: [
-    { label: 'Broad', code: 'brd' }, { label: 'Phrase', code: 'phr' }, { label: 'Exact', code: 'exa' },
-  ] },
-];
 
 const { values } = parseArgs({
   options: {
