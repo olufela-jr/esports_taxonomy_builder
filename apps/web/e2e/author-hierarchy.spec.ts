@@ -15,10 +15,16 @@ test('problems are listed per Rule and block saving until fixed', async ({ page 
   await expect(page.getByTestId('list-rule-issues-1')).toContainText('Segment keys must be unique: "campaign_type".');
   await expect(page.getByTestId('list-rule-issues-0')).toHaveCount(0);
   await expect(page.getByTestId('button-save-ruleset')).toBeDisabled();
+  // The problem list sits beside the Rule, far below Save, so the hint beside
+  // the button says why it is disabled and scrolls to the first list.
+  await expect(page.getByTestId('button-show-issues')).toHaveText('1 problem to fix: show me');
+  await page.getByTestId('button-show-issues').click();
+  await expect(page.getByTestId('list-rule-issues-1')).toBeInViewport();
 
   await page.getByTestId('input-segment-key-1-0').fill('match');
   await expect(page.getByTestId('list-rule-issues-1')).toHaveCount(0);
   await expect(page.getByTestId('button-save-ruleset')).toBeEnabled();
+  await expect(page.getByTestId('button-show-issues')).toHaveCount(0);
 });
 
 test('a parent Rule and the segments a child inherits cannot be removed', async ({ page }) => {
