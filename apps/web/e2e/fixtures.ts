@@ -114,13 +114,22 @@ export const objectiveDefinition = {
 
 // role: the local user is an admin unless a test asks for a standard user.
 // definitions and requests seed the Dictionary; both default to empty.
-export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaRuleSet, globalRuleSet], role: 'admin' | 'user' = 'admin', definitions: unknown[] = [], requests: unknown[] = []) {
-  await page.addInitScript(({ seed, role, definitions, requests }) => {
+export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaRuleSet, globalRuleSet], role: 'admin' | 'user' = 'admin', definitions: unknown[] = [], requests: unknown[] = [], drafts: unknown[] = []) {
+  await page.addInitScript(({ seed, role, definitions, requests, drafts }) => {
     window.__taxoTestSeed = seed;
     window.__taxoTestRole = role;
     window.__taxoTestDefinitions = definitions;
     window.__taxoTestRequests = requests;
-  }, { seed: ruleSets as never, role, definitions: definitions as never, requests: requests as never });
+    window.__taxoTestDrafts = drafts;
+  }, { seed: ruleSets as never, role, definitions: definitions as never, requests: requests as never, drafts: drafts as never });
+}
+
+export async function readDrafts(page: Page): Promise<Array<{ id: string; ruleId: string; selections: Record<string, string>; blockedSegmentKey: string; requestId: string; status: string }>> {
+  return page.evaluate(() => {
+    const store = window.__taxoStore;
+    if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
+    return JSON.parse(JSON.stringify(store.drafts.getSnapshot()));
+  });
 }
 
 export async function readDefinitions(page: Page): Promise<Array<{ id: string; name: string; platforms: string[]; entries: Array<{ label: string; code: string }> }>> {

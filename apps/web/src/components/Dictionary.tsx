@@ -3,7 +3,7 @@ import { BookOpen, Check, Plus, Trash2, X } from 'lucide-react';
 import { checkDefinition, definitionDependents, platformName, PLATFORMS, type EnumEntry } from '@taxo/shared';
 import type { User } from '@/data/auth';
 import type { Scanner } from '@/data/scan';
-import type { Definition, DefinitionDraft, RuleSet, Store, Tenant, ValueRequest, ValueRequestDraft } from '@/data/store';
+import type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, RuleSet, Store, Tenant, ValueRequest, ValueRequestDraft } from '@/data/store';
 import { newId } from '@/lib/ids';
 import { PageHeading } from './PageHeading';
 import { buttonDanger, buttonPrimary, buttonQuiet, iconButton, inputClass } from './styles';
@@ -27,6 +27,8 @@ type DictionaryProps = {
   onDeleteDefinition: (id: string) => Promise<void>;
   onCreateRequest: (draft: ValueRequestDraft) => Promise<ValueRequest>;
   onUpdateRequest: (id: string, draft: ValueRequestDraft, baseUpdatedAt: string) => Promise<string>;
+  drafts: BuildDraft[]; // the Build drafts waiting on requests (D42)
+  onUpdateDraft: (id: string, draft: BuildDraftDraft, baseUpdatedAt: string) => Promise<string>;
 };
 
 const NEW = 'new';
@@ -49,11 +51,15 @@ function PlatformChips({ platforms }: { platforms: string[] }) {
 }
 
 function draftOf(request: ValueRequest): ValueRequestDraft {
-  return { definitionId: request.definitionId, label: request.label, code: request.code, note: request.note, requestedByName: request.requestedByName, status: request.status, reason: request.reason };
+  return { definitionId: request.definitionId, label: request.label, code: request.code, note: request.note, requestedByName: request.requestedByName, status: request.status, reason: request.reason, ...(request.draftId ? { draftId: request.draftId } : {}) };
+}
+
+function buildDraftOf(draft: BuildDraft): BuildDraftDraft {
+  return { ruleSetId: draft.ruleSetId, ruleId: draft.ruleId, selections: draft.selections, parentName: draft.parentName, blockedSegmentId: draft.blockedSegmentId, blockedSegmentKey: draft.blockedSegmentKey, requestId: draft.requestId, status: draft.status };
 }
 
 export function Dictionary(props: DictionaryProps) {
-  const { user, canEdit, definitions, requests, ruleSets, scanner, tenant, storeKind, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
+  const { user, canEdit, definitions, requests, ruleSets, scanner, tenant, storeKind, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, drafts, onUpdateDraft } = props;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = definitions.find((definition) => definition.id === selectedId);
 
@@ -89,7 +95,7 @@ export function Dictionary(props: DictionaryProps) {
         </div>
       </div>
 
-      <RequestsPanel canEdit={canEdit} definitions={definitions} requests={requests} onUpdateDefinition={onUpdateDefinition} onUpdateRequest={onUpdateRequest} />
+      <RequestsPanel canEdit={canEdit} definitions={definitions} requests={requests} drafts={drafts} onUpdateDefinition={onUpdateDefinition} onUpdateRequest={onUpdateRequest} onUpdateDraft={onUpdateDraft} />
     </div>
   );
 }
@@ -281,7 +287,7 @@ function StatusBadge({ status }: { status: ValueRequest['status'] }) {
   return <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${tone}`}>{status}</span>;
 }
 
-function RequestsPanel({ canEdit, definitions, requests, onUpdateDefinition, onUpdateRequest }: { canEdit: boolean; definitions: Definition[]; requests: ValueRequest[]; onUpdateDefinition: (id: string, draft: DefinitionDraft, baseUpdatedAt: string) => Promise<string>; onUpdateRequest: (id: string, draft: ValueRequestDraft, baseUpdatedAt: string) => Promise<string> }) {
+function RequestsPanel({ canEdit, definitions, requests, drafts, onUpdateDefinition, onUpdateRequest, onUpdateDraft }: { canEdit: boolean; definitions: Definition[]; requests: ValueRequest[]; drafts: BuildDraft[]; onUpdateDefinition: (id: string, draft: DefinitionDraft, baseUpdatedAt: string) => Promise<string>; onUpdateRequest: (id: string, draft: ValueRequestDraft, baseUpdatedAt: string) => Promise<string>; onUpdateDraft: (id: string, draft: BuildDraftDraft, baseUpdatedAt: string) => Promise<string> }) {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -297,6 +303,11 @@ function RequestsPanel({ canEdit, definitions, requests, onUpdateDefinition, onU
       // request stays pending and nothing is half done.
       await onUpdateDefinition(definition.id, { name: definition.name, platforms: definition.platforms, entries: [...definition.entries, { label: request.label, code: request.code }] }, definition.updatedAt);
       await onUpdateRequest(request.id, { ...draftOf(request), status: 'approved' }, request.updatedAt);
+      // The requester's Build draft, if any, can resume now (D42).
+      const waiting = drafts.find((draft) => draft.requestId === request.id);
+      if (waiting && waiting.status === 'blocked') {
+        await onUpdateDraft(waiting.id, { ...buildDraftOf(waiting), status: 'ready' }, waiting.updatedAt);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Approving failed.');
     } finally {
@@ -329,7 +340,7 @@ function RequestsPanel({ canEdit, definitions, requests, onUpdateDefinition, onU
           return (
             <div key={request.id} className="rounded-xl border border-border/30 bg-card p-5" data-testid={`card-request-${request.id}`}>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div><div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{definition?.name ?? 'Unknown definition'}</div><div className="mt-1 font-display text-lg font-medium text-foreground">{request.label} <span className="font-mono text-sm text-muted-foreground">{request.code}</span></div>{request.note && <p className="mt-1 text-xs text-muted-foreground">{request.note}</p>}<div className="mt-2 text-[11px] font-semibold text-muted-foreground">{request.requestedByName}, {formatDate(request.createdAt)}</div></div>
+                <div><div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{definition?.name ?? 'Unknown definition'}</div><div className="mt-1 font-display text-lg font-medium text-foreground">{request.label} <span className="font-mono text-sm text-muted-foreground">{request.code}</span></div>{request.note && <p className="mt-1 text-xs text-muted-foreground">{request.note}</p>}<div className="mt-2 text-[11px] font-semibold text-muted-foreground">{request.requestedByName}, {formatDate(request.createdAt)}{drafts.some((draft) => draft.requestId === request.id && draft.status !== 'done') && <span className="ml-2 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider" data-testid={`badge-request-draft-${request.id}`}>Build waiting</span>}</div></div>
                 <StatusBadge status={request.status} />
               </div>
               {canEdit && (

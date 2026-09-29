@@ -49,6 +49,24 @@ service cloud.firestore {
         && data.requestedByName is string
         && data.status in ['pending', 'approved', 'rejected']
         && data.reason is string
+        && (!('draftId' in data) || data.draftId is string)
+        && data.createdAt is string
+        && data.updatedAt is string
+        && data.createdBy is string
+        && data.updatedBy is string;
+    }
+
+    // A Build draft waiting on a request (v3 D42): coarse shape only.
+    function wellFormedDraft(data) {
+      return data.id is string
+        && data.ruleSetId is string
+        && data.ruleId is string
+        && data.selections is map
+        && data.parentName is string
+        && data.blockedSegmentId is string
+        && data.blockedSegmentKey is string
+        && data.requestId is string
+        && data.status in ['blocked', 'ready', 'done']
         && data.createdAt is string
         && data.updatedAt is string
         && data.createdBy is string
@@ -127,6 +145,24 @@ service cloud.firestore {
           && request.resource.data.createdBy == resource.data.createdBy
           && stampedByCaller(request.resource.data);
         allow delete: if isAdmin(tenantId);
+      }
+
+      // Build drafts: a member creates, updates and deletes their own; an admin
+      // reads every one and updates one (to mark it ready on approval); the
+      // owner never moves.
+      match /drafts/{draftId} {
+        allow read: if isAdmin(tenantId) || (inTenant(tenantId) && resource.data.createdBy == request.auth.uid);
+        allow create: if inTenant(tenantId)
+          && wellFormedDraft(request.resource.data)
+          && request.resource.data.id == draftId
+          && request.resource.data.createdBy == request.auth.uid
+          && stampedByCaller(request.resource.data);
+        allow update: if (isAdmin(tenantId) || (inTenant(tenantId) && resource.data.createdBy == request.auth.uid))
+          && wellFormedDraft(request.resource.data)
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.createdBy == resource.data.createdBy
+          && stampedByCaller(request.resource.data);
+        allow delete: if isAdmin(tenantId) || (inTenant(tenantId) && resource.data.createdBy == request.auth.uid);
       }
     }
   }

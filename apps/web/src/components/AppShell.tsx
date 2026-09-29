@@ -17,11 +17,14 @@ function IconMark() {
   );
 }
 
-function NavItem({ href, label, active }: { href: string; label: string; active: boolean }) {
+// badge: an in-app notice (v3 O17), the count of things waiting for this
+// person behind the action: pending requests for an admin, decided ones for a
+// member.
+function NavItem({ href, label, active, badge }: { href: string; label: string; active: boolean; badge?: number }) {
   return (
     <Link href={href} className={`group flex items-center rounded-lg px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}>
       <span>{label}</span>
-      {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" />}
+      {badge ? <span className="ml-auto rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-primary-foreground" data-testid={`badge-nav-${label.toLowerCase()}`}>{badge}</span> : active ? <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" /> : null}
     </Link>
   );
 }
@@ -35,12 +38,13 @@ type AppShellProps = {
   onSelectRuleSet: (id: string | null) => void;
   onSelectRule: (id: string) => void;
   onSignOut: () => Promise<void>;
+  dictionaryBadge: number;
   children: ReactNode;
 };
 
 // The action-first shell: the persistent Rule Set and Rule context, the three
 // actions, the signed-in user, and the workspace for the current action.
-export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, children }: AppShellProps) {
+export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -106,7 +110,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           <NavItem href="/author" label="Author" active={current === 'author'} />
           <NavItem href="/build" label="Build" active={current === 'build'} />
           <NavItem href="/check" label="Check" active={current === 'check'} />
-          <NavItem href="/dictionary" label="Dictionary" active={current === 'dictionary'} />
+          <NavItem href="/dictionary" label="Dictionary" active={current === 'dictionary'} badge={dictionaryBadge} />
         </nav>
         
         <div className="mt-auto">

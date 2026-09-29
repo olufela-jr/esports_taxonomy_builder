@@ -49,6 +49,23 @@ const valueRequest = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
+// uma's Build draft, blocked on req-1 (v3 D42).
+const buildDraft = {
+  id: 'draft-1',
+  ruleSetId: 'rs-1',
+  ruleId: 'rule-1',
+  selections: { market: 'uk' },
+  parentName: '',
+  blockedSegmentId: 'seg-market',
+  blockedSegmentKey: 'market',
+  requestId: 'req-1',
+  status: 'blocked',
+  createdBy: 'uma',
+  updatedBy: 'uma',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 const acmeTenant = {
   id: 'acme',
   name: 'Acme',
@@ -78,6 +95,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'tenants/acme/rulesets/rs-1'), ruleSet);
     await setDoc(doc(db, 'tenants/acme/definitions/def-1'), definition);
     await setDoc(doc(db, 'tenants/acme/requests/req-1'), valueRequest);
+    await setDoc(doc(db, 'tenants/acme/drafts/draft-1'), buildDraft);
     await setDoc(doc(db, 'tenants/other/rulesets/rs-9'), { ...ruleSet, id: 'rs-9', createdBy: 'bob', updatedBy: 'bob' });
     // The pre-v3 collection, left in place by the migration until it is deleted explicitly.
     await setDoc(doc(db, 'rulesets/rs-legacy'), { ...ruleSet, id: 'rs-legacy' });
@@ -284,5 +302,40 @@ describe('requests by role', () => {
     await assertFails(deleteDoc(doc(uma(), REQ1)));
     await assertFails(deleteDoc(doc(bob(), REQ1)));
     await assertSucceeds(deleteDoc(doc(alice(), REQ1)));
+  });
+
+  it('accepts a request carrying its draft id', async () => {
+    await assertSucceeds(setDoc(doc(uma(), 'tenants/acme/requests/req-d'), { ...valueRequest, id: 'req-d', draftId: 'draft-1' }));
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/requests/req-e'), { ...valueRequest, id: 'req-e', draftId: 42 }));
+  });
+});
+
+const DRAFT1 = 'tenants/acme/drafts/draft-1';
+
+describe('drafts by role', () => {
+  it('lets a member create, update and delete their own draft, and nobody else touch it', async () => {
+    const fresh = { ...buildDraft, id: 'draft-2' };
+    await assertSucceeds(setDoc(doc(uma(), 'tenants/acme/drafts/draft-2'), fresh));
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/drafts/draft-3'), { ...fresh, id: 'draft-3', createdBy: 'alice' }));
+    await assertFails(setDoc(doc(uma(), 'tenants/acme/drafts/draft-4'), { ...fresh, id: 'draft-4', status: 'later' }));
+    await assertFails(setDoc(doc(bob(), 'tenants/acme/drafts/draft-5'), { ...fresh, id: 'draft-5', createdBy: 'bob', updatedBy: 'bob' }));
+    await assertSucceeds(updateDoc(doc(uma(), DRAFT1), { selections: { market: 'uk', type: 'brand' }, updatedAt: '2026-01-02T00:00:00.000Z', updatedBy: 'uma' }));
+    await assertFails(updateDoc(doc(uma(), DRAFT1), { createdBy: 'alice', updatedBy: 'uma' }));
+    await assertFails(updateDoc(doc(bob(), DRAFT1), { status: 'ready', updatedBy: 'bob' }));
+    await assertFails(deleteDoc(doc(bob(), DRAFT1)));
+    await assertSucceeds(deleteDoc(doc(uma(), DRAFT1)));
+  });
+
+  it('lets the owner or an admin read, admins read all, and an admin mark it ready', async () => {
+    await assertSucceeds(getDoc(doc(uma(), DRAFT1)));
+    await assertSucceeds(getDocs(query(collection(uma(), 'tenants/acme/drafts'), where('createdBy', '==', 'uma'))));
+    await assertFails(getDocs(collection(uma(), 'tenants/acme/drafts')));
+    await assertSucceeds(getDoc(doc(alice(), DRAFT1)));
+    await assertSucceeds(getDocs(collection(alice(), 'tenants/acme/drafts')));
+    await assertFails(getDoc(doc(bob(), DRAFT1)));
+    await assertSucceeds(updateDoc(doc(alice(), DRAFT1), { status: 'ready', updatedAt: '2026-01-02T00:00:00.000Z', updatedBy: 'alice' }));
+    // A second admin must stamp themselves; leaving alice's stamp is refused.
+    await assertFails(updateDoc(doc(carol(), DRAFT1), { status: 'blocked' }));
+    await assertSucceeds(deleteDoc(doc(alice(), DRAFT1)));
   });
 });

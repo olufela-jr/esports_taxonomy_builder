@@ -13,7 +13,7 @@ import { NoWorkspace, SignIn } from '@/components/SignIn';
 import { createAuth, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
 import { createScanner, type Scanner } from '@/data/scan';
-import { createStore, type Definition, type DefinitionDraft, type RuleSet, type RuleSetDraft, type Store, type Tenant, type ValueRequest, type ValueRequestDraft } from '@/data/store';
+import { createStore, type BuildDraft, type BuildDraftDraft, type Definition, type DefinitionDraft, type RuleSet, type RuleSetDraft, type Store, type Tenant, type ValueRequest, type ValueRequestDraft } from '@/data/store';
 import { isActionPath, readUiState, writeUiState, type CheckMode, type UiState } from '@/data/ui-state';
 
 // App owns all shared state with useState: the signed-in user, the Rule Sets
@@ -37,16 +37,18 @@ function App() {
   const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store?.ruleSets.getSnapshot() ?? []);
   const [definitions, setDefinitions] = useState<Definition[]>(() => store?.definitions.getSnapshot() ?? []);
   const [requests, setRequests] = useState<ValueRequest[]>(() => store?.requests.getSnapshot() ?? []);
+  const [drafts, setDrafts] = useState<BuildDraft[]>(() => store?.drafts.getSnapshot() ?? []);
   const [tenant, setTenant] = useState<Tenant | null>(() => store?.tenant.getSnapshot() ?? null);
   useEffect(() => {
     if (!store) {
       setRuleSets([]);
       setDefinitions([]);
       setRequests([]);
+      setDrafts([]);
       setTenant(null);
       return;
     }
-    const stops = [store.ruleSets.subscribe(setRuleSets), store.definitions.subscribe(setDefinitions), store.requests.subscribe(setRequests), store.tenant.subscribe(setTenant)];
+    const stops = [store.ruleSets.subscribe(setRuleSets), store.definitions.subscribe(setDefinitions), store.requests.subscribe(setRequests), store.drafts.subscribe(setDrafts), store.tenant.subscribe(setTenant)];
     return () => stops.forEach((stop) => stop());
   }, [store]);
 
@@ -90,6 +92,7 @@ function App() {
         ruleSets={ruleSets}
         definitions={definitions}
         requests={requests}
+        drafts={drafts}
         tenant={tenant}
         scanner={scanner}
         storeKind={store.kind}
@@ -109,6 +112,9 @@ function App() {
         onDeleteDefinition={(id) => store.definitions.remove(id)}
         onCreateRequest={(draft) => store.requests.create(draft)}
         onUpdateRequest={(id, draft, baseUpdatedAt) => store.requests.update(id, draft, baseUpdatedAt)}
+        onCreateDraft={(draft) => store.drafts.create(draft)}
+        onUpdateDraft={(id, draft, baseUpdatedAt) => store.drafts.update(id, draft, baseUpdatedAt)}
+        onDeleteDraft={(id) => store.drafts.remove(id)}
       />
     </WouterRouter>
   );
@@ -121,6 +127,7 @@ type WorkspaceProps = {
   ruleSets: RuleSet[];
   definitions: Definition[];
   requests: ValueRequest[];
+  drafts: BuildDraft[];
   tenant: Tenant | null;
   scanner: Scanner | null;
   storeKind: Store['kind'];
@@ -140,12 +147,20 @@ type WorkspaceProps = {
   onDeleteDefinition: (id: string) => Promise<void>;
   onCreateRequest: (draft: ValueRequestDraft) => Promise<ValueRequest>;
   onUpdateRequest: (id: string, draft: ValueRequestDraft, baseUpdatedAt: string) => Promise<string>;
+  onCreateDraft: (draft: BuildDraftDraft) => Promise<BuildDraft>;
+  onUpdateDraft: (id: string, draft: BuildDraftDraft, baseUpdatedAt: string) => Promise<string>;
+  onDeleteDraft: (id: string) => Promise<void>;
 };
 
 // Inside the router: syncs the last action with the URL, redirects the root to
 // it, and renders the shell plus the four actions.
 function Workspace(props: WorkspaceProps) {
-  const { user, canEdit, ruleSets, definitions, requests, tenant, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest } = props;
+  const { user, canEdit, ruleSets, definitions, requests, drafts, tenant, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
+  // In-app notice (O17): an admin sees how many requests wait; a member sees
+  // how many of theirs were decided since they last opened the Dictionary.
+  const [seenDecided, setSeenDecided] = useState<string[]>(() => readSeenDecided());
+  const decided = requests.filter((request) => request.status !== 'pending');
+  const dictionaryBadge = canEdit ? requests.filter((request) => request.status === 'pending').length : decided.filter((request) => !seenDecided.includes(request.id)).length;
   const [location, setLocation] = useLocation();
 
   useEffect(() => {
@@ -155,6 +170,17 @@ function Workspace(props: WorkspaceProps) {
     }
     onLocationChange(location);
   }, [location, ui.lastAction, setLocation, onLocationChange]);
+
+  // Opening the Dictionary marks every decided request as seen, in this browser.
+  useEffect(() => {
+    if (!location.startsWith('/dictionary') || canEdit) return;
+    const ids = decided.map((request) => request.id);
+    if (ids.some((id) => !seenDecided.includes(id))) {
+      const next = [...new Set([...seenDecided, ...ids])];
+      setSeenDecided(next);
+      writeSeenDecided(next);
+    }
+  }, [location, canEdit, decided, seenDecided]);
 
   // Author: an open Rule Set edits it (read only unless the user is an admin);
   // otherwise the list, or a new draft.
@@ -172,19 +198,40 @@ function Workspace(props: WorkspaceProps) {
       : <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
 
   return (
-    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut}>
+    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge}>
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>
-          <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} /></Route>
+          <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} user={user} requests={requests} drafts={drafts} onCreateRequest={onCreateRequest} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} /></Route>
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
-          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} /></Route>
+          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />
         </Switch>
       </ErrorBoundary>
     </AppShell>
   );
+}
+
+// The decided requests a member has already seen: a per-browser convenience.
+const SEEN_KEY = 'campaign-naming-seen-decided-v1';
+
+function readSeenDecided(): string[] {
+  try {
+    const raw = window.localStorage.getItem(SEEN_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSeenDecided(ids: string[]): void {
+  try {
+    window.localStorage.setItem(SEEN_KEY, JSON.stringify(ids));
+  } catch {
+    // Storage unavailable: the badge just stays until the next visit.
+  }
 }
 
 export default App;

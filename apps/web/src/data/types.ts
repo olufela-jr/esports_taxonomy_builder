@@ -36,9 +36,29 @@ export type ValueRequest = {
   requestedByName: string; // display name at submission, for the admin's list
   status: RequestStatus;
   reason: string;          // the admin's reason on rejection; empty otherwise
+  draftId?: string;        // the Build draft waiting on this request (D42), if any
 } & Audit;
 
-export type ValueRequestDraft = Pick<ValueRequest, 'definitionId' | 'label' | 'code' | 'note' | 'requestedByName' | 'status' | 'reason'>;
+export type ValueRequestDraft = Pick<ValueRequest, 'definitionId' | 'label' | 'code' | 'note' | 'requestedByName' | 'status' | 'reason' | 'draftId'>;
+
+// A build saved while its user waits for a requested value (v3 D42), stored
+// at tenants/{tenantId}/drafts/{id}. blocked: the request is pending or was
+// rejected; ready: approved, the draft can resume; done: resumed and used.
+export type DraftStatus = 'blocked' | 'ready' | 'done';
+
+export type BuildDraft = {
+  id: string;
+  ruleSetId: string;
+  ruleId: string;
+  selections: Record<string, string>; // the codes chosen so far, by segment key
+  parentName: string;                 // the parent step's name, if the Rule has a parent
+  blockedSegmentId: string;
+  blockedSegmentKey: string;
+  requestId: string;
+  status: DraftStatus;
+} & Audit;
+
+export type BuildDraftDraft = Pick<BuildDraft, 'ruleSetId' | 'ruleId' | 'selections' | 'parentName' | 'blockedSegmentId' | 'blockedSegmentKey' | 'requestId' | 'status'>;
 
 // The tenant document at tenants/{tenantId}. Written only by the provisioning
 // and migration scripts; the app and the scan Function read it.

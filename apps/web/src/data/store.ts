@@ -10,12 +10,12 @@
 import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, setDoc, where, type Firestore } from 'firebase/firestore';
 import { newId } from '@/lib/ids';
 import { getFirebase } from '@/lib/firebase';
-import { readLocalDefinitions, readLocalRequests, readLocalRuleSets, writeLocalDefinitions, writeLocalRequests, writeLocalRuleSets } from './migrations';
+import { readLocalDefinitions, readLocalDrafts, readLocalRequests, readLocalRuleSets, writeLocalDefinitions, writeLocalDrafts, writeLocalRequests, writeLocalRuleSets } from './migrations';
 import type { Mode } from './mode';
 import { seedDefinitions, seedRuleSets } from './seeds';
-import type { Audit, Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
+import type { Audit, BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
 
-export type { Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
+export type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
 
 // Who the store writes as: the signed-in user's tenant, uid and role. The role
 // decides what the requests subscription may ask for: an admin lists every
@@ -56,6 +56,7 @@ export type Store = {
   ruleSets: Collection<RuleSet, RuleSetDraft>;
   definitions: Collection<Definition, DefinitionDraft>;
   requests: Collection<ValueRequest, ValueRequestDraft>;
+  drafts: Collection<BuildDraft, BuildDraftDraft>;
   tenant: TenantReader;
 };
 
@@ -79,6 +80,7 @@ declare global {
     __taxoTestSeed?: RuleSet[];
     __taxoTestDefinitions?: Definition[];
     __taxoTestRequests?: ValueRequest[];
+    __taxoTestDrafts?: BuildDraft[];
     __taxoStore?: Store;
   }
 }
@@ -93,6 +95,10 @@ export function definitionsPath(tenantId: string): string {
 
 export function requestsPath(tenantId: string): string {
   return `tenants/${tenantId}/requests`;
+}
+
+export function draftsPath(tenantId: string): string {
+  return `tenants/${tenantId}/drafts`;
 }
 
 function stamp(): string {
@@ -161,12 +167,18 @@ function requestVisible(session: StoreSession): (request: ValueRequest) => boole
   return session.role === 'admin' ? () => true : (request) => request.createdBy === session.uid;
 }
 
-export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void }): Store {
+// Drafts follow the same visibility as requests: own, or all for an admin.
+function draftVisible(session: StoreSession): (draft: BuildDraft) => boolean {
+  return session.role === 'admin' ? () => true : (draft) => draft.createdBy === session.uid;
+}
+
+export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], drafts: BuildDraft[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void; drafts: (items: BuildDraft[]) => void }): Store {
   return {
     kind: 'memory',
     ruleSets: memoryCollection<RuleSet, RuleSetDraft>(ruleSets, session, persist?.ruleSets),
     definitions: memoryCollection<Definition, DefinitionDraft>(definitions, session, persist?.definitions),
     requests: memoryCollection<ValueRequest, ValueRequestDraft>(requests, session, persist?.requests, requestVisible(session)),
+    drafts: memoryCollection<BuildDraft, BuildDraftDraft>(drafts, session, persist?.drafts, draftVisible(session)),
     tenant: memoryTenant(session),
   };
 }
@@ -287,6 +299,7 @@ export function createFirestoreStore(db: Firestore, session: StoreSession): Stor
     ruleSets: firestoreCollection<RuleSet, RuleSetDraft>(db, ruleSetsPath(session.tenantId), session),
     definitions: firestoreCollection<Definition, DefinitionDraft>(db, definitionsPath(session.tenantId), session),
     requests: firestoreCollection<ValueRequest, ValueRequestDraft>(db, requestsPath(session.tenantId), session, session.role !== 'admin'),
+    drafts: firestoreCollection<BuildDraft, BuildDraftDraft>(db, draftsPath(session.tenantId), session, session.role !== 'admin'),
     tenant: firestoreTenant(db, session),
   };
 }
@@ -312,8 +325,8 @@ export function createStore(mode: Mode, session: StoreSession): Store {
     store = createFirestoreStore(getFirebase().db, session);
   } else {
     store = window.__taxoTestSeed
-      ? createMemoryStore(window.__taxoTestSeed, window.__taxoTestDefinitions ?? [], window.__taxoTestRequests ?? [], session)
-      : createMemoryStore(readLocalRuleSets() ?? seedRuleSets, readLocalDefinitions() ?? seedDefinitions, readLocalRequests() ?? [], session, { ruleSets: writeLocalRuleSets, definitions: writeLocalDefinitions, requests: writeLocalRequests });
+      ? createMemoryStore(window.__taxoTestSeed, window.__taxoTestDefinitions ?? [], window.__taxoTestRequests ?? [], window.__taxoTestDrafts ?? [], session)
+      : createMemoryStore(readLocalRuleSets() ?? seedRuleSets, readLocalDefinitions() ?? seedDefinitions, readLocalRequests() ?? [], readLocalDrafts() ?? [], session, { ruleSets: writeLocalRuleSets, definitions: writeLocalDefinitions, requests: writeLocalRequests, drafts: writeLocalDrafts });
     window.__taxoStore = store;
   }
   stores.set(cacheKey, store);
