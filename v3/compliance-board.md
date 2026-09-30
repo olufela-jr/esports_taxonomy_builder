@@ -101,10 +101,17 @@ Rule, and a legacy violation bucketing as `unclassified`.
 Unit tests green, `pnpm --filter @taxo/functions build` clean, and `complianceOfRule` confirmed
 inlined in `functions/deploy/index.js` (pnpm's symlinks make the esbuild bundling load-bearing).
 
-### Left over
+### Deployed
 
-**The Function is built but not deployed.** Deploy it before any web deploy, so the
-`unclassified` fallback stays a safety net rather than a user-visible state.
+`firebase deploy --only functions:scanCampaigns --project media-taxonomy-tool` on 2026-09-30,
+BEFORE the web app, so the `unclassified` fallback never became a user-visible state. ACTIVE at
+asia-south1, revision `scancampaigns-00002-tih`, update time 2026-09-30T10:09:22Z. The CLI still
+ends with the known artifact cleanup policy error after a successful deploy; it is not a deploy
+failure and `--force` was deliberately not passed (the cleanup policy is left as it is).
+
+`previewImpact` was NOT redeployed: only `scanCampaigns` changed shape, and `impactOf` discards
+violations, so the two functions now run different bundles with identical behaviour. Redeploy it
+with the next Functions change to bring them back onto one bundle.
 
 ## Step 4: shared result pieces lifted out of Check
 
@@ -170,9 +177,14 @@ reasserts the same numbers on the same CSV: 67% pooled (4 of 6 across two Rules)
 (1 of 3 rows), plus the cause row, the two segment rows, the `de` value row carrying the engine's
 `Did you mean "uk"?`, the drill, the skipped Rule, and Check's link across.
 
+Deployed to https://media-taxonomy-tool.web.app on 2026-09-30 with `./deploy.sh`, after the
+Function. Rules were unchanged and skipped as already up to date; the live bundle
+`assets/index-D3oNziyR.js` was verified to be the one just built and to carry `/compliance`, the
+cause labels and the per-Rule row ids.
+
 Still to do by hand: the live path against the demo data ("Paid search (demo)",
-`pnpm seed:ruleset`, `marketing.paid_search_names`, expected 14 of 24 valid), which needs the
-Function deployed first.
+`pnpm seed:ruleset`, `marketing.paid_search_names`, expected 14 of 24 valid). The Function is now
+deployed, so this is just a matter of signing in and running it.
 
 ## Decisions taken here
 
