@@ -25,7 +25,8 @@ apps/web/                React + Vite app
   src/data/store.ts      every Firestore or in-memory storage call, scoped to the signed-in tenant
   src/data/auth.ts       every sign-in call (Google through Firebase Auth, or a local user) and the tenant and role claims
   src/data/members.ts    every membership change (invite, role, remove, claim an invite): the Callables, or a memory double
-  src/components/        RuleSetList, RuleSetEditor (Author), Builder (Build), CsvChecker (Check), Compliance, Dictionary, Members, AppShell, SignIn
+  src/data/tenants.ts    the super user's tenants list and the createTenant and updateTenant Callables
+  src/components/        RuleSetList, RuleSetEditor (Author), Builder (Build), CsvChecker (Check), Compliance, Dictionary, Members, Tenants, AppShell, SignIn
   e2e/                   Playwright browser regressions
 functions/               @taxo/functions: the scanCampaigns Callable with the tenant guard (BigQuery body is Stage 2)
 scripts/                 one-off Admin SDK scripts: migrate-v3 (data into the first tenant) and provision-user (claims)
@@ -102,6 +103,19 @@ invited person signs in with the Google account for that email and joins automat
 account that already exists is added at once. A workspace always keeps at least one admin, and
 nobody removes themselves. The scripts below remain for bootstrap (the first admin of a new
 tenant) and rescue.
+
+### Super user (across tenants)
+
+One account can hold the `superuser` claim on top of, or instead of, a tenant membership. It
+gets a Workspace switcher in the sidebar, a Tenants screen to create tenants (id, name,
+platforms, allowed BigQuery datasets), edit them and invite their first admin, and read access
+inside every tenant. Inside a tenant it edits only where it is also an admin. Grant it with the
+script below; nothing in the app grants it.
+
+```
+pnpm provision:user --email you@example.com --superuser
+pnpm provision:user --email you@example.com --revoke-superuser
+```
 
 ### Provisioning and migration (Admin SDK scripts)
 

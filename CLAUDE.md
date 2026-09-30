@@ -53,7 +53,9 @@ round-trip and every violation type; keep it green after every change.
   `scripts/provision-user.ts` for bootstrap. Admins invite by email; an invite at
   `tenants/{tenantId}/invites/{id}` is claimed by that email's first sign-in. The app, the
   Security Rules and the Functions read the claims; nothing reads a tenant from data or a
-  request body. A tenant always keeps at least one admin. Any member
+  request body. A tenant always keeps at least one admin. A separate `superuser` claim (script
+  only) reads every tenant, creates tenants and invites their first admin through Callables,
+  and writes inside a tenant only where it also holds the admin role. Any member
   reads the tenant's Rule Sets; only an admin creates, updates or deletes, and every write
   stamps `updatedBy` with the caller's uid (D31). The runtime mode (`memory` or
   `firestore`) is decided once in `apps/web/src/data/mode.ts`; auth and the store follow it.
@@ -213,11 +215,12 @@ parameters, never string-concatenated. Service account: `bigquery.dataViewer` +
 inlined: pnpm's symlinked `node_modules` makes this essential, do not rely on hoisting.
 
 ## Members and the super user
-The admin section (`v3/members.md`, 2026-09-30) is done: Members action for admins, invites,
-roles, removal, all through Callables. Next, as its own release: a super user above tenants
-(a separate `superuser` claim, set by the script), read-only inside tenants it is not an admin
-of, with a tenant switcher and a Tenants screen to create tenants and invite their first admin.
-Decided 2026-09-30: read-only, not a rules bypass for writes.
+Both done on 2026-09-30. The admin section (`v3/members.md`): Members action for admins,
+invites, roles, removal, all through Callables. The super user (`v3/superuser.md`): a
+separate `superuser` claim set only by `scripts/provision-user.ts --superuser`, a workspace
+switcher, a Tenants screen (create, edit, invite a first admin), read-only inside tenants it
+is not an admin of. Decided 2026-09-30: read-only, not a rules bypass for writes; nothing in
+the app grants the claim.
 
 ## Do not
 - Do not duplicate engine logic outside `@taxo/shared`.
