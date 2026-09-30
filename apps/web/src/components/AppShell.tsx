@@ -39,16 +39,18 @@ type AppShellProps = {
   onSelectRule: (id: string) => void;
   onSignOut: () => Promise<void>;
   dictionaryBadge: number;
+  // Admins get the Members action (the admin section).
+  canManage: boolean;
   children: ReactNode;
 };
 
 // The action-first shell: the persistent Rule Set and Rule context, the
 // actions, the signed-in user, and the workspace for the current action.
-export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, children }: AppShellProps) {
+export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, canManage, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const current = location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : 'author';
+  const current = location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : location.startsWith('/members') ? 'members' : 'author';
 
   const selectedRuleSet = ruleSets.find(rs => rs.id === ruleSetId);
 
@@ -113,6 +115,12 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           <NavItem href="/compliance" label="Compliance" active={current === 'compliance'} />
           <NavItem href="/dictionary" label="Dictionary" active={current === 'dictionary'} badge={dictionaryBadge} />
         </nav>
+        {canManage && <>
+          <div className="mt-6 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Admin</div>
+          <nav className="mt-2 space-y-1" aria-label="Admin navigation">
+            <NavItem href="/members" label="Members" active={current === 'members'} />
+          </nav>
+        </>}
         
         <div className="mt-auto">
           <div className="mb-4 rounded border border-sidebar-border bg-sidebar-accent/30 p-3">

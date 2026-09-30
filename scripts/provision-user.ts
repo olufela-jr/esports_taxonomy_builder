@@ -73,7 +73,7 @@ async function provision(): Promise<void> {
   }
   await getAuth().setCustomUserClaims(user.uid, { tenantId, role });
 
-  const mirror: TenantUser = { uid: user.uid, email: user.email ?? null, role: role as TenantUser['role'], updatedAt: now };
+  const mirror: TenantUser = { uid: user.uid, email: user.email ?? null, name: user.displayName || user.email || user.uid, role: role as TenantUser['role'], updatedAt: now };
   await db.doc(`tenants/${tenantId}/users/${user.uid}`).set(mirror);
 
   console.log(`${email} (${user.uid}) is now ${role} in tenant "${tenantId}". They must sign out and in, or press Retry, to pick up the claims.`);

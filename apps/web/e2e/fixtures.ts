@@ -148,6 +148,35 @@ export async function readRequests(page: Page): Promise<Array<{ id: string; defi
   });
 }
 
+// Members of the local workspace besides the local user ("you"), and invites,
+// for the Members screen. Both are separate init hooks so existing seeds are untouched.
+export const umaMember = { uid: 'uma', email: 'uma@acme.test', name: 'Uma Ortiz', role: 'user', updatedAt: '2026-09-20T09:00:00.000Z' };
+export const carolMember = { uid: 'carol', email: 'carol@acme.test', name: 'Carol Chen', role: 'admin', updatedAt: '2026-09-21T09:00:00.000Z' };
+export const pendingInvite = { id: 'inv-new', email: 'new@acme.test', role: 'user', status: 'pending', invitedBy: 'you', acceptedBy: null, createdAt: '2026-09-22T09:00:00.000Z', updatedAt: '2026-09-22T09:00:00.000Z' };
+
+export async function seedMembers(page: Page, members: unknown[], invites: unknown[] = []) {
+  await page.addInitScript(({ members, invites }) => {
+    window.__taxoTestMembers = members;
+    window.__taxoTestInvites = invites;
+  }, { members: members as never, invites: invites as never });
+}
+
+export async function readMembers(page: Page): Promise<Array<{ uid: string; name: string; role: string }>> {
+  return page.evaluate(() => {
+    const store = window.__taxoStore;
+    if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
+    return JSON.parse(JSON.stringify(store.members.getSnapshot()));
+  });
+}
+
+export async function readInvites(page: Page): Promise<Array<{ id: string; email: string; role: string; status: string }>> {
+  return page.evaluate(() => {
+    const store = window.__taxoStore;
+    if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');
+    return JSON.parse(JSON.stringify(store.invites.getSnapshot()));
+  });
+}
+
 // The Rule Sets as the app currently holds them, read back through the store.
 export async function readRuleSets(page: Page): Promise<Array<{ id: string; name: string; updatedAt: string; rules: Array<{ id: string; segments: Array<{ allowedValues?: Array<{ label: string; code: string }> }> }> }>> {
   return page.evaluate(() => {

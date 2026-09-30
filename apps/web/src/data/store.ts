@@ -13,9 +13,9 @@ import { getFirebase } from '@/lib/firebase';
 import { readLocalDefinitions, readLocalDrafts, readLocalRequests, readLocalRuleSets, writeLocalDefinitions, writeLocalDrafts, writeLocalRequests, writeLocalRuleSets } from './migrations';
 import type { Mode } from './mode';
 import { seedDefinitions, seedRuleSets } from './seeds';
-import type { Audit, BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
+import type { Audit, BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, Invite, RuleSet, RuleSetDraft, Tenant, TenantUser, ValueRequest, ValueRequestDraft } from './types';
 
-export type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, RuleSet, RuleSetDraft, Tenant, ValueRequest, ValueRequestDraft } from './types';
+export type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, Invite, RuleSet, RuleSetDraft, Tenant, TenantUser, ValueRequest, ValueRequestDraft } from './types';
 
 // Who the store writes as: the signed-in user's tenant, uid and role. The role
 // decides what the requests subscription may ask for: an admin lists every
@@ -51,6 +51,18 @@ export type TenantReader = {
   subscribe(listener: (tenant: Tenant | null) => void): () => void;
 };
 
+// A read-only list of one tenant: the members mirror and the invites, which
+// only the membership Functions write (through data/members.ts). A standard
+// user's reader stays empty, since the rules let only admins list them.
+export type ListReader<T> = {
+  getSnapshot(): T[];
+  subscribe(listener: (items: T[]) => void): () => void;
+};
+
+// The memory-mode list behind a ListReader, replaceable by the in-memory
+// members service so the Members screen works without Firebase.
+export type MemoryList<T> = ListReader<T> & { replace(items: T[]): void };
+
 export type Store = {
   kind: Mode;
   ruleSets: Collection<RuleSet, RuleSetDraft>;
@@ -58,6 +70,10 @@ export type Store = {
   requests: Collection<ValueRequest, ValueRequestDraft>;
   drafts: Collection<BuildDraft, BuildDraftDraft>;
   tenant: TenantReader;
+  members: ListReader<TenantUser>;
+  invites: ListReader<Invite>;
+  // Memory mode only: the lists the in-memory members service writes.
+  memory?: { members: MemoryList<TenantUser>; invites: MemoryList<Invite> };
 };
 
 // A save was refused because the stored document is not the one the editor loaded.
@@ -81,6 +97,8 @@ declare global {
     __taxoTestDefinitions?: Definition[];
     __taxoTestRequests?: ValueRequest[];
     __taxoTestDrafts?: BuildDraft[];
+    __taxoTestMembers?: TenantUser[];
+    __taxoTestInvites?: Invite[];
     __taxoStore?: Store;
   }
 }
@@ -99,6 +117,22 @@ export function requestsPath(tenantId: string): string {
 
 export function draftsPath(tenantId: string): string {
   return `tenants/${tenantId}/drafts`;
+}
+
+export function membersPath(tenantId: string): string {
+  return `tenants/${tenantId}/users`;
+}
+
+export function invitesPath(tenantId: string): string {
+  return `tenants/${tenantId}/invites`;
+}
+
+function byName(a: TenantUser, b: TenantUser): number {
+  return (a.name || a.email || a.uid).localeCompare(b.name || b.email || b.uid);
+}
+
+function byNewestInvite(a: Invite, b: Invite): number {
+  return b.createdAt.localeCompare(a.createdAt);
 }
 
 function stamp(): string {
@@ -150,6 +184,31 @@ function memoryCollection<T extends Stored, Draft>(initial: T[], session: StoreS
   };
 }
 
+function memoryList<T>(initial: T[], sort: (a: T, b: T) => number): MemoryList<T> {
+  let items = [...initial].sort(sort);
+  const listeners = new Set<(items: T[]) => void>();
+  return {
+    getSnapshot: () => items,
+    subscribe(listener) {
+      listeners.add(listener);
+      listener(items);
+      return () => { listeners.delete(listener); };
+    },
+    replace(next) {
+      items = [...next].sort(sort);
+      listeners.forEach((listener) => listener(items));
+    },
+  };
+}
+
+// In memory mode the signed-in local user is always a member; a test seed may
+// add others.
+function memoryMembers(session: StoreSession, seed: TenantUser[] | undefined): TenantUser[] {
+  const self: TenantUser = { uid: session.uid, email: null, name: 'Local user', role: session.role, updatedAt: '2026-09-24T00:00:00.000Z' };
+  const others = (seed ?? []).filter((member) => member.uid !== session.uid);
+  return [self, ...others];
+}
+
 function memoryTenant(session: StoreSession): TenantReader {
   const now = '2026-09-24T00:00:00.000Z';
   const tenant: Tenant = { id: session.tenantId, name: 'Local workspace', config: { allowedDatasets: [], platforms: [] }, createdAt: now, updatedAt: now };
@@ -172,7 +231,10 @@ function draftVisible(session: StoreSession): (draft: BuildDraft) => boolean {
   return session.role === 'admin' ? () => true : (draft) => draft.createdBy === session.uid;
 }
 
-export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], drafts: BuildDraft[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void; drafts: (items: BuildDraft[]) => void }): Store {
+export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], drafts: BuildDraft[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void; drafts: (items: BuildDraft[]) => void }, members?: TenantUser[], invites?: Invite[]): Store {
+  // Admins see the whole list; a standard user's readers stay empty, as under the rules.
+  const memberList = memoryList<TenantUser>(session.role === 'admin' ? memoryMembers(session, members) : [], byName);
+  const inviteList = memoryList<Invite>(session.role === 'admin' ? invites ?? [] : [], byNewestInvite);
   return {
     kind: 'memory',
     ruleSets: memoryCollection<RuleSet, RuleSetDraft>(ruleSets, session, persist?.ruleSets),
@@ -180,6 +242,9 @@ export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[]
     requests: memoryCollection<ValueRequest, ValueRequestDraft>(requests, session, persist?.requests, requestVisible(session)),
     drafts: memoryCollection<BuildDraft, BuildDraftDraft>(drafts, session, persist?.drafts, draftVisible(session)),
     tenant: memoryTenant(session),
+    members: memberList,
+    invites: inviteList,
+    memory: { members: memberList, invites: inviteList },
   };
 }
 
@@ -255,6 +320,46 @@ function firestoreCollection<T extends Stored, Draft>(db: Firestore, path: strin
   };
 }
 
+// enabled: false gives a reader that never listens (a standard user may not
+// list members or invites under the rules).
+function firestoreList<T>(db: Firestore, path: string, enabled: boolean, sort: (a: T, b: T) => number): ListReader<T> {
+  let snapshot: T[] = [];
+  const listeners = new Set<(items: T[]) => void>();
+  let stopListening: (() => void) | null = null;
+
+  function ensureListening() {
+    if (stopListening || !enabled) return;
+    stopListening = onSnapshot(
+      collection(db, path),
+      (result) => {
+        snapshot = result.docs.map((item) => item.data() as T).sort(sort);
+        listeners.forEach((listener) => listener(snapshot));
+      },
+      (error) => {
+        console.error(`Subscription to ${path} failed`, error);
+        stopListening = null;
+      },
+    );
+  }
+
+  return {
+    getSnapshot: () => snapshot,
+    subscribe(listener) {
+      listeners.add(listener);
+      ensureListening();
+      listener(snapshot);
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0 && stopListening) {
+          stopListening();
+          stopListening = null;
+          snapshot = [];
+        }
+      };
+    },
+  };
+}
+
 function firestoreTenant(db: Firestore, session: StoreSession): TenantReader {
   let snapshot: Tenant | null = null;
   const listeners = new Set<(tenant: Tenant | null) => void>();
@@ -301,6 +406,8 @@ export function createFirestoreStore(db: Firestore, session: StoreSession): Stor
     requests: firestoreCollection<ValueRequest, ValueRequestDraft>(db, requestsPath(session.tenantId), session, session.role !== 'admin'),
     drafts: firestoreCollection<BuildDraft, BuildDraftDraft>(db, draftsPath(session.tenantId), session, session.role !== 'admin'),
     tenant: firestoreTenant(db, session),
+    members: firestoreList<TenantUser>(db, membersPath(session.tenantId), session.role === 'admin', byName),
+    invites: firestoreList<Invite>(db, invitesPath(session.tenantId), session.role === 'admin', byNewestInvite),
   };
 }
 
@@ -325,7 +432,7 @@ export function createStore(mode: Mode, session: StoreSession): Store {
     store = createFirestoreStore(getFirebase().db, session);
   } else {
     store = window.__taxoTestSeed
-      ? createMemoryStore(window.__taxoTestSeed, window.__taxoTestDefinitions ?? [], window.__taxoTestRequests ?? [], window.__taxoTestDrafts ?? [], session)
+      ? createMemoryStore(window.__taxoTestSeed, window.__taxoTestDefinitions ?? [], window.__taxoTestRequests ?? [], window.__taxoTestDrafts ?? [], session, undefined, window.__taxoTestMembers, window.__taxoTestInvites)
       : createMemoryStore(readLocalRuleSets() ?? seedRuleSets, readLocalDefinitions() ?? seedDefinitions, readLocalRequests() ?? [], readLocalDrafts() ?? [], session, { ruleSets: writeLocalRuleSets, definitions: writeLocalDefinitions, requests: writeLocalRequests, drafts: writeLocalDrafts });
     window.__taxoStore = store;
   }

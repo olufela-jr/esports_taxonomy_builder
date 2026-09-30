@@ -6,6 +6,7 @@ import { Builder } from '@/components/Builder';
 import { Compliance } from '@/components/Compliance';
 import { CsvChecker } from '@/components/CsvChecker';
 import { Dictionary } from '@/components/Dictionary';
+import { Members, MembersAdminsOnly } from '@/components/Members';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { NotFound } from '@/components/NotFound';
 import { RuleSetEditor } from '@/components/RuleSetEditor';
@@ -13,8 +14,9 @@ import { RuleSetList } from '@/components/RuleSetList';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
 import { createAuth, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
+import { createInviteClaimer, createMembersService, type MembersService } from '@/data/members';
 import { createScanner, type Scanner } from '@/data/scan';
-import { createStore, type BuildDraft, type BuildDraftDraft, type Definition, type DefinitionDraft, type RuleSet, type RuleSetDraft, type Store, type Tenant, type ValueRequest, type ValueRequestDraft } from '@/data/store';
+import { createStore, type BuildDraft, type BuildDraftDraft, type Definition, type DefinitionDraft, type Invite, type RuleSet, type RuleSetDraft, type Store, type Tenant, type TenantUser, type ValueRequest, type ValueRequestDraft } from '@/data/store';
 import { isActionPath, readUiState, writeUiState, type UiState } from '@/data/ui-state';
 
 // App owns all shared state with useState: the signed-in user, the Rule Sets
@@ -26,6 +28,8 @@ function App() {
   const auth = useMemo(() => createAuth(mode), [mode]);
   // The Cloud Functions (live scan, impact preview): only with the shared workspace.
   const scanner = useMemo(() => createScanner(mode), [mode]);
+  // Claims a waiting invite for an account with no workspace yet.
+  const inviteClaimer = useMemo(() => createInviteClaimer(mode), [mode]);
   const [user, setUser] = useState<User | null | undefined>(() => auth.getUser());
   useEffect(() => auth.subscribe(setUser), [auth]);
 
@@ -35,11 +39,15 @@ function App() {
   const uid = user?.uid ?? null;
   const role = user?.role ?? null;
   const store = useMemo(() => (tenantId && uid && role ? createStore(mode, { tenantId, uid, role }) : null), [mode, tenantId, uid, role]);
+  // Membership changes: the Callables, or the memory double over the store.
+  const membersService: MembersService | null = useMemo(() => (store && tenantId && uid && role ? createMembersService(mode, store, { tenantId, uid, role }) : null), [mode, store, tenantId, uid, role]);
   const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store?.ruleSets.getSnapshot() ?? []);
   const [definitions, setDefinitions] = useState<Definition[]>(() => store?.definitions.getSnapshot() ?? []);
   const [requests, setRequests] = useState<ValueRequest[]>(() => store?.requests.getSnapshot() ?? []);
   const [drafts, setDrafts] = useState<BuildDraft[]>(() => store?.drafts.getSnapshot() ?? []);
   const [tenant, setTenant] = useState<Tenant | null>(() => store?.tenant.getSnapshot() ?? null);
+  const [members, setMembers] = useState<TenantUser[]>(() => store?.members.getSnapshot() ?? []);
+  const [invites, setInvites] = useState<Invite[]>(() => store?.invites.getSnapshot() ?? []);
   useEffect(() => {
     if (!store) {
       setRuleSets([]);
@@ -47,9 +55,11 @@ function App() {
       setRequests([]);
       setDrafts([]);
       setTenant(null);
+      setMembers([]);
+      setInvites([]);
       return;
     }
-    const stops = [store.ruleSets.subscribe(setRuleSets), store.definitions.subscribe(setDefinitions), store.requests.subscribe(setRequests), store.drafts.subscribe(setDrafts), store.tenant.subscribe(setTenant)];
+    const stops = [store.ruleSets.subscribe(setRuleSets), store.definitions.subscribe(setDefinitions), store.requests.subscribe(setRequests), store.drafts.subscribe(setDrafts), store.tenant.subscribe(setTenant), store.members.subscribe(setMembers), store.invites.subscribe(setInvites)];
     return () => stops.forEach((stop) => stop());
   }, [store]);
 
@@ -80,8 +90,8 @@ function App() {
     return <SignIn kind={auth.kind} onSignIn={auth.signIn} />;
   }
   // Signed in without a tenant or role claim: nothing is readable yet.
-  if (!user.tenantId || !user.role || !store) {
-    return <NoWorkspace user={user} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
+  if (!user.tenantId || !user.role || !store || !membersService) {
+    return <NoWorkspace user={user} onAcceptInvite={inviteClaimer.accept} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
   }
 
   return (
@@ -94,6 +104,9 @@ function App() {
         requests={requests}
         drafts={drafts}
         tenant={tenant}
+        members={members}
+        invites={invites}
+        membersService={membersService}
         scanner={scanner}
         storeKind={store.kind}
         ui={ui}
@@ -128,6 +141,9 @@ type WorkspaceProps = {
   requests: ValueRequest[];
   drafts: BuildDraft[];
   tenant: Tenant | null;
+  members: TenantUser[];
+  invites: Invite[];
+  membersService: MembersService;
   scanner: Scanner | null;
   storeKind: Store['kind'];
   ui: UiState;
@@ -151,9 +167,9 @@ type WorkspaceProps = {
 };
 
 // Inside the router: syncs the last action with the URL, redirects the root to
-// it, and renders the shell plus the four actions.
+// it, and renders the shell plus the actions (and the admin section).
 function Workspace(props: WorkspaceProps) {
-  const { user, canEdit, ruleSets, definitions, requests, drafts, tenant, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
+  const { user, canEdit, ruleSets, definitions, requests, drafts, tenant, members, invites, membersService, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
   // In-app notice (O17): an admin sees how many requests wait; a member sees
   // how many of theirs were decided since they last opened the Dictionary.
   const [seenDecided, setSeenDecided] = useState<string[]>(() => readSeenDecided());
@@ -196,7 +212,7 @@ function Workspace(props: WorkspaceProps) {
       : <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
 
   return (
-    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge}>
+    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge} canManage={canEdit}>
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>
@@ -204,6 +220,7 @@ function Workspace(props: WorkspaceProps) {
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} /></Route>
           <Route path="/compliance"><Compliance ruleSet={selectedRuleSet} definitions={definitions} scanner={scanner} onSelectRule={onSelectRule} /></Route>
           <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
+          <Route path="/members">{canEdit ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} /> : <MembersAdminsOnly />}</Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />
         </Switch>

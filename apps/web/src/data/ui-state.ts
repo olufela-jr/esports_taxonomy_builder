@@ -4,7 +4,7 @@ import type { RuleSet } from './types';
 // the last action used. Per-browser, so it lives in localStorage; Rule Set data
 // itself goes through the store module.
 
-export type ActionPath = '/author' | '/build' | '/check' | '/compliance' | '/dictionary';
+export type ActionPath = '/author' | '/build' | '/check' | '/compliance' | '/dictionary' | '/members';
 
 // ruleId is the selected Rule's immutable id, never its editable key.
 export type UiState = {
@@ -30,7 +30,7 @@ type StoredState = {
 };
 
 export function isActionPath(value: unknown): value is ActionPath {
-  return value === '/author' || value === '/build' || value === '/check' || value === '/compliance' || value === '/dictionary';
+  return value === '/author' || value === '/build' || value === '/check' || value === '/compliance' || value === '/dictionary' || value === '/members';
 }
 
 // Check's All Rules scope became the Compliance board, so someone who was last

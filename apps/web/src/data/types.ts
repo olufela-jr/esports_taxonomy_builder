@@ -75,11 +75,29 @@ export type Tenant = {
   updatedAt: string;
 };
 
-// tenants/{tenantId}/users/{uid}: a readable mirror of the custom claims, for
-// the admin screens to come. The claims on the token are the truth.
+// tenants/{tenantId}/users/{uid}: a readable mirror of the custom claims, the
+// Members screen's list. The claims on the token are the truth; only the
+// membership Functions and the provisioning script write this.
 export type TenantUser = {
   uid: string;
   email: string | null;
+  name: string;
   role: 'admin' | 'user';
+  updatedAt: string;
+};
+
+// tenants/{tenantId}/invites/{id}: an email an admin invited, waiting for that
+// person's first sign-in, which claims it server-side. Accepted and revoked
+// invites stay as a record.
+export type InviteStatus = 'pending' | 'accepted' | 'revoked';
+
+export type Invite = {
+  id: string;
+  email: string; // lowercase
+  role: 'admin' | 'user';
+  status: InviteStatus;
+  invitedBy: string;
+  acceptedBy: string | null;
+  createdAt: string;
   updatedAt: string;
 };
