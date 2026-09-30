@@ -14,7 +14,8 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { definitionDependents, resolveRule, type Definition, type EnumEntry, type Rule, type RuleSet } from '@taxo/shared';
 import { acceptInvite as acceptInviteLogic, inviteMember as inviteMemberLogic, removeMember as removeMemberLogic, revokeInvite as revokeInviteLogic, setMemberRole as setMemberRoleLogic, type Account, type AuthPort, type Invite, type Member, type MembersStore, type Ports } from './members';
 import { buildScanQuery, evaluateNames, impactOf, MAX_BYTES_BILLED, type NameReader } from './scan';
-import { assertDatasetAllowed, readTenantConfig, tenantFromAuth, type TenantConfig } from './tenant';
+import { assertDatasetAllowed, inviteScope, readTenantConfig, tenantFromAuth, type TenantConfig } from './tenant';
+import { createTenant as createTenantLogic, updateTenant as updateTenantLogic, type TenantDocument, type TenantPorts } from './tenants';
 
 initializeApp();
 
@@ -215,9 +216,31 @@ function memberPorts(): Ports {
   return { auth: adminAuthPort(), store: firestoreMembersStore(getFirestore()), now: () => new Date().toISOString(), newId: () => randomUUID() };
 }
 
-export const inviteMember = onCall({ region: 'asia-south1' }, async (request) => inviteMemberLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
+// Invite and revoke take an optional tenantId, honoured for the super user only.
+export const inviteMember = onCall({ region: 'asia-south1' }, async (request) => inviteMemberLogic(memberPorts(), inviteScope(request.auth, (request.data as { tenantId?: unknown } | null)?.tenantId), request.data));
 export const setMemberRole = onCall({ region: 'asia-south1' }, async (request) => setMemberRoleLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
 export const removeMember = onCall({ region: 'asia-south1' }, async (request) => removeMemberLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
-export const revokeInvite = onCall({ region: 'asia-south1' }, async (request) => revokeInviteLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
+export const revokeInvite = onCall({ region: 'asia-south1' }, async (request) => revokeInviteLogic(memberPorts(), inviteScope(request.auth, (request.data as { tenantId?: unknown } | null)?.tenantId), request.data));
 // The one Callable a signed-in account without a workspace may call.
 export const acceptInvite = onCall({ region: 'asia-south1' }, async (request) => acceptInviteLogic(memberPorts(), request.auth));
+
+// ---- Tenants (super user) -----------------------------------------------------------
+
+function tenantPorts(): TenantPorts {
+  const db = getFirestore();
+  return {
+    now: () => new Date().toISOString(),
+    store: {
+      async getTenant(id) {
+        const snapshot = await db.doc(`tenants/${id}`).get();
+        return snapshot.exists ? (snapshot.data() as TenantDocument) : null;
+      },
+      async writeTenant(tenant) {
+        await db.doc(`tenants/${tenant.id}`).set(tenant);
+      },
+    },
+  };
+}
+
+export const createTenant = onCall({ region: 'asia-south1' }, async (request) => createTenantLogic(tenantPorts(), request.auth, request.data));
+export const updateTenant = onCall({ region: 'asia-south1' }, async (request) => updateTenantLogic(tenantPorts(), request.auth, request.data));

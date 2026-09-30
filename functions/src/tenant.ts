@@ -44,6 +44,45 @@ export function tenantFromAuth(auth: CallerAuth): Caller {
   return { uid: auth.uid, tenantId, role };
 }
 
+// The super user (a separate `superuser` claim, set only by the provisioning
+// script) sees every tenant and creates tenants, but writes inside a tenant
+// only where they also hold the admin role there (D35: no rules bypass).
+export function isSuperuser(auth: CallerAuth): boolean {
+  return Boolean(auth) && auth?.token.superuser === true;
+}
+
+export function superFromAuth(auth: CallerAuth): { uid: string } {
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Sign in first.');
+  }
+  if (!isSuperuser(auth)) {
+    throw new HttpsError('permission-denied', 'Only the super user can manage tenants.');
+  }
+  return { uid: auth.uid };
+}
+
+const TENANT_ID = /^[a-z0-9][a-z0-9-]{1,62}$/;
+
+// Who may invite into a tenant: an admin of their own tenant, or the super
+// user into any tenant they name (their own by default). The result reads as
+// an admin caller for that tenant, for the one operation at hand.
+export function inviteScope(auth: CallerAuth, requestedTenantId: unknown): Caller {
+  if (!auth) {
+    throw new HttpsError('unauthenticated', 'Sign in first.');
+  }
+  if (isSuperuser(auth) && typeof requestedTenantId === 'string' && requestedTenantId) {
+    if (!TENANT_ID.test(requestedTenantId)) {
+      throw new HttpsError('invalid-argument', 'That is not a valid tenant id.');
+    }
+    return { uid: auth.uid, tenantId: requestedTenantId, role: 'admin' };
+  }
+  const caller = tenantFromAuth(auth);
+  if (caller.role !== 'admin') {
+    throw new HttpsError('permission-denied', 'Only a workspace admin can manage members.');
+  }
+  return caller;
+}
+
 // A scan may only read a dataset the tenant has whitelisted. No config, or an
 // empty list, allows nothing.
 export function assertDatasetAllowed(config: TenantConfig | undefined, dataset: string): void {

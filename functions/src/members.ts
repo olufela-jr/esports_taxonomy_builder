@@ -106,8 +106,10 @@ export type InviteOutcome =
   | { status: 'active'; member: Member }
   | { status: 'invited'; invite: Invite };
 
-// An admin adds someone by email. An existing account is provisioned at once;
-// anyone else gets an invite that their first sign-in claims.
+// An admin adds someone by email (or the super user, into any tenant: the
+// caller arrives already scoped by inviteScope). An existing account is
+// provisioned at once; anyone else gets an invite that their first sign-in
+// claims.
 export async function inviteMember(ports: Ports, caller: Caller, data: unknown): Promise<InviteOutcome> {
   requireAdmin(caller);
   const candidate = (data ?? {}) as { email?: unknown; role?: unknown };
