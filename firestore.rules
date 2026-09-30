@@ -24,6 +24,19 @@ service cloud.firestore {
       return inTenant(tenantId) && request.auth.token.role == 'admin';
     }
 
+    // The super user (a separate claim, set only by the provisioning script)
+    // reads every tenant. Writes inside a tenant still need the admin role
+    // there (D35: cross-tenant is additive, never a relaxation of writes);
+    // tenants themselves are created and edited through the Functions.
+    function isSuper() {
+      return signedIn() && request.auth.token.superuser == true;
+    }
+
+    // Anyone who may read inside this tenant: a member, or the super user.
+    function canRead(tenantId) {
+      return inTenant(tenantId) || isSuper();
+    }
+
     function wellFormed(data) {
       return data.id is string
         && data.name is string
@@ -88,13 +101,14 @@ service cloud.firestore {
 
     match /tenants/{tenantId} {
       // The tenant document: name and config (allowed datasets, platforms).
-      allow read: if inTenant(tenantId);
+      // The super user lists the whole collection for the Tenants screen.
+      allow read: if canRead(tenantId);
       allow write: if false;
 
       // A readable mirror of the claims; the claims are the truth. Written
       // only by the membership Functions and the provisioning script.
       match /users/{uid} {
-        allow read: if inTenant(tenantId) && (request.auth.uid == uid || isAdmin(tenantId));
+        allow read: if isSuper() || (inTenant(tenantId) && (request.auth.uid == uid || isAdmin(tenantId)));
         allow write: if false;
       }
 
@@ -102,12 +116,12 @@ service cloud.firestore {
       // only the membership Functions write them, and the person invited
       // never sees the document, their sign-in claims it server-side.
       match /invites/{inviteId} {
-        allow read: if isAdmin(tenantId);
+        allow read: if isAdmin(tenantId) || isSuper();
         allow write: if false;
       }
 
       match /rulesets/{ruleSetId} {
-        allow read: if inTenant(tenantId);
+        allow read: if canRead(tenantId);
         allow create: if isAdmin(tenantId)
           && wellFormed(request.resource.data)
           && request.resource.data.id == ruleSetId
@@ -123,7 +137,7 @@ service cloud.firestore {
 
       // The tenant's shared definitions: any member reads, only an admin writes.
       match /definitions/{definitionId} {
-        allow read: if inTenant(tenantId);
+        allow read: if canRead(tenantId);
         allow create: if isAdmin(tenantId)
           && wellFormedDefinition(request.resource.data)
           && request.resource.data.id == definitionId
@@ -141,7 +155,7 @@ service cloud.firestore {
       // the requester or an admin reads one (a member's list must be filtered
       // to their own); only an admin changes it, and the requester never moves.
       match /requests/{requestId} {
-        allow read: if isAdmin(tenantId) || (inTenant(tenantId) && resource.data.createdBy == request.auth.uid);
+        allow read: if isAdmin(tenantId) || isSuper() || (inTenant(tenantId) && resource.data.createdBy == request.auth.uid);
         allow create: if inTenant(tenantId)
           && wellFormedRequest(request.resource.data)
           && request.resource.data.id == requestId
@@ -160,7 +174,7 @@ service cloud.firestore {
       // reads every one and updates one (to mark it ready on approval); the
       // owner never moves.
       match /drafts/{draftId} {
-        allow read: if isAdmin(tenantId) || (inTenant(tenantId) && resource.data.createdBy == request.auth.uid);
+        allow read: if isAdmin(tenantId) || isSuper() || (inTenant(tenantId) && resource.data.createdBy == request.auth.uid);
         allow create: if inTenant(tenantId)
           && wellFormedDraft(request.resource.data)
           && request.resource.data.id == draftId

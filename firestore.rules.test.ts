@@ -108,6 +108,9 @@ const carol = () => env.authenticatedContext('carol', { tenantId: 'acme', role: 
 const uma = () => env.authenticatedContext('uma', { tenantId: 'acme', role: 'user' }).firestore();
 const bob = () => env.authenticatedContext('bob', { tenantId: 'other', role: 'admin' }).firestore();
 const nobody = () => env.authenticatedContext('nobody').firestore();
+// sam: the super user with no tenant of their own. fela: super user and admin of other.
+const sam = () => env.authenticatedContext('sam', { superuser: true }).firestore();
+const fela = () => env.authenticatedContext('fela', { tenantId: 'other', role: 'admin', superuser: true }).firestore();
 const anonymous = () => env.unauthenticatedContext().firestore();
 
 const RS1 = 'tenants/acme/rulesets/rs-1';
@@ -167,6 +170,38 @@ describe('tenant isolation', () => {
     // Nobody promotes themselves or anyone else through the mirror.
     await assertFails(updateDoc(doc(uma(), 'tenants/acme/users/uma'), { role: 'admin' }));
     await assertFails(updateDoc(doc(alice(), 'tenants/acme/users/uma'), { role: 'admin' }));
+  });
+});
+
+describe('the super user', () => {
+  it('reads every tenant, its documents and the tenants list, without a tenant of their own', async () => {
+    await assertSucceeds(getDocs(collection(sam(), 'tenants')));
+    await assertSucceeds(getDoc(doc(sam(), 'tenants/acme')));
+    await assertSucceeds(getDocs(collection(sam(), 'tenants/acme/rulesets')));
+    await assertSucceeds(getDoc(doc(sam(), 'tenants/other/rulesets/rs-9')));
+    await assertSucceeds(getDoc(doc(sam(), 'tenants/acme/definitions/def-1')));
+    await assertSucceeds(getDocs(collection(sam(), 'tenants/acme/requests')));
+    await assertSucceeds(getDocs(collection(sam(), 'tenants/acme/drafts')));
+    await assertSucceeds(getDocs(collection(sam(), 'tenants/acme/users')));
+    await assertSucceeds(getDocs(collection(sam(), 'tenants/acme/invites')));
+    // A plain admin still cannot list the tenants collection or read another tenant.
+    await assertFails(getDocs(collection(alice(), 'tenants')));
+    await assertFails(getDoc(doc(alice(), 'tenants/other/rulesets/rs-9')));
+    // The claim must be exactly true.
+    await assertFails(getDoc(doc(env.authenticatedContext('spoof', { superuser: 'true' }).firestore(), 'tenants/acme')));
+  });
+
+  it('never writes inside a tenant where they are not an admin, and still writes where they are', async () => {
+    await assertFails(updateDoc(doc(sam(), RS1), { name: 'Super edit', updatedBy: 'sam' }));
+    await assertFails(setDoc(doc(sam(), 'tenants/acme/rulesets/rs-s'), { ...ruleSet, id: 'rs-s', createdBy: 'sam', updatedBy: 'sam' }));
+    await assertFails(deleteDoc(doc(sam(), RS1)));
+    await assertFails(setDoc(doc(sam(), 'tenants/new-tenant'), acmeTenant));
+    await assertFails(updateDoc(doc(sam(), 'tenants/acme'), { name: 'Renamed by super' }));
+    await assertFails(updateDoc(doc(sam(), 'tenants/acme/users/uma'), { role: 'admin' }));
+    // fela is an admin of other: writes there as any admin, reads acme as super, never writes acme.
+    await assertSucceeds(updateDoc(doc(fela(), 'tenants/other/rulesets/rs-9'), { name: 'Fela edit', updatedAt: '2026-01-05T00:00:00.000Z', updatedBy: 'fela' }));
+    await assertSucceeds(getDoc(doc(fela(), RS1)));
+    await assertFails(updateDoc(doc(fela(), RS1), { name: 'Cross-tenant edit', updatedBy: 'fela' }));
   });
 });
 
