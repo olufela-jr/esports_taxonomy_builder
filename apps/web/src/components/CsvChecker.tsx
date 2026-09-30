@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
-import Papa from 'papaparse';
-import { resolveRule, rollup, validate, validateInRuleSet, UNTAGGED, type Counts, type Definition, type Rollup, type Rule, type RuleScan, type ValidateResult, type Violation } from '@taxo/shared';
-import { ClipboardCheck, Database, Download, FileSpreadsheet, Filter, Upload, CheckCircle2, XCircle, AlertCircle, AlertTriangle } from 'lucide-react';
-import type { Scanner, ScanOutcome } from '@/data/scan';
+import { resolveRule, rollup, validate, validateInRuleSet, type Counts, type Definition, type Rollup, type Rule, type RuleScan, type ValidateResult, type Violation } from '@taxo/shared';
+import { ClipboardCheck, Database, Download, FileSpreadsheet, Filter, Upload, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { scanRuleSet, type RuleScanOutcome, type Scanner, type ScanOutcome } from '@/data/scan';
 import type { RuleSet } from '@/data/store';
 import type { CheckMode } from '@/data/ui-state';
+import { downloadCsv, mappedColumns, parseCsv } from '@/lib/csv';
 import { PageHeading } from './PageHeading';
-import { buttonPrimary, buttonQuiet, inputClass } from './styles';
+import { CountCard, EmptyState, ModeButton, percent, ResultsTable, StatusPill, TagBreakdown } from './results';
+import { buttonPrimary, buttonQuiet, cardClass, inputClass, tableRow } from './styles';
 
 type SingleCheckResult = { row: number; name: string; valid: boolean; violations: Violation[] };
 
@@ -26,15 +27,6 @@ type AllRulesCheckResult = {
   valid: boolean;
   ruleEvals: RuleEval[];
 };
-
-function parseCsv(text: string) {
-  return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true }).data;
-}
-
-// Rounding happens here, in the UI. The engine only returns raw counts.
-function percent(counts: Counts): number {
-  return counts.scanned > 0 ? Math.round((counts.valid / counts.scanned) * 100) : 0;
-}
 
 // Turn the per-row evaluations into one scan per Rule so the engine's rollup
 // can pool them. A Rule whose column is missing from the CSV scanned nothing.
@@ -80,24 +72,6 @@ function sampleCsv(ruleSet: RuleSet): string {
   return [columns.join(','), ...rows.map((row) => row.join(','))].join('\n');
 }
 
-function expectedColumns(ruleSet: RuleSet): string[] {
-  return Array.from(new Set(ruleSet.rules.map((rule) => rule.source.nameColumn).filter(Boolean)));
-}
-
-function ModeButton({ active, onClick, testId, children }: { active: boolean; onClick: () => void; testId: string; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`rounded-[4px] py-1.5 transition-all ${active ? 'bg-card text-foreground shadow-sm ring-1 ring-border/20' : 'text-muted-foreground hover:text-foreground'}`}
-      data-testid={testId}
-    >
-      {children}
-    </button>
-  );
-}
-
 // Feature 3a: validate a CSV client-side against the Rule selected in the shell,
 // or every Rule in the Rule Set.
 export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onCheckModeChange }: { ruleSet: RuleSet | undefined; rule: Rule | undefined; definitions: Definition[]; scanner: Scanner | null; checkMode: CheckMode; onCheckModeChange: (mode: CheckMode) => void }) {
@@ -124,7 +98,7 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
   const [source, setSource] = useState<'csv' | 'live'>('csv');
   const [scanning, setScanning] = useState(false);
   const [liveSingle, setLiveSingle] = useState<ScanOutcome | null>(null);
-  const [liveAll, setLiveAll] = useState<Array<{ rule: Rule; outcome: ScanOutcome | null; error: string }> | null>(null);
+  const [liveAll, setLiveAll] = useState<RuleScanOutcome[] | null>(null);
   const [liveError, setLiveError] = useState('');
 
   const resetResults = () => {
@@ -141,15 +115,7 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
     resetResults();
     try {
       if (isAllRules) {
-        const outcomes: Array<{ rule: Rule; outcome: ScanOutcome | null; error: string }> = [];
-        for (const item of ruleSet.rules) {
-          try {
-            outcomes.push({ rule: item, outcome: await scanner.scanRule(ruleSet.id, item.id), error: '' });
-          } catch (cause) {
-            outcomes.push({ rule: item, outcome: null, error: cause instanceof Error ? cause.message : 'The scan failed.' });
-          }
-        }
-        setLiveAll(outcomes);
+        setLiveAll(await scanRuleSet(scanner, ruleSet));
       } else if (rule) {
         setLiveSingle(await scanner.scanRule(ruleSet.id, rule.id));
       }
@@ -278,25 +244,11 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
     downloadCsv(rows, 'ruleset-all-rules-results.csv');
   };
 
-  const downloadCsv = (rows: string[][], filename: string) => {
-    const blob = new Blob([rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url);
-  };
-
   if (!ruleSet || (!isAllRules && !rule)) {
     return (
       <div>
         <PageHeading eyebrow="Workspace" title="Validate a CSV export" description="Upload a CSV export to check names against rules." />
-        <div className="flex min-h-[430px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/50 px-8 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded bg-muted text-muted-foreground">
-            <Filter className="h-6 w-6" />
-          </div>
-          <h2 className="mt-5 text-sm font-semibold text-foreground">No Rule selected</h2>
-          <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
-            Select a Rule Set and a Rule from the sidebar to validate data.
-          </p>
-        </div>
+        <EmptyState icon={<Filter className="h-6 w-6" />} title="No Rule selected" body="Select a Rule Set and a Rule from the sidebar to validate data." />
       </div>
     );
   }
@@ -349,7 +301,7 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
               <div className="rounded-lg border border-primary/30 bg-primary/10 p-4 text-xs text-primary shadow-sm">
                 <div className="font-semibold flex items-center gap-2"><AlertCircle className="h-4 w-4" /> All Rules</div>
                 <div className="mt-1.5 leading-relaxed opacity-90">Every Rule in {ruleSet.name} runs over its own mapped source column. Counts are pooled across Rules.</div>
-                <div className="mt-2 font-mono text-[11px] opacity-90" data-testid="text-expected-columns">Expected columns: {expectedColumns(ruleSet).join(', ') || 'none mapped'}</div>
+                <div className="mt-2 font-mono text-[11px] opacity-90" data-testid="text-expected-columns">Expected columns: {mappedColumns(ruleSet).join(', ') || 'none mapped'}</div>
               </div>
             )}
           </div>
@@ -391,11 +343,7 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner, checkMode, onC
               <SingleResultsPanel results={singleResults} validCount={validCount} />
             ) : null
           ) : (
-            <div className="flex min-h-[430px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/50 px-8 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded bg-muted text-muted-foreground"><Filter className="h-6 w-6" /></div>
-              <h2 className="mt-5 text-sm font-semibold text-foreground">Ready for validation</h2>
-              <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">Results will display compliance status and suggested fixes.</p>
-            </div>
+            <EmptyState icon={<Filter className="h-6 w-6" />} title="Ready for validation" body="Results will display compliance status and suggested fixes." />
           )}
         </section>
       </div>
@@ -419,11 +367,11 @@ function LiveSingleResults({ outcome }: { outcome: ScanOutcome }) {
 
 // Every Rule's scan pooled through the engine's rollup, the same figure the
 // CSV check reports under "All Rules"; a Rule whose scan failed shows why.
-function LiveAllRulesResults({ outcomes }: { outcomes: Array<{ rule: Rule; outcome: ScanOutcome | null; error: string }> }) {
+function LiveAllRulesResults({ outcomes }: { outcomes: RuleScanOutcome[] }) {
   const scans: RuleScan[] = outcomes.filter((item) => item.outcome).map((item) => ({ ruleId: item.rule.id, ruleKey: item.rule.key, ruleName: item.rule.name, ...(item.rule.tags ? { tags: item.rule.tags } : {}), scanned: item.outcome!.scanned, valid: item.outcome!.valid }));
   const summary: Rollup = rollup(scans);
   return (
-    <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30" data-testid="panel-live-all">
+    <div className={cardClass} data-testid="panel-live-all">
       <div className="flex items-start justify-between gap-4"><div><div className="font-display text-2xl font-medium text-foreground">All Rules, live</div><p className="mt-1.5 text-[13px] font-bold text-muted-foreground"><span className="text-foreground">{summary.total.valid.toLocaleString()}</span> of {summary.total.scanned.toLocaleString()} distinct names valid, pooled across {scans.length} Rule{scans.length === 1 ? '' : 's'}</p></div><StatusPill invalidCount={summary.total.invalid} /></div>
       <ul className="mt-5 divide-y divide-border/40">{outcomes.map((item) => <li key={item.rule.id} className="flex items-center justify-between gap-3 py-2.5 text-[13px]" data-testid={`row-live-rule-${item.rule.id}`}><span className="font-semibold text-foreground">{item.rule.name}<span className="ml-2 font-mono text-[10px] text-muted-foreground">{item.rule.source.dataset}.{item.rule.source.table}</span></span>{item.outcome ? <span className="font-mono text-[12px] text-muted-foreground">{item.outcome.valid.toLocaleString()} / {item.outcome.scanned.toLocaleString()} valid</span> : <span className="text-[12px] font-semibold text-destructive">{item.error}</span>}</li>)}</ul>
       <div className="mt-6 grid gap-4 sm:grid-cols-2"><TagBreakdown title="By platform" groups={summary.byPlatform} testId="breakdown-live-platform" /><TagBreakdown title="By entity type" groups={summary.byEntityType} testId="breakdown-live-entity" /></div>
@@ -431,86 +379,25 @@ function LiveAllRulesResults({ outcomes }: { outcomes: Array<{ rule: Rule; outco
   );
 }
 
-function StatusPill({ invalidCount }: { invalidCount: number }) {
-  return invalidCount
-    ? <div className="inline-flex items-center gap-1.5 rounded-full border border-destructive/50 bg-destructive/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-destructive" /><span className="text-[10px] font-bold text-foreground">Action needed</span></div>
-    : <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-primary" /><span className="text-[10px] font-bold text-foreground">All clear</span></div>;
-}
-
 function SingleResultsPanel({ results, validCount }: { results: SingleCheckResult[]; validCount: number }) {
   const invalidCount = results.length - validCount;
   return (
     <div>
       <div className="mb-6 grid grid-cols-3 gap-4">
-        <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="font-display text-xl font-medium text-foreground">Checked</div><div className="mt-4 font-display text-[32px] font-medium text-foreground" data-testid="text-results-checked">{results.length}</div></div>
-        <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30"><div className="font-display text-xl font-medium text-foreground">Compliant</div><div className="mt-4 font-display text-[32px] font-medium text-foreground" data-testid="text-results-valid">{validCount}</div></div>
+        <div className={cardClass}><div className="font-display text-xl font-medium text-foreground">Checked</div><div className="mt-4 font-display text-[32px] font-medium text-foreground" data-testid="text-results-checked">{results.length}</div></div>
+        <div className={cardClass}><div className="font-display text-xl font-medium text-foreground">Compliant</div><div className="mt-4 font-display text-[32px] font-medium text-foreground" data-testid="text-results-valid">{validCount}</div></div>
         <div className="rounded-xl bg-card p-6 shadow-sm border border-destructive/30"><div className="font-display text-xl font-medium text-destructive">Invalid</div><div className="mt-4 font-display text-[32px] font-medium text-destructive" data-testid="text-results-invalid">{invalidCount}</div></div>
       </div>
-      <div className="overflow-hidden rounded-xl bg-card shadow-sm border border-border/30">
-        <div className="flex items-center justify-between border-b border-border/50 px-6 py-5">
-          <div><h2 className="font-display text-xl font-medium text-foreground">Validation results</h2></div>
-          <StatusPill invalidCount={invalidCount} />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px] text-left text-xs">
-            <thead className="bg-muted/30 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              <tr>
-                <th className="px-5 py-3.5 font-semibold">Row</th>
-                <th className="px-5 py-3.5 font-semibold">Campaign name</th>
-                <th className="px-5 py-3.5 font-semibold">Status</th>
-                <th className="px-5 py-3.5 font-semibold">Finding</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {results.map((result) => (
-                <tr key={result.row} className="transition hover:bg-muted/40" data-testid={`row-result-${result.row}`}>
-                  <td className="px-5 py-4 font-mono text-muted-foreground">{result.row}</td>
-                  <td className="max-w-[220px] truncate px-5 py-4 font-mono text-[11px] text-foreground">{result.name || <span className="text-muted-foreground">Blank</span>}</td>
-                  <td className="px-5 py-4">{result.valid ? <span className="inline-flex items-center gap-1.5 font-semibold text-foreground"><CheckCircle2 className="h-4 w-4" /> Valid</span> : <span className="inline-flex items-center gap-1.5 font-semibold text-destructive"><XCircle className="h-4 w-4" /> Invalid</span>}</td>
-                  <td className="max-w-[280px] px-5 py-4 text-muted-foreground">{result.valid ? <span className="text-muted-foreground">Matches rules</span> : <div><div>{result.violations.map((item) => item.reason).join(' ')}</div>{result.violations[0]?.suggestion && <div className="mt-1.5 font-semibold text-foreground">Try: <span className="font-mono text-[11px]">{result.violations[0].suggestion}</span></div>}</div>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CountCard({ label, caption, counts, missingColumn, testId }: { label: string; caption?: string; counts: Counts; missingColumn?: string; testId?: string }) {
-  return (
-    <div className={`rounded-xl border p-4 shadow-sm ${missingColumn ? 'border-destructive/30 bg-destructive/5' : 'border-border/30 bg-muted/20'}`} data-testid={testId}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="truncate font-display text-lg font-medium text-foreground">{label}</div>
-          {caption && <div className="mt-1 text-[11px] font-bold text-muted-foreground">{caption}</div>}
-        </div>
-        {missingColumn ? (
-          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-destructive/10 border border-destructive/30 px-2 py-0.5 text-[10px] font-bold text-destructive">
-            <AlertTriangle className="h-3 w-3" /> Missing column
-          </span>
-        ) : (
-          <span className="shrink-0 font-display text-[28px] font-medium text-foreground">{percent(counts)}%</span>
-        )}
-      </div>
-      {missingColumn
-        ? <div className="mt-2 text-[11px] font-bold text-destructive">The CSV has no <span className="font-mono">{missingColumn}</span> column, so nothing was scanned for this Rule.</div>
-        : <div className="mt-2 text-[11px] font-bold text-muted-foreground">{counts.valid} of {counts.scanned} valid</div>}
-    </div>
-  );
-}
-
-function TagBreakdown({ title, groups, testId }: { title: string; groups: Record<string, Counts>; testId: string }) {
-  const entries = Object.entries(groups);
-  // Only worth showing once at least one Rule carries this tag.
-  if (!entries.some(([name]) => name !== UNTAGGED)) return null;
-  return (
-    <div className="mt-6" data-testid={testId}>
-      <h4 className="mb-3 font-display text-lg font-medium text-foreground">{title}</h4>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {entries.map(([name, counts]) => <CountCard key={name} label={name} counts={counts} />)}
-      </div>
+      <ResultsTable title="Validation results" action={<StatusPill invalidCount={invalidCount} />} columns={['Row', 'Campaign name', 'Status', 'Finding']}>
+        {results.map((result) => (
+          <tr key={result.row} className={tableRow} data-testid={`row-result-${result.row}`}>
+            <td className="px-5 py-4 font-mono text-muted-foreground">{result.row}</td>
+            <td className="max-w-[220px] truncate px-5 py-4 font-mono text-[11px] text-foreground">{result.name || <span className="text-muted-foreground">Blank</span>}</td>
+            <td className="px-5 py-4">{result.valid ? <span className="inline-flex items-center gap-1.5 font-semibold text-foreground"><CheckCircle2 className="h-4 w-4" /> Valid</span> : <span className="inline-flex items-center gap-1.5 font-semibold text-destructive"><XCircle className="h-4 w-4" /> Invalid</span>}</td>
+            <td className="max-w-[280px] px-5 py-4 text-muted-foreground">{result.valid ? <span className="text-muted-foreground">Matches rules</span> : <div><div>{result.violations.map((item) => item.reason).join(' ')}</div>{result.violations[0]?.suggestion && <div className="mt-1.5 font-semibold text-foreground">Try: <span className="font-mono text-[11px]">{result.violations[0].suggestion}</span></div>}</div>}</td>
+          </tr>
+        ))}
+      </ResultsTable>
     </div>
   );
 }
@@ -525,7 +412,7 @@ function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results:
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
+      <div className={cardClass}>
         <h3 className="mb-2 font-display text-2xl font-medium text-foreground">Rule Set compliance</h3>
         <div className="flex items-center gap-6 mt-4">
           <div className="font-display text-[40px] font-medium tracking-tight text-primary" data-testid="text-pooled-percent">{percent(summary.total)}%</div>
@@ -554,58 +441,43 @@ function AllRulesResultsPanel({ results, strictValidCount, ruleSet }: { results:
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl bg-card shadow-sm border border-border/30">
-        <div className="flex items-center justify-between gap-4 border-b border-border/50 px-6 py-5">
-          <div>
-            <h2 className="font-display text-xl font-medium text-foreground">Strict view: rows passing every Rule</h2>
-            <p className="mt-1 text-[11px] font-bold text-muted-foreground" data-testid="text-strict-summary">{strictCounts.valid} of {strictCounts.scanned} rows ({percent(strictCounts)}%) pass all {ruleSet.rules.length} Rules at once. Secondary figure for wide CSVs where one row carries a name per Rule.</p>
-          </div>
-          <StatusPill invalidCount={strictCounts.invalid} />
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px] text-left text-xs">
-            <thead className="bg-muted/30 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-              <tr>
-                <th className="px-5 py-3.5 font-semibold">Row</th>
-                <th className="px-5 py-3.5 font-semibold">Overall</th>
-                <th className="px-5 py-3.5 font-semibold">Rule Failures</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {results.map((result) => {
-                const failures = result.ruleEvals.filter(re => !re.valid);
-                return (
-                  <tr key={result.row} className="transition hover:bg-muted/40" data-testid={`row-result-all-${result.row}`}>
-                    <td className="px-5 py-4 font-mono text-muted-foreground">{result.row}</td>
-                    <td className="px-5 py-4">
-                      {result.valid ?
-                        <span className="inline-flex items-center gap-1.5 font-semibold text-foreground"><CheckCircle2 className="h-4 w-4" /> Valid</span> :
-                        <span className="inline-flex items-center gap-1.5 font-semibold text-destructive"><XCircle className="h-4 w-4" /> Invalid</span>
-                      }
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground max-w-[300px]">
-                      {result.valid ? <span className="text-muted-foreground">Passes all</span> : (
-                        <div className="space-y-1.5">
-                          {failures.map((f) => {
-                            const suggestion = f.violations.find((v) => v.suggestion)?.suggestion;
-                            return (
-                              <div key={f.ruleKey} className="text-[11px] leading-relaxed">
-                                <span className="font-semibold text-foreground">{f.ruleName}:</span>{' '}
-                                {f.columnMissing ? `Column "${f.columnName}" missing in CSV` : f.violations.map(v => v.reason).join(', ')}
-                                {suggestion && <div className="mt-0.5 font-semibold text-foreground">Try: <span className="font-mono">{suggestion}</span></div>}
-                              </div>
-                            );
-                          })}
+      <ResultsTable
+        title="Strict view: rows passing every Rule"
+        subtitle={<span data-testid="text-strict-summary">{strictCounts.valid} of {strictCounts.scanned} rows ({percent(strictCounts)}%) pass all {ruleSet.rules.length} Rules at once. Secondary figure for wide CSVs where one row carries a name per Rule.</span>}
+        action={<StatusPill invalidCount={strictCounts.invalid} />}
+        columns={['Row', 'Overall', 'Rule Failures']}
+      >
+        {results.map((result) => {
+          const failures = result.ruleEvals.filter(re => !re.valid);
+          return (
+            <tr key={result.row} className={tableRow} data-testid={`row-result-all-${result.row}`}>
+              <td className="px-5 py-4 font-mono text-muted-foreground">{result.row}</td>
+              <td className="px-5 py-4">
+                {result.valid ?
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-foreground"><CheckCircle2 className="h-4 w-4" /> Valid</span> :
+                  <span className="inline-flex items-center gap-1.5 font-semibold text-destructive"><XCircle className="h-4 w-4" /> Invalid</span>
+                }
+              </td>
+              <td className="px-5 py-4 text-muted-foreground max-w-[300px]">
+                {result.valid ? <span className="text-muted-foreground">Passes all</span> : (
+                  <div className="space-y-1.5">
+                    {failures.map((f) => {
+                      const suggestion = f.violations.find((v) => v.suggestion)?.suggestion;
+                      return (
+                        <div key={f.ruleKey} className="text-[11px] leading-relaxed">
+                          <span className="font-semibold text-foreground">{f.ruleName}:</span>{' '}
+                          {f.columnMissing ? `Column "${f.columnName}" missing in CSV` : f.violations.map(v => v.reason).join(', ')}
+                          {suggestion && <div className="mt-0.5 font-semibold text-foreground">Try: <span className="font-mono">{suggestion}</span></div>}
                         </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </ResultsTable>
     </div>
   );
 }

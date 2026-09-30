@@ -6,19 +6,16 @@ import type { BuildDraft, BuildDraftDraft, RuleSet, ValueRequest, ValueRequestDr
 import { BatchBuilder } from './BatchBuilder';
 import { ChildBatchBuilder } from './ChildBatchBuilder';
 import { PageHeading } from './PageHeading';
+import { EmptyState as SharedEmptyState } from './results';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 function EmptyState() {
   return (
-    <div className="flex min-h-[430px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/50 px-8 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded bg-muted text-muted-foreground">
-        <Filter className="h-6 w-6" />
-      </div>
-      <h2 className="mt-5 text-sm font-semibold text-foreground">No Rule selected</h2>
-      <p className="mt-1.5 max-w-xs text-xs leading-relaxed text-muted-foreground">
-        Select a Rule Set and a Rule from the sidebar to start building a name.
-      </p>
-    </div>
+    <SharedEmptyState
+      icon={<Filter className="h-6 w-6" />}
+      title="No Rule selected"
+      body="Select a Rule Set and a Rule from the sidebar to start building a name."
+    />
   );
 }
 

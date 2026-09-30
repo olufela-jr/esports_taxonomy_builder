@@ -2,7 +2,7 @@
 // owns storage and auth.ts owns sign-in. The Functions exist only for the
 // shared workspace: in memory mode there is no scanner, and the screens say so.
 import { httpsCallable } from 'firebase/functions';
-import type { EnumEntry, RuleCompliance, Violation } from '@taxo/shared';
+import type { EnumEntry, Rule, RuleCompliance, Violation } from '@taxo/shared';
 import { getFirebase } from '@/lib/firebase';
 import type { Mode } from './mode';
 
@@ -32,6 +32,23 @@ export type Scanner = {
   // D44: live names that would start failing if the definition's entries became these.
   previewImpact(definitionId: string, entries: EnumEntry[]): Promise<ImpactOutcome>;
 };
+
+export type RuleScanOutcome = { rule: Rule; outcome: ScanOutcome | null; error: string };
+
+// Every Rule in a Rule Set, one callable per Rule, in order. Sequential on
+// purpose: each Rule runs its own BigQuery query, and a Rule that fails leaves
+// the others' results standing rather than sinking the whole scan.
+export async function scanRuleSet(scanner: Scanner, ruleSet: { id: string; rules: Rule[] }): Promise<RuleScanOutcome[]> {
+  const outcomes: RuleScanOutcome[] = [];
+  for (const rule of ruleSet.rules) {
+    try {
+      outcomes.push({ rule, outcome: await scanner.scanRule(ruleSet.id, rule.id), error: '' });
+    } catch (cause) {
+      outcomes.push({ rule, outcome: null, error: cause instanceof Error ? cause.message : 'The scan failed.' });
+    }
+  }
+  return outcomes;
+}
 
 export function createScanner(mode: Mode): Scanner | null {
   if (mode !== 'firestore') return null;
