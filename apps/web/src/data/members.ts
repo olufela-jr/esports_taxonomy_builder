@@ -20,7 +20,8 @@ export type AcceptOutcome = {
 };
 
 export type MembersService = {
-  invite(email: string, role: Role): Promise<InviteOutcome>;
+  // tenantId: the super user inviting into a tenant that is not their own.
+  invite(email: string, role: Role, tenantId?: string): Promise<InviteOutcome>;
   setRole(uid: string, role: Role): Promise<TenantUser>;
   remove(uid: string): Promise<void>;
   revoke(inviteId: string): Promise<Invite>;
@@ -35,12 +36,12 @@ export type InviteClaimer = {
 
 function createFirestoreMembersService(): MembersService {
   const { functions } = getFirebase();
-  const invite = httpsCallable<{ email: string; role: Role }, InviteOutcome>(functions, 'inviteMember');
+  const invite = httpsCallable<{ email: string; role: Role; tenantId?: string }, InviteOutcome>(functions, 'inviteMember');
   const setRole = httpsCallable<{ uid: string; role: Role }, TenantUser>(functions, 'setMemberRole');
   const remove = httpsCallable<{ uid: string }, { uid: string }>(functions, 'removeMember');
   const revoke = httpsCallable<{ inviteId: string }, Invite>(functions, 'revokeInvite');
   return {
-    async invite(email, role) { return (await invite({ email, role })).data; },
+    async invite(email, role, tenantId) { return (await invite(tenantId ? { email, role, tenantId } : { email, role })).data; },
     async setRole(uid, role) { return (await setRole({ uid, role })).data; },
     async remove(uid) { await remove({ uid }); },
     async revoke(inviteId) { return (await revoke({ inviteId })).data; },
@@ -70,6 +71,10 @@ function createMemoryMembersService(store: Store, session: StoreSession): Member
   const requireAdmin = () => {
     if (session.role !== 'admin') throw new Error('Only a workspace admin can manage members.');
   };
+  // Inviting and revoking: an admin here, or the super user (readAll without the role).
+  const requireInviter = () => {
+    if (session.role !== 'admin' && !session.readAll) throw new Error('Only a workspace admin can manage members.');
+  };
   const lastAdmin = (member: TenantUser, action: string) => {
     const admins = lists.members.getSnapshot().filter((item) => item.role === 'admin').length;
     if (member.role === 'admin' && admins <= 1) throw new Error(`${member.email ?? member.name} is the only admin; make someone else an admin before you ${action}.`);
@@ -81,10 +86,15 @@ function createMemoryMembersService(store: Store, session: StoreSession): Member
   };
 
   return {
-    async invite(rawEmail, role) {
-      requireAdmin();
+    async invite(rawEmail, role, tenantId) {
       const email = rawEmail.trim().toLowerCase();
       if (!EMAIL.test(email)) throw new Error('Enter a valid email address.');
+      if (tenantId && tenantId !== session.tenantId) {
+        // The super user inviting into another memory tenant: nothing to show here.
+        const now = stamp();
+        return { status: 'invited', invite: { id: newId(), email, role, status: 'pending', invitedBy: session.uid, acceptedBy: null, createdAt: now, updatedAt: now } };
+      }
+      requireInviter();
       if (lists.members.getSnapshot().some((member) => member.email?.toLowerCase() === email)) throw new Error(`${email} is already a member of this workspace.`);
       if (lists.invites.getSnapshot().some((invite) => invite.status === 'pending' && invite.email === email)) throw new Error(`${email} already has a pending invite.`);
       // No Auth accounts exist in memory mode, so every invite waits.
@@ -110,7 +120,7 @@ function createMemoryMembersService(store: Store, session: StoreSession): Member
       lists.members.replace(lists.members.getSnapshot().filter((item) => item.uid !== uid));
     },
     async revoke(inviteId) {
-      requireAdmin();
+      requireInviter();
       const invite = lists.invites.getSnapshot().find((item) => item.id === inviteId);
       if (!invite) throw new Error('That invite is not in this workspace.');
       if (invite.status !== 'pending') return invite;

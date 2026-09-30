@@ -5,6 +5,13 @@
 //   pnpm provision:user --email <address> --tenant <id> --role admin|user
 //   pnpm provision:user --email <address> --tenant <id> --role admin --tenant-name "<name>"
 //   pnpm provision:user --email <address> --tenant <id> --role admin --platforms google,meta
+//   pnpm provision:user --email <address> --superuser            (grant; tenant claims untouched)
+//   pnpm provision:user --email <address> --revoke-superuser
+//
+// The super user is a separate claim: it reads every tenant, creates tenants
+// and invites their first admin from the Tenants screen; it writes inside a
+// tenant only where it also holds the admin role. Grant it to the operator
+// only.
 //
 // --platforms sets the tenant's platform list (the ids in PLATFORMS from
 // @taxo/shared; v3 D38), replacing whatever the tenant document holds. Phase 2
@@ -29,14 +36,17 @@ const { values } = parseArgs({
     'tenant-name': { type: 'string' },
     platforms: { type: 'string' },
     project: { type: 'string' },
+    superuser: { type: 'boolean', default: false },
+    'revoke-superuser': { type: 'boolean', default: false },
   },
 });
 
 const { email, tenant: tenantId, role } = values;
-if (!email || !tenantId || (role !== 'admin' && role !== 'user')) {
-  fail('Pass --email <address> --tenant <id> --role admin|user.');
+const superOnly = (values.superuser || values['revoke-superuser']) && !tenantId && !role;
+if (!email || (!superOnly && (!tenantId || (role !== 'admin' && role !== 'user')))) {
+  fail('Pass --email <address> --tenant <id> --role admin|user, or --email <address> --superuser | --revoke-superuser.');
 }
-if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(tenantId)) {
+if (tenantId && !/^[a-z0-9][a-z0-9-]{1,62}$/.test(tenantId)) {
   fail('The tenant id is lowercase letters, digits and hyphens, 2 to 63 characters.');
 }
 
@@ -50,7 +60,17 @@ try {
 const projectId = values.project ?? defaultProjectId();
 const db = connect(projectId);
 
+// Grants or revokes the superuser claim, leaving the tenant claims as they are.
+async function toggleSuperuser(): Promise<void> {
+  const user = await getAuth().getUserByEmail(email!).catch(() => fail(`No Auth account for ${email}. The person must sign in to the app once first.`));
+  const claims = { ...(user.customClaims ?? {}) } as Record<string, unknown>;
+  if (values.superuser) claims.superuser = true; else delete claims.superuser;
+  await getAuth().setCustomUserClaims(user.uid, claims);
+  console.log(`${email} (${user.uid}) ${values.superuser ? 'is now the super user' : 'is no longer a super user'}; tenant claims unchanged. They sign out and in to pick it up.`);
+}
+
 async function provision(): Promise<void> {
+  if (superOnly) return toggleSuperuser();
   const user = await getAuth().getUserByEmail(email!).catch(() => fail(`No Auth account for ${email}. The person must sign in to the app once first.`));
 
   const tenantRef = db.doc(`tenants/${tenantId}`);
@@ -71,7 +91,10 @@ async function provision(): Promise<void> {
   if (previous.tenantId && previous.tenantId !== tenantId) {
     console.log(`Note: ${email} was in tenant "${previous.tenantId}"; a user has one tenant, so that membership is replaced.`);
   }
-  await getAuth().setCustomUserClaims(user.uid, { tenantId, role });
+  // Tenant claims are replaced; a superuser claim, if any, is kept (or set with --superuser).
+  const keep = (user.customClaims ?? {}) as Record<string, unknown>;
+  const superuser = values['revoke-superuser'] ? false : values.superuser || keep.superuser === true;
+  await getAuth().setCustomUserClaims(user.uid, superuser ? { tenantId, role, superuser: true } : { tenantId, role });
 
   const mirror: TenantUser = { uid: user.uid, email: user.email ?? null, name: user.displayName || user.email || user.uid, role: role as TenantUser['role'], updatedAt: now };
   await db.doc(`tenants/${tenantId}/users/${user.uid}`).set(mirror);

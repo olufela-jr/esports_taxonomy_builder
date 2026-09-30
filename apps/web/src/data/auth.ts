@@ -20,6 +20,9 @@ export type User = {
   // the "no workspace" screen instead of the shell.
   tenantId: string | null;
   role: Role | null;
+  // The super user (a separate claim): reads every tenant, creates tenants,
+  // invites their first admin; writes inside a tenant only as an admin there.
+  superuser: boolean;
 };
 
 // undefined: not known yet (Firebase is restoring the session). null: signed out.
@@ -41,6 +44,7 @@ export type AuthSession = {
 declare global {
   interface Window {
     __taxoTestRole?: Role;
+    __taxoTestSuper?: boolean;
   }
 }
 
@@ -48,8 +52,8 @@ declare global {
 // author; seed and fixture Rule Sets all live in this one tenant.
 export const LOCAL_TENANT_ID = 'local';
 
-export function localUser(role: Role): User {
-  return { uid: 'you', name: 'Local user', email: null, tenantId: LOCAL_TENANT_ID, role };
+export function localUser(role: Role, superuser = false): User {
+  return { uid: 'you', name: 'Local user', email: null, tenantId: LOCAL_TENANT_ID, role, superuser };
 }
 
 function isRole(value: unknown): value is Role {
@@ -65,13 +69,14 @@ function userFromClaims(firebaseUser: FirebaseUser, claims: Record<string, unkno
     email: firebaseUser.email,
     tenantId: typeof claims.tenantId === 'string' && claims.tenantId ? claims.tenantId : null,
     role: isRole(claims.role) ? claims.role : null,
+    superuser: claims.superuser === true,
   };
 }
 
 // ---- In-memory -----------------------------------------------------------------
 
-export function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin'): AuthSession {
-  let user: User | null = localUser(role);
+export function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin', superuser: boolean = window.__taxoTestSuper ?? false): AuthSession {
+  let user: User | null = localUser(role, superuser);
   const listeners = new Set<Listener>();
 
   function set(next: User | null) {
@@ -87,9 +92,9 @@ export function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin'):
       listener(user);
       return () => { listeners.delete(listener); };
     },
-    async signIn() { set(localUser(role)); },
+    async signIn() { set(localUser(role, superuser)); },
     async signOut() { set(null); },
-    async refreshClaims() { set(localUser(role)); },
+    async refreshClaims() { set(localUser(role, superuser)); },
   };
 }
 

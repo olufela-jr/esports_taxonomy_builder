@@ -7,16 +7,18 @@ import { Compliance } from '@/components/Compliance';
 import { CsvChecker } from '@/components/CsvChecker';
 import { Dictionary } from '@/components/Dictionary';
 import { Members, MembersAdminsOnly } from '@/components/Members';
+import { Tenants, TenantsSuperOnly } from '@/components/Tenants';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { NotFound } from '@/components/NotFound';
 import { RuleSetEditor } from '@/components/RuleSetEditor';
 import { RuleSetList } from '@/components/RuleSetList';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
-import { createAuth, type User } from '@/data/auth';
+import { createAuth, type Role, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
 import { createInviteClaimer, createMembersService, type MembersService } from '@/data/members';
 import { createScanner, type Scanner } from '@/data/scan';
-import { createStore, type BuildDraft, type BuildDraftDraft, type Definition, type DefinitionDraft, type Invite, type RuleSet, type RuleSetDraft, type Store, type Tenant, type TenantUser, type ValueRequest, type ValueRequestDraft } from '@/data/store';
+import { createStore, type BuildDraft, type BuildDraftDraft, type Definition, type DefinitionDraft, type Invite, type RuleSet, type RuleSetDraft, type Store, type StoreSession, type Tenant, type TenantUser, type ValueRequest, type ValueRequestDraft } from '@/data/store';
+import { createTenantsDirectory, type TenantsDirectory } from '@/data/tenants';
 import { isActionPath, readUiState, writeUiState, type UiState } from '@/data/ui-state';
 
 // App owns all shared state with useState: the signed-in user, the Rule Sets
@@ -33,14 +35,38 @@ function App() {
   const [user, setUser] = useState<User | null | undefined>(() => auth.getUser());
   useEffect(() => auth.subscribe(setUser), [auth]);
 
-  // The store belongs to the signed-in tenant, so it exists only while a
-  // workspace member is signed in; its listener starts then and stops on sign-out.
-  const tenantId = user?.tenantId ?? null;
+  // The workspace context is per browser, not per user, so it survives sign-out and sign-in.
+  const [ui, setUi] = useState<UiState>(() => readUiState([]));
+  useEffect(() => writeUiState(ui), [ui]);
+
+  // The super user's directory of tenants, and the workspace being looked at:
+  // a member's own tenant; for the super user the one they picked, their own
+  // by default, else the first tenant there is.
+  const isSuper = user?.superuser === true;
+  const directory = useMemo(() => (isSuper ? createTenantsDirectory(mode) : null), [mode, isSuper]);
+  const [tenants, setTenants] = useState<Tenant[]>(() => directory?.getSnapshot() ?? []);
+  useEffect(() => {
+    if (!directory) {
+      setTenants([]);
+      return;
+    }
+    return directory.subscribe(setTenants);
+  }, [directory]);
   const uid = user?.uid ?? null;
-  const role = user?.role ?? null;
-  const store = useMemo(() => (tenantId && uid && role ? createStore(mode, { tenantId, uid, role }) : null), [mode, tenantId, uid, role]);
+  const viewedTenantId = isSuper ? (ui.tenantId ?? user?.tenantId ?? tenants[0]?.id ?? null) : (user?.tenantId ?? null);
+  // The caller's role in the workspace shown; null when they are not a member of it.
+  const roleHere: Role | null = user && viewedTenantId && user.tenantId === viewedTenantId ? user.role : null;
+  const canEdit = roleHere === 'admin';
+  const readAll = canEdit || isSuper;
+
+  // The store belongs to the workspace shown, so it exists only while a
+  // member (or the super user) is signed in; its listener starts then and
+  // stops on sign-out.
+  const session: StoreSession | null = viewedTenantId && uid ? { tenantId: viewedTenantId, uid, role: roleHere ?? 'user', readAll } : null;
+  const sessionKey = session ? `${session.tenantId}:${session.uid}:${session.role}:${session.readAll}` : '';
+  const store = useMemo(() => (session ? createStore(mode, session) : null), [mode, sessionKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Membership changes: the Callables, or the memory double over the store.
-  const membersService: MembersService | null = useMemo(() => (store && tenantId && uid && role ? createMembersService(mode, store, { tenantId, uid, role }) : null), [mode, store, tenantId, uid, role]);
+  const membersService: MembersService | null = useMemo(() => (store && session ? createMembersService(mode, store, session) : null), [mode, store, sessionKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const [ruleSets, setRuleSets] = useState<RuleSet[]>(() => store?.ruleSets.getSnapshot() ?? []);
   const [definitions, setDefinitions] = useState<Definition[]>(() => store?.definitions.getSnapshot() ?? []);
   const [requests, setRequests] = useState<ValueRequest[]>(() => store?.requests.getSnapshot() ?? []);
@@ -63,10 +89,6 @@ function App() {
     return () => stops.forEach((stop) => stop());
   }, [store]);
 
-  // The workspace context is per browser, not per user, so it survives sign-out and sign-in.
-  const [ui, setUi] = useState<UiState>(() => readUiState(ruleSets));
-  useEffect(() => writeUiState(ui), [ui]);
-
   const selectedRuleSet = ruleSets.find((item) => item.id === ui.ruleSetId);
   const selectedRule = selectedRuleSet?.rules.find((rule) => rule.id === ui.ruleId);
 
@@ -79,6 +101,8 @@ function App() {
 
   const selectRuleSet = (id: string | null) => setUi((state) => (state.ruleSetId === id ? state : { ...state, ruleSetId: id, ruleId: null }));
   const selectRule = (id: string) => setUi((state) => (state.ruleId === id ? state : { ...state, ruleId: id }));
+  // Switching workspace (super user only) drops the Rule Set and Rule selection: they belong to the old one.
+  const selectTenant = (id: string) => setUi((state) => (state.tenantId === id ? state : { ...state, tenantId: id, ruleSetId: null, ruleId: null }));
   const setLastAction = (path: string) => {
     if (isActionPath(path)) setUi((state) => (state.lastAction === path ? state : { ...state, lastAction: path }));
   };
@@ -89,8 +113,15 @@ function App() {
   if (user === null) {
     return <SignIn kind={auth.kind} onSignIn={auth.signIn} />;
   }
+  // The super user with no tenant to look at yet: only the Tenants screen makes sense.
+  if (isSuper && directory && !viewedTenantId) {
+    return <TenantsStandalone user={user} tenants={tenants} directory={directory} onSignOut={auth.signOut} />;
+  }
   // Signed in without a tenant or role claim: nothing is readable yet.
-  if (!user.tenantId || !user.role || !store || !membersService) {
+  if (!isSuper && (!user.tenantId || !user.role)) {
+    return <NoWorkspace user={user} onAcceptInvite={inviteClaimer.accept} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
+  }
+  if (!viewedTenantId || !store || !membersService) {
     return <NoWorkspace user={user} onAcceptInvite={inviteClaimer.accept} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
   }
 
@@ -98,7 +129,13 @@ function App() {
     <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
       <Workspace
         user={user}
-        canEdit={user.role === 'admin'}
+        canEdit={canEdit}
+        isSuper={isSuper}
+        roleHere={roleHere}
+        tenants={tenants}
+        directory={directory}
+        viewedTenantId={viewedTenantId}
+        onSelectTenant={selectTenant}
         ruleSets={ruleSets}
         definitions={definitions}
         requests={requests}
@@ -132,10 +169,37 @@ function App() {
   );
 }
 
+// The Tenants screen on its own, for a super user with nothing to open yet.
+function TenantsStandalone({ user, tenants, directory, onSignOut }: { user: User; tenants: Tenant[]; directory: TenantsDirectory; onSignOut: () => Promise<void> }) {
+  // Inviting needs a members service, which needs a workspace; with no tenant
+  // yet there is nothing to invite into, so the cards' invite is a no-op here.
+  const noInvites: MembersService = {
+    async invite() { throw new Error('Open the tenant first, then invite from its Members screen.'); },
+    async setRole() { throw new Error('Open the tenant first.'); },
+    async remove() { throw new Error('Open the tenant first.'); },
+    async revoke() { throw new Error('Open the tenant first.'); },
+  };
+  return (
+    <div className="min-h-[100dvh] bg-background">
+      <div className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">
+        <div className="mb-6 flex items-center justify-between text-xs text-muted-foreground"><span>Signed in as {user.email ?? user.name}, super user</span><button type="button" className="underline" onClick={() => void onSignOut()} data-testid="button-sign-out">Sign out</button></div>
+        <Tenants tenants={tenants} directory={directory} membersService={noInvites} viewedTenantId={null} storeKind="firestore" onOpen={() => { /* the first tenant opens by default once it exists */ }} />
+      </div>
+    </div>
+  );
+}
+
 type WorkspaceProps = {
   user: User;
   // Admins author; standard users only build and check (D36).
   canEdit: boolean;
+  // The super user: the workspace switcher, the Tenants screen, read access everywhere.
+  isSuper: boolean;
+  roleHere: Role | null;
+  tenants: Tenant[];
+  directory: TenantsDirectory | null;
+  viewedTenantId: string;
+  onSelectTenant: (id: string) => void;
   ruleSets: RuleSet[];
   definitions: Definition[];
   requests: ValueRequest[];
@@ -169,7 +233,7 @@ type WorkspaceProps = {
 // Inside the router: syncs the last action with the URL, redirects the root to
 // it, and renders the shell plus the actions (and the admin section).
 function Workspace(props: WorkspaceProps) {
-  const { user, canEdit, ruleSets, definitions, requests, drafts, tenant, members, invites, membersService, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
+  const { user, canEdit, isSuper, roleHere, tenants, directory, viewedTenantId, onSelectTenant, ruleSets, definitions, requests, drafts, tenant, members, invites, membersService, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
   // In-app notice (O17): an admin sees how many requests wait; a member sees
   // how many of theirs were decided since they last opened the Dictionary.
   const [seenDecided, setSeenDecided] = useState<string[]>(() => readSeenDecided());
@@ -212,7 +276,7 @@ function Workspace(props: WorkspaceProps) {
       : <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
 
   return (
-    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge} canManage={canEdit}>
+    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge} canManage={canEdit || isSuper} isSuper={isSuper} roleHere={roleHere} tenants={tenants} tenantId={viewedTenantId} onSelectTenant={onSelectTenant}>
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>
@@ -220,7 +284,8 @@ function Workspace(props: WorkspaceProps) {
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} /></Route>
           <Route path="/compliance"><Compliance ruleSet={selectedRuleSet} definitions={definitions} scanner={scanner} onSelectRule={onSelectRule} /></Route>
           <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
-          <Route path="/members">{canEdit ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} /> : <MembersAdminsOnly />}</Route>
+          <Route path="/members">{canEdit || isSuper ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} canManageRoles={canEdit} inviteTenantId={isSuper ? viewedTenantId : undefined} /> : <MembersAdminsOnly />}</Route>
+          <Route path="/tenants">{isSuper && directory ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} onOpen={(id) => { onSelectTenant(id); setLocation('/author'); }} /> : <TenantsSuperOnly />}</Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />
         </Switch>

@@ -4,16 +4,18 @@ import type { RuleSet } from './types';
 // the last action used. Per-browser, so it lives in localStorage; Rule Set data
 // itself goes through the store module.
 
-export type ActionPath = '/author' | '/build' | '/check' | '/compliance' | '/dictionary' | '/members';
+export type ActionPath = '/author' | '/build' | '/check' | '/compliance' | '/dictionary' | '/members' | '/tenants';
 
 // ruleId is the selected Rule's immutable id, never its editable key.
+// tenantId is the workspace a super user is looking at; null means their own.
 export type UiState = {
+  tenantId: string | null;
   ruleSetId: string | null;
   ruleId: string | null;
   lastAction: ActionPath;
 };
 
-export const defaultUiState: UiState = { ruleSetId: null, ruleId: null, lastAction: '/author' };
+export const defaultUiState: UiState = { tenantId: null, ruleSetId: null, ruleId: null, lastAction: '/author' };
 
 const STORAGE_KEY = 'campaign-tool-ui-state-v4';
 // v3 stored ruleId as the Rule's key (Rules had no ids yet).
@@ -22,6 +24,7 @@ const V3_STORAGE_KEY = 'campaign-tool-ui-state-v3';
 const V2_STORAGE_KEY = 'campaign-tool-ui-state-v2';
 
 type StoredState = {
+  tenantId?: string | null;
   ruleSetId?: string | null;
   ruleId?: string | null;
   individualRuleId?: string | null;
@@ -30,7 +33,7 @@ type StoredState = {
 };
 
 export function isActionPath(value: unknown): value is ActionPath {
-  return value === '/author' || value === '/build' || value === '/check' || value === '/compliance' || value === '/dictionary' || value === '/members';
+  return value === '/author' || value === '/build' || value === '/check' || value === '/compliance' || value === '/dictionary' || value === '/members' || value === '/tenants';
 }
 
 // Check's All Rules scope became the Compliance board, so someone who was last
@@ -55,6 +58,7 @@ export function readUiState(ruleSets: RuleSet[]): UiState {
     if (current) {
       const parsed = JSON.parse(current) as StoredState;
       return {
+        tenantId: typeof parsed.tenantId === 'string' && parsed.tenantId ? parsed.tenantId : null,
         ruleSetId: parsed.ruleSetId ?? null,
         ruleId: parsed.ruleId ?? null,
         lastAction: actionFrom(parsed.lastAction, parsed.checkMode === 'all'),
@@ -67,6 +71,7 @@ export function readUiState(ruleSets: RuleSet[]): UiState {
       // 'new' was a sentinel for "creating a Rule Set"; it no longer exists.
       const ruleSetId = old.ruleSetId && old.ruleSetId !== 'new' ? old.ruleSetId : null;
       return {
+        tenantId: null,
         ruleSetId,
         ruleId: ruleIdFromKey(ruleSets, ruleSetId, old.ruleId ?? null),
         lastAction: actionFrom(old.lastAction, old.checkMode === 'all'),
@@ -80,6 +85,7 @@ export function readUiState(ruleSets: RuleSet[]): UiState {
       const ruleSetId = old.ruleSetId && old.ruleSetId !== 'new' ? old.ruleSetId : null;
       const ruleKey = wasAllRules ? old.individualRuleId ?? null : old.ruleId ?? null;
       return {
+        tenantId: null,
         ruleSetId,
         ruleId: ruleIdFromKey(ruleSets, ruleSetId, ruleKey),
         lastAction: actionFrom(old.lastAction, wasAllRules),

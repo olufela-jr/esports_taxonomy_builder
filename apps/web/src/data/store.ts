@@ -9,6 +9,7 @@
 // which the Security Rules require.
 import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, setDoc, where, type Firestore } from 'firebase/firestore';
 import { newId } from '@/lib/ids';
+import { LOCAL_TENANT_ID } from './auth';
 import { getFirebase } from '@/lib/firebase';
 import { readLocalDefinitions, readLocalDrafts, readLocalRequests, readLocalRuleSets, writeLocalDefinitions, writeLocalDrafts, writeLocalRequests, writeLocalRuleSets } from './migrations';
 import type { Mode } from './mode';
@@ -23,7 +24,11 @@ export type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, Invite, 
 export type StoreSession = {
   tenantId: string;
   uid: string;
+  // The caller's role in this tenant ('user' for a super user looking at a
+  // tenant they are not a member of).
   role: 'admin' | 'user';
+  // May list everything the rules let an admin list: an admin, or the super user.
+  readAll: boolean;
 };
 
 // Every stored document: its own fields plus the audit fields and an id.
@@ -223,18 +228,18 @@ function memoryTenant(session: StoreSession): TenantReader {
 
 // A standard user sees only their own requests; an admin sees every one.
 function requestVisible(session: StoreSession): (request: ValueRequest) => boolean {
-  return session.role === 'admin' ? () => true : (request) => request.createdBy === session.uid;
+  return session.readAll ? () => true : (request) => request.createdBy === session.uid;
 }
 
 // Drafts follow the same visibility as requests: own, or all for an admin.
 function draftVisible(session: StoreSession): (draft: BuildDraft) => boolean {
-  return session.role === 'admin' ? () => true : (draft) => draft.createdBy === session.uid;
+  return session.readAll ? () => true : (draft) => draft.createdBy === session.uid;
 }
 
 export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], drafts: BuildDraft[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void; drafts: (items: BuildDraft[]) => void }, members?: TenantUser[], invites?: Invite[]): Store {
   // Admins see the whole list; a standard user's readers stay empty, as under the rules.
-  const memberList = memoryList<TenantUser>(session.role === 'admin' ? memoryMembers(session, members) : [], byName);
-  const inviteList = memoryList<Invite>(session.role === 'admin' ? invites ?? [] : [], byNewestInvite);
+  const memberList = memoryList<TenantUser>(session.readAll ? memoryMembers(session, members) : [], byName);
+  const inviteList = memoryList<Invite>(session.readAll ? invites ?? [] : [], byNewestInvite);
   return {
     kind: 'memory',
     ruleSets: memoryCollection<RuleSet, RuleSetDraft>(ruleSets, session, persist?.ruleSets),
@@ -403,11 +408,11 @@ export function createFirestoreStore(db: Firestore, session: StoreSession): Stor
     kind: 'firestore',
     ruleSets: firestoreCollection<RuleSet, RuleSetDraft>(db, ruleSetsPath(session.tenantId), session),
     definitions: firestoreCollection<Definition, DefinitionDraft>(db, definitionsPath(session.tenantId), session),
-    requests: firestoreCollection<ValueRequest, ValueRequestDraft>(db, requestsPath(session.tenantId), session, session.role !== 'admin'),
-    drafts: firestoreCollection<BuildDraft, BuildDraftDraft>(db, draftsPath(session.tenantId), session, session.role !== 'admin'),
+    requests: firestoreCollection<ValueRequest, ValueRequestDraft>(db, requestsPath(session.tenantId), session, !session.readAll),
+    drafts: firestoreCollection<BuildDraft, BuildDraftDraft>(db, draftsPath(session.tenantId), session, !session.readAll),
     tenant: firestoreTenant(db, session),
-    members: firestoreList<TenantUser>(db, membersPath(session.tenantId), session.role === 'admin', byName),
-    invites: firestoreList<Invite>(db, invitesPath(session.tenantId), session.role === 'admin', byNewestInvite),
+    members: firestoreList<TenantUser>(db, membersPath(session.tenantId), session.readAll, byName),
+    invites: firestoreList<Invite>(db, invitesPath(session.tenantId), session.readAll, byNewestInvite),
   };
 }
 
@@ -423,13 +428,17 @@ const stores = new Map<string, Store>();
 // persists past the session except the local development data, which
 // round-trips through localStorage.
 export function createStore(mode: Mode, session: StoreSession): Store {
-  const cacheKey = `${mode}:${session.tenantId}:${session.uid}:${session.role}`;
+  const cacheKey = `${mode}:${session.tenantId}:${session.uid}:${session.role}:${session.readAll}`;
   const cached = stores.get(cacheKey);
   if (cached) return cached;
 
   let store: Store;
   if (mode === 'firestore') {
     store = createFirestoreStore(getFirebase().db, session);
+  } else if (session.tenantId !== LOCAL_TENANT_ID) {
+    // A super user looking at another (memory) tenant: it starts empty.
+    store = createMemoryStore([], [], [], [], session, undefined, [], []);
+    window.__taxoStore = store;
   } else {
     store = window.__taxoTestSeed
       ? createMemoryStore(window.__taxoTestSeed, window.__taxoTestDefinitions ?? [], window.__taxoTestRequests ?? [], window.__taxoTestDrafts ?? [], session, undefined, window.__taxoTestMembers, window.__taxoTestInvites)

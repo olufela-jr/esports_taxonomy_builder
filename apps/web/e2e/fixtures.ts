@@ -177,6 +177,18 @@ export async function readInvites(page: Page): Promise<Array<{ id: string; email
   });
 }
 
+// A second tenant for the super user's directory, in memory mode.
+export const northWindTenant = { id: 'north-wind', name: 'North Wind', config: { allowedDatasets: ['marketing_dw'], platforms: ['google'] }, createdAt: '2026-09-25T09:00:00.000Z', updatedAt: '2026-09-25T09:00:00.000Z' };
+
+// Runs the local user as the super user (still admin of the local workspace
+// unless the role hook says otherwise) with these extra tenants to look at.
+export async function seedSuper(page: Page, tenants: unknown[] = [northWindTenant]) {
+  await page.addInitScript((tenants) => {
+    window.__taxoTestSuper = true;
+    window.__taxoTestTenants = tenants;
+  }, tenants as never);
+}
+
 // The Rule Sets as the app currently holds them, read back through the store.
 export async function readRuleSets(page: Page): Promise<Array<{ id: string; name: string; updatedAt: string; rules: Array<{ id: string; segments: Array<{ allowedValues?: Array<{ label: string; code: string }> }> }> }>> {
   return page.evaluate(() => {

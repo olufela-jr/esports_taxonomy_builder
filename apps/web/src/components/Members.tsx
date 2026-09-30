@@ -20,13 +20,18 @@ type MembersProps = {
   invites: Invite[];
   service: MembersService;
   storeKind: Store['kind'];
+  // False for the super user in a tenant they are not an admin of: they can
+  // invite and revoke, never change roles or remove.
+  canManageRoles: boolean;
+  // The tenant to invite into, named only by the super user.
+  inviteTenantId?: string;
 };
 
 // The admin section: who is in this workspace and with which role, the
 // invites waiting for a first sign-in, and a form to invite by email. Every
 // change goes through the members service, which sets the claims server-side;
 // the lists refresh from the store when the mirror documents change.
-export function Members({ user, members, invites, service, storeKind }: MembersProps) {
+export function Members({ user, members, invites, service, storeKind, canManageRoles, inviteTenantId }: MembersProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<Role>('user');
   const [busy, setBusy] = useState<string | null>(null); // the row or form at work
@@ -51,7 +56,7 @@ export function Members({ user, members, invites, service, storeKind }: MembersP
   const sendInvite = (event: FormEvent) => {
     event.preventDefault();
     void run('invite', async () => {
-      const outcome = await service.invite(email, role);
+      const outcome = await service.invite(email, role, inviteTenantId);
       setEmail('');
       return outcome.status === 'active'
         ? `${outcome.member.email ?? outcome.member.name} already had an account and is now a ${outcome.member.role} here. They sign out and in to pick it up.`
@@ -61,7 +66,7 @@ export function Members({ user, members, invites, service, storeKind }: MembersP
 
   return (
     <div>
-      <PageHeading eyebrow="Admin" title="Members" description="Who is in this workspace and what they can do. Admins author Rule Sets and the Dictionary; users build and check." />
+      <PageHeading eyebrow="Admin" title="Members" description={canManageRoles ? 'Who is in this workspace and what they can do. Admins author Rule Sets and the Dictionary; users build and check.' : 'Who is in this workspace. As the super user you can invite people and revoke invites here; only an admin of this workspace changes roles or removes members.'} />
       <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
         <div className="space-y-6">
           <section className={tableCard} data-testid="section-members">
@@ -76,14 +81,14 @@ export function Members({ user, members, invites, service, storeKind }: MembersP
                       <tr key={member.uid} className={tableRow} data-testid={`row-member-${member.uid}`}>
                         <td className="px-5 py-3"><div className="font-semibold text-foreground">{member.name}{self && <span className="ml-2 rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">You</span>}</div>{member.email && <div className="text-[11px] text-muted-foreground">{member.email}</div>}</td>
                         <td className="px-5 py-3">
-                          <select className={`${inputClass} w-28`} value={member.role} disabled={busy !== null} onChange={(event) => void run(member.uid, async () => { const updated = await service.setRole(member.uid, event.target.value as Role); return `${updated.name} is now ${updated.role === 'admin' ? 'an admin' : 'a user'}.${self ? ' Sign out and in to pick up your new role.' : ''}`; })} aria-label={`Role of ${member.name}`} data-testid={`select-member-role-${member.uid}`}>
+                          <select className={`${inputClass} w-28`} value={member.role} disabled={busy !== null || !canManageRoles} onChange={(event) => void run(member.uid, async () => { const updated = await service.setRole(member.uid, event.target.value as Role); return `${updated.name} is now ${updated.role === 'admin' ? 'an admin' : 'a user'}.${self ? ' Sign out and in to pick up your new role.' : ''}`; })} aria-label={`Role of ${member.name}`} data-testid={`select-member-role-${member.uid}`}>
                             <option value="admin">Admin</option>
                             <option value="user">User</option>
                           </select>
                         </td>
                         <td className="px-5 py-3 text-muted-foreground">{formatDate(member.updatedAt)}</td>
                         <td className="px-5 py-3 text-right">
-                          <button type="button" className={buttonDanger} disabled={busy !== null || self} title={self ? 'You cannot remove yourself.' : undefined} onClick={() => { if (window.confirm(`Remove ${member.name} from this workspace?`)) void run(member.uid, async () => { await service.remove(member.uid); return `${member.name} no longer has access.`; }); }} data-testid={`button-remove-member-${member.uid}`}><Trash2 className="h-4 w-4" /> Remove</button>
+                          <button type="button" className={buttonDanger} disabled={busy !== null || self || !canManageRoles} title={self ? 'You cannot remove yourself.' : !canManageRoles ? 'Only an admin of this workspace removes members.' : undefined} onClick={() => { if (window.confirm(`Remove ${member.name} from this workspace?`)) void run(member.uid, async () => { await service.remove(member.uid); return `${member.name} no longer has access.`; }); }} data-testid={`button-remove-member-${member.uid}`}><Trash2 className="h-4 w-4" /> Remove</button>
                         </td>
                       </tr>
                     );

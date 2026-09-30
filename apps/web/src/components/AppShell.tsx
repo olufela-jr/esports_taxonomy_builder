@@ -2,7 +2,7 @@ import { ReactNode, useState } from 'react';
 import { ShieldCheck, Menu, X, ChevronRight, LogOut } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import type { User } from '@/data/auth';
-import type { RuleSet, Store } from '@/data/store';
+import type { RuleSet, Store, Tenant } from '@/data/store';
 
 // Up to two initials for the avatar; falls back to "?" for an empty name.
 function initials(name: string) {
@@ -39,18 +39,25 @@ type AppShellProps = {
   onSelectRule: (id: string) => void;
   onSignOut: () => Promise<void>;
   dictionaryBadge: number;
-  // Admins get the Members action (the admin section).
+  // Admins get the Members action (the admin section); the super user gets it
+  // too, plus Tenants and the workspace switcher.
   canManage: boolean;
+  isSuper: boolean;
+  // The super user's role in the workspace shown, if any.
+  roleHere: 'admin' | 'user' | null;
+  tenants: Tenant[];
+  tenantId: string | null;
+  onSelectTenant: (id: string) => void;
   children: ReactNode;
 };
 
 // The action-first shell: the persistent Rule Set and Rule context, the
 // actions, the signed-in user, and the workspace for the current action.
-export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, canManage, children }: AppShellProps) {
+export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, canManage, isSuper, roleHere, tenants, tenantId, onSelectTenant, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const current = location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : location.startsWith('/members') ? 'members' : 'author';
+  const current = location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : location.startsWith('/members') ? 'members' : location.startsWith('/tenants') ? 'tenants' : 'author';
 
   const selectedRuleSet = ruleSets.find(rs => rs.id === ruleSetId);
 
@@ -67,6 +74,17 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
         </div>
         
         <div className="mt-8 px-2 flex flex-col gap-3">
+          {isSuper && tenants.length > 0 && <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-sidebar-foreground ml-1">Workspace:</label>
+            <select
+              className="h-9 w-full rounded-[4px] border-0 bg-[#EAE8E3] px-3 text-[13px] font-semibold text-gray-900 outline-none transition focus:ring-2 focus:ring-primary shadow-inner"
+              value={tenantId || ''}
+              onChange={(e) => onSelectTenant(e.target.value)}
+              data-testid="select-shell-tenant"
+            >
+              {tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}
+            </select>
+          </div>}
           <div className="space-y-1.5">
             <label className="text-[11px] font-bold text-sidebar-foreground ml-1">Rule Set:</label>
             <select 
@@ -119,6 +137,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           <div className="mt-6 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Admin</div>
           <nav className="mt-2 space-y-1" aria-label="Admin navigation">
             <NavItem href="/members" label="Members" active={current === 'members'} />
+            {isSuper && <NavItem href="/tenants" label="Tenants" active={current === 'tenants'} />}
           </nav>
         </>}
         
@@ -129,7 +148,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           </div>
           <div className="flex items-center gap-3 border-t border-sidebar-border px-2 pt-4">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-primary text-xs font-semibold text-primary-foreground" aria-hidden="true">{initials(user.name)}</div>
-            <div className="min-w-0"><div className="truncate text-xs font-semibold" data-testid="text-user-name">{user.name}</div>{user.email && <div className="truncate text-[11px] text-sidebar-foreground/60">{user.email}</div>}<div className="text-[11px] text-sidebar-foreground/60" data-testid="text-user-role">{user.role === 'admin' ? 'Admin' : 'User'}</div></div>
+            <div className="min-w-0"><div className="truncate text-xs font-semibold" data-testid="text-user-name">{user.name}</div>{user.email && <div className="truncate text-[11px] text-sidebar-foreground/60">{user.email}</div>}<div className="text-[11px] text-sidebar-foreground/60" data-testid="text-user-role">{isSuper ? `Super user, ${roleHere === 'admin' ? 'admin here' : 'read only here'}` : user.role === 'admin' ? 'Admin' : 'User'}</div></div>
             <button type="button" className="ml-auto rounded-md p-1.5 text-sidebar-foreground/55 transition hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={() => void onSignOut()} aria-label="Sign out" title="Sign out" data-testid="button-sign-out"><LogOut className="h-4 w-4" /></button>
           </div>
         </div>
