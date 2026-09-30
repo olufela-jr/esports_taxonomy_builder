@@ -1,14 +1,18 @@
-// Callable Cloud Functions (Stage 2, v3 phase 4). Every call runs the tenant
-// guard first: the tenant comes from the token claims, the Rule Set from the
-// caller's own tenant path, the dataset must be whitelisted in the tenant
-// config, and a Rule is resolved (parents and shared definitions) before any
-// name is judged. BigQuery is read-only, in this same project, with a bytes
-// cap on every query.
+// Callable Cloud Functions (Stage 2, v3 phase 4; membership from the admin
+// section). Every call runs the tenant guard first: the tenant comes from the
+// token claims, the Rule Set from the caller's own tenant path, the dataset
+// must be whitelisted in the tenant config, and a Rule is resolved (parents
+// and shared definitions) before any name is judged. BigQuery is read-only,
+// in this same project, with a bytes cap on every query. Membership changes
+// (claims and the users mirror) run only here, never from the client.
+import { randomUUID } from 'node:crypto';
 import { BigQuery } from '@google-cloud/bigquery';
 import { initializeApp } from 'firebase-admin/app';
+import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { definitionDependents, resolveRule, type Definition, type EnumEntry, type Rule, type RuleSet } from '@taxo/shared';
+import { acceptInvite as acceptInviteLogic, inviteMember as inviteMemberLogic, removeMember as removeMemberLogic, revokeInvite as revokeInviteLogic, setMemberRole as setMemberRoleLogic, type Account, type AuthPort, type Invite, type Member, type MembersStore, type Ports } from './members';
 import { buildScanQuery, evaluateNames, impactOf, MAX_BYTES_BILLED, type NameReader } from './scan';
 import { assertDatasetAllowed, readTenantConfig, tenantFromAuth, type TenantConfig } from './tenant';
 
@@ -144,3 +148,76 @@ export const previewImpact = onCall({ region: 'asia-south1', timeoutSeconds: 120
   }
   return { definitionId, total, perRule, skipped };
 });
+
+// ---- Membership (admin section) ---------------------------------------------------
+
+// The real ports for members.ts: the Admin SDK's Auth and this project's
+// Firestore. Pending invites are found by scanning every tenant's invites
+// collection, which needs no collection-group index while tenants stay few.
+function adminAuthPort(): AuthPort {
+  const auth = getAuth();
+  const accountOf = (user: UserRecord): Account => ({ uid: user.uid, email: user.email ?? null, name: user.displayName || user.email || user.uid, claims: user.customClaims ?? {} });
+  return {
+    async accountByEmail(email) {
+      try {
+        return accountOf(await auth.getUserByEmail(email));
+      } catch (error) {
+        if ((error as { code?: string }).code === 'auth/user-not-found') return null;
+        throw error;
+      }
+    },
+    async accountById(uid) {
+      try {
+        return accountOf(await auth.getUser(uid));
+      } catch (error) {
+        if ((error as { code?: string }).code === 'auth/user-not-found') return null;
+        throw error;
+      }
+    },
+    async setClaims(uid, claims) {
+      await auth.setCustomUserClaims(uid, claims);
+    },
+  };
+}
+
+function firestoreMembersStore(db: Firestore): MembersStore {
+  return {
+    async listMembers(tenantId) {
+      const docs = await db.collection(`tenants/${tenantId}/users`).get();
+      return docs.docs.map((item) => item.data() as Member);
+    },
+    async writeMember(tenantId, member) {
+      await db.doc(`tenants/${tenantId}/users/${member.uid}`).set(member);
+    },
+    async deleteMember(tenantId, uid) {
+      await db.doc(`tenants/${tenantId}/users/${uid}`).delete();
+    },
+    async listInvites(tenantId) {
+      const docs = await db.collection(`tenants/${tenantId}/invites`).get();
+      return docs.docs.map((item) => item.data() as Invite);
+    },
+    async writeInvite(tenantId, invite) {
+      await db.doc(`tenants/${tenantId}/invites/${invite.id}`).set(invite);
+    },
+    async pendingInvitesFor(email) {
+      const tenants = await db.collection('tenants').get();
+      const found: Array<{ tenantId: string; invite: Invite }> = [];
+      for (const tenant of tenants.docs) {
+        const docs = await db.collection(`tenants/${tenant.id}/invites`).where('email', '==', email).where('status', '==', 'pending').get();
+        for (const item of docs.docs) found.push({ tenantId: tenant.id, invite: item.data() as Invite });
+      }
+      return found.sort((a, b) => a.invite.createdAt.localeCompare(b.invite.createdAt));
+    },
+  };
+}
+
+function memberPorts(): Ports {
+  return { auth: adminAuthPort(), store: firestoreMembersStore(getFirestore()), now: () => new Date().toISOString(), newId: () => randomUUID() };
+}
+
+export const inviteMember = onCall({ region: 'asia-south1' }, async (request) => inviteMemberLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
+export const setMemberRole = onCall({ region: 'asia-south1' }, async (request) => setMemberRoleLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
+export const removeMember = onCall({ region: 'asia-south1' }, async (request) => removeMemberLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
+export const revokeInvite = onCall({ region: 'asia-south1' }, async (request) => revokeInviteLogic(memberPorts(), tenantFromAuth(request.auth), request.data));
+// The one Callable a signed-in account without a workspace may call.
+export const acceptInvite = onCall({ region: 'asia-south1' }, async (request) => acceptInviteLogic(memberPorts(), request.auth));
