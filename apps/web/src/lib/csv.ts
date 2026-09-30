@@ -49,3 +49,29 @@ export function downloadCsv(rows: string[][], filename: string): void {
   link.click();
   URL.revokeObjectURL(url);
 }
+
+// A demo name for a Rule: one valid, one with a bad first value, one missing
+// its last required segment. Keeps the sample CSV meaningful for any Rule Set.
+function sampleName(rule: Rule, variant: 'valid' | 'badValue' | 'short'): string {
+  const required = rule.segments.filter((segment) => segment.required);
+  const tokens = required.map((segment, index) => {
+    const spoil = variant === 'badValue' && index === 0;
+    if (segment.kind === 'enum') return spoil ? 'xx' : (segment.allowedValues[0]?.code ?? 'value');
+    return spoil ? 'bad value' : 'sample';
+  });
+  if (variant === 'short') tokens.pop();
+  return tokens.join(rule.delimiter);
+}
+
+// One column per mapped name column, three rows. Takes a RESOLVED Rule Set, so
+// a definition-backed segment offers a real code.
+export function sampleCsv(ruleSet: RuleSet): string {
+  const columns = mappedColumns(ruleSet);
+  if (columns.length === 0) return 'name\n';
+  const variants = ['valid', 'badValue', 'short'] as const;
+  const rows = variants.map((variant) => columns.map((column) => {
+    const rule = ruleSet.rules.find((item) => item.source.nameColumn === column);
+    return rule ? sampleName(rule, variant) : '';
+  }));
+  return [columns.join(','), ...rows.map((row) => row.join(','))].join('\n');
+}

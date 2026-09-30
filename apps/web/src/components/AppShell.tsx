@@ -42,13 +42,13 @@ type AppShellProps = {
   children: ReactNode;
 };
 
-// The action-first shell: the persistent Rule Set and Rule context, the three
+// The action-first shell: the persistent Rule Set and Rule context, the
 // actions, the signed-in user, and the workspace for the current action.
 export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const current = location.startsWith('/build') ? 'build' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : 'author';
+  const current = location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : 'author';
 
   const selectedRuleSet = ruleSets.find(rs => rs.id === ruleSetId);
 
@@ -110,6 +110,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           <NavItem href="/author" label="Author" active={current === 'author'} />
           <NavItem href="/build" label="Build" active={current === 'build'} />
           <NavItem href="/check" label="Check" active={current === 'check'} />
+          <NavItem href="/compliance" label="Compliance" active={current === 'compliance'} />
           <NavItem href="/dictionary" label="Dictionary" active={current === 'dictionary'} badge={dictionaryBadge} />
         </nav>
         

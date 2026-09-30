@@ -13,3 +13,13 @@ test('the live scan source is offered only with the shared workspace', async ({ 
   await expect(live).toHaveAttribute('title', 'Live scan needs the shared workspace.');
   await expect(page.getByTestId('button-run-check')).toBeVisible();
 });
+
+test('the compliance board gates its live scan the same way', async ({ page }) => {
+  await seedRuleSets(page);
+  await page.goto('/compliance');
+  await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
+  const live = page.getByTestId('button-compliance-live');
+  await expect(live).toBeDisabled();
+  await expect(live).toHaveAttribute('title', 'Live scan needs the shared workspace.');
+  await expect(page.getByTestId('button-run-compliance')).toBeVisible();
+});

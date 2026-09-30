@@ -3,6 +3,7 @@ import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 
 import { AppShell } from '@/components/AppShell';
 import { Builder } from '@/components/Builder';
+import { Compliance } from '@/components/Compliance';
 import { CsvChecker } from '@/components/CsvChecker';
 import { Dictionary } from '@/components/Dictionary';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -14,7 +15,7 @@ import { createAuth, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
 import { createScanner, type Scanner } from '@/data/scan';
 import { createStore, type BuildDraft, type BuildDraftDraft, type Definition, type DefinitionDraft, type RuleSet, type RuleSetDraft, type Store, type Tenant, type ValueRequest, type ValueRequestDraft } from '@/data/store';
-import { isActionPath, readUiState, writeUiState, type CheckMode, type UiState } from '@/data/ui-state';
+import { isActionPath, readUiState, writeUiState, type UiState } from '@/data/ui-state';
 
 // App owns all shared state with useState: the signed-in user, the Rule Sets
 // (from the store) and the persistent workspace context. Everything below
@@ -68,7 +69,6 @@ function App() {
 
   const selectRuleSet = (id: string | null) => setUi((state) => (state.ruleSetId === id ? state : { ...state, ruleSetId: id, ruleId: null }));
   const selectRule = (id: string) => setUi((state) => (state.ruleId === id ? state : { ...state, ruleId: id }));
-  const setCheckMode = (mode: CheckMode) => setUi((state) => (state.checkMode === mode ? state : { ...state, checkMode: mode }));
   const setLastAction = (path: string) => {
     if (isActionPath(path)) setUi((state) => (state.lastAction === path ? state : { ...state, lastAction: path }));
   };
@@ -101,7 +101,6 @@ function App() {
         selectedRule={selectedRule}
         onSelectRuleSet={selectRuleSet}
         onSelectRule={selectRule}
-        onCheckModeChange={setCheckMode}
         onLocationChange={setLastAction}
         onSignOut={auth.signOut}
         onCreate={(draft) => store.ruleSets.create(draft)}
@@ -136,7 +135,6 @@ type WorkspaceProps = {
   selectedRule: RuleSet['rules'][number] | undefined;
   onSelectRuleSet: (id: string | null) => void;
   onSelectRule: (id: string) => void;
-  onCheckModeChange: (mode: CheckMode) => void;
   onLocationChange: (path: string) => void;
   onSignOut: () => Promise<void>;
   onCreate: (draft: RuleSetDraft) => Promise<RuleSet>;
@@ -155,7 +153,7 @@ type WorkspaceProps = {
 // Inside the router: syncs the last action with the URL, redirects the root to
 // it, and renders the shell plus the four actions.
 function Workspace(props: WorkspaceProps) {
-  const { user, canEdit, ruleSets, definitions, requests, drafts, tenant, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onCheckModeChange, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
+  const { user, canEdit, ruleSets, definitions, requests, drafts, tenant, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
   // In-app notice (O17): an admin sees how many requests wait; a member sees
   // how many of theirs were decided since they last opened the Dictionary.
   const [seenDecided, setSeenDecided] = useState<string[]>(() => readSeenDecided());
@@ -203,7 +201,8 @@ function Workspace(props: WorkspaceProps) {
         <Switch>
           <Route path="/author">{author}</Route>
           <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} user={user} requests={requests} drafts={drafts} onCreateRequest={onCreateRequest} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} /></Route>
-          <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} checkMode={ui.checkMode} onCheckModeChange={onCheckModeChange} /></Route>
+          <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} /></Route>
+          <Route path="/compliance"><Compliance ruleSet={selectedRuleSet} definitions={definitions} scanner={scanner} onSelectRule={onSelectRule} /></Route>
           <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />

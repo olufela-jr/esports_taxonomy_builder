@@ -1,21 +1,19 @@
 import type { RuleSet } from './types';
 
-// The persistent workspace context: which Rule Set and Rule are selected, the
-// last action used, and the Check scope. Per-browser, so it lives in
-// localStorage; Rule Set data itself goes through the store module.
+// The persistent workspace context: which Rule Set and Rule are selected, and
+// the last action used. Per-browser, so it lives in localStorage; Rule Set data
+// itself goes through the store module.
 
-export type ActionPath = '/author' | '/build' | '/check' | '/dictionary';
-export type CheckMode = 'single' | 'all';
+export type ActionPath = '/author' | '/build' | '/check' | '/compliance' | '/dictionary';
 
 // ruleId is the selected Rule's immutable id, never its editable key.
 export type UiState = {
   ruleSetId: string | null;
   ruleId: string | null;
   lastAction: ActionPath;
-  checkMode: CheckMode;
 };
 
-export const defaultUiState: UiState = { ruleSetId: null, ruleId: null, lastAction: '/author', checkMode: 'single' };
+export const defaultUiState: UiState = { ruleSetId: null, ruleId: null, lastAction: '/author' };
 
 const STORAGE_KEY = 'campaign-tool-ui-state-v4';
 // v3 stored ruleId as the Rule's key (Rules had no ids yet).
@@ -32,11 +30,16 @@ type StoredState = {
 };
 
 export function isActionPath(value: unknown): value is ActionPath {
-  return value === '/author' || value === '/build' || value === '/check' || value === '/dictionary';
+  return value === '/author' || value === '/build' || value === '/check' || value === '/compliance' || value === '/dictionary';
 }
 
-function isCheckMode(value: unknown): value is CheckMode {
-  return value === 'single' || value === 'all';
+// Check's All Rules scope became the Compliance board, so someone who was last
+// working there lands there rather than on a Check screen that no longer has
+// it. The key is not bumped: an unknown lastAction already falls back, and a
+// new key would throw away everyone's Rule Set selection for nothing.
+function actionFrom(lastAction: unknown, wasAllRules: boolean): ActionPath {
+  const action = isActionPath(lastAction) ? lastAction : '/author';
+  return action === '/check' && wasAllRules ? '/compliance' : action;
 }
 
 // Older versions stored the Rule's key; look up the id it now has.
@@ -54,8 +57,7 @@ export function readUiState(ruleSets: RuleSet[]): UiState {
       return {
         ruleSetId: parsed.ruleSetId ?? null,
         ruleId: parsed.ruleId ?? null,
-        lastAction: isActionPath(parsed.lastAction) ? parsed.lastAction : '/author',
-        checkMode: isCheckMode(parsed.checkMode) ? parsed.checkMode : 'single',
+        lastAction: actionFrom(parsed.lastAction, parsed.checkMode === 'all'),
       };
     }
 
@@ -67,8 +69,7 @@ export function readUiState(ruleSets: RuleSet[]): UiState {
       return {
         ruleSetId,
         ruleId: ruleIdFromKey(ruleSets, ruleSetId, old.ruleId ?? null),
-        lastAction: isActionPath(old.lastAction) ? old.lastAction : '/author',
-        checkMode: isCheckMode(old.checkMode) ? old.checkMode : 'single',
+        lastAction: actionFrom(old.lastAction, old.checkMode === 'all'),
       };
     }
 
@@ -81,8 +82,7 @@ export function readUiState(ruleSets: RuleSet[]): UiState {
       return {
         ruleSetId,
         ruleId: ruleIdFromKey(ruleSets, ruleSetId, ruleKey),
-        lastAction: isActionPath(old.lastAction) ? old.lastAction : '/author',
-        checkMode: wasAllRules ? 'all' : 'single',
+        lastAction: actionFrom(old.lastAction, wasAllRules),
       };
     }
   } catch {

@@ -80,7 +80,11 @@ round-trip and every violation type; keep it green after every change.
 ## UI rule: action-first with persistent context
 Top navigation is the three actions, Author, Build, Check, plus Dictionary (v3, added
 2026-09-25 by decision): the tenant's shared definitions, where admins author them and
-standard users request new values. The selected Rule Set and Rule are persistent context
+standard users request new values; and Compliance (added 2026-09-30 by decision): what
+fails and why across every Rule in the selected Rule Set, from a CSV or a live scan.
+Check is single-Rule only and links across to Compliance; the pooled "All Rules" figure
+and the strict per-row view both moved to the board, which pools through the same
+`rollup` so the two can never disagree. The selected Rule Set and Rule are persistent context
 carried across all of them. Switching action must NOT reset them.
 (Implemented in the prototype, including restore across refresh. Preserve it through
 migration; the browser regression test in checklist step 3 guards it.)

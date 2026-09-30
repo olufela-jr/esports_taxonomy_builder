@@ -2,7 +2,8 @@ import { expect, test, type Page } from '@playwright/test';
 import { seedRuleSets, UI_STATE_KEY } from './fixtures';
 
 // The shared Rule Set and Rule context must survive switching between Author,
-// Build, and Check, and a full page reload. This was a recurring prototype bug.
+// Build, Check and Compliance, and a full page reload. This was a recurring
+// prototype bug.
 
 async function shellState(page: Page) {
   return {
@@ -16,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   await seedRuleSets(page);
 });
 
-test('selection survives Author, Build, Check, and a reload', async ({ page }) => {
+test('selection survives Author, Build, Check, Compliance, and a reload', async ({ page }) => {
   await page.goto('/author');
 
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
@@ -31,15 +32,17 @@ test('selection survives Author, Build, Check, and a reload', async ({ page }) =
   await expect(page.getByText('Values for Meta Ad Sets.')).toBeVisible();
 
   await page.getByTestId('link-nav-check').click();
-  await expect(page.getByTestId('button-mode-all')).toBeVisible();
+  await expect(page.getByTestId('input-check-column')).toBeVisible();
   expect(await shellState(page)).toEqual({ ruleSet: 'ruleset-paid', rule: 'rule-meta', path: '/check' });
-  await page.getByTestId('button-mode-all').click();
-  await expect(page.getByTestId('button-mode-all')).toHaveAttribute('aria-pressed', 'true');
+
+  // Compliance is Rule-Set-scoped, so it must carry the Rule through untouched.
+  await page.getByTestId('link-nav-compliance').click();
+  await expect(page.getByTestId('button-run-compliance')).toBeVisible();
+  expect(await shellState(page)).toEqual({ ruleSet: 'ruleset-paid', rule: 'rule-meta', path: '/compliance' });
 
   await page.reload();
-  await expect(page.getByTestId('button-mode-all')).toBeVisible();
-  expect(await shellState(page)).toEqual({ ruleSet: 'ruleset-paid', rule: 'rule-meta', path: '/check' });
-  await expect(page.getByTestId('button-mode-all')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('button-run-compliance')).toBeVisible();
+  expect(await shellState(page)).toEqual({ ruleSet: 'ruleset-paid', rule: 'rule-meta', path: '/compliance' });
 
   await page.getByTestId('link-nav-author').click();
   await expect(page.getByTestId('button-save-ruleset')).toBeVisible();
