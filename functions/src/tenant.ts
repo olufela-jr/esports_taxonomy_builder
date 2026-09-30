@@ -32,7 +32,7 @@ function isRole(value: unknown): value is Role {
 
 export function tenantFromAuth(auth: CallerAuth): Caller {
   if (!auth) {
-    throw new HttpsError('unauthenticated', 'Sign in to run a scan.');
+    throw new HttpsError('unauthenticated', 'Sign in first.');
   }
   const { tenantId, role } = auth.token;
   if (typeof tenantId !== 'string' || !tenantId) {

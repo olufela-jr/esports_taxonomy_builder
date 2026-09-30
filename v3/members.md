@@ -96,3 +96,11 @@ Three commits, Functions first, screen last.
 - The memory double duplicates the Function's guard messages. If they drift, the Playwright
   cases on the double would still pass; the Function tests are the ones that matter.
 - Deploy: Functions first (five new Callables), then rules and hosting together.
+
+## Deploy (2026-09-30)
+
+`firebase deploy --only functions --force` created the five membership Callables and updated
+the two scan Functions in one pass (the CLI reached its APIs this time; it also set the
+container cleanup policy it had asked for). Then `./deploy.sh --skip-tests` released the rules
+and Hosting, serving the bundle just built. An unauthenticated call to `acceptInvite` and
+`inviteMember` is refused by the guard rather than missing.
