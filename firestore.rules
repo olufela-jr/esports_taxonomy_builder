@@ -91,9 +91,18 @@ service cloud.firestore {
       allow read: if inTenant(tenantId);
       allow write: if false;
 
-      // A readable mirror of the claims; the claims are the truth.
+      // A readable mirror of the claims; the claims are the truth. Written
+      // only by the membership Functions and the provisioning script.
       match /users/{uid} {
         allow read: if inTenant(tenantId) && (request.auth.uid == uid || isAdmin(tenantId));
+        allow write: if false;
+      }
+
+      // Invites an admin has sent (the admin section): admins read them,
+      // only the membership Functions write them, and the person invited
+      // never sees the document, their sign-in claims it server-side.
+      match /invites/{inviteId} {
+        allow read: if isAdmin(tenantId);
         allow write: if false;
       }
 

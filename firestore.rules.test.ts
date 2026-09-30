@@ -92,6 +92,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'tenants/acme'), acmeTenant);
     await setDoc(doc(db, 'tenants/acme/users/alice'), { uid: 'alice', email: 'alice@acme.test', role: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' });
     await setDoc(doc(db, 'tenants/acme/users/uma'), { uid: 'uma', email: 'uma@acme.test', role: 'user', updatedAt: '2026-01-01T00:00:00.000Z' });
+    await setDoc(doc(db, 'tenants/acme/invites/inv-1'), { id: 'inv-1', email: 'new@acme.test', role: 'user', status: 'pending', invitedBy: 'alice', acceptedBy: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
     await setDoc(doc(db, 'tenants/acme/rulesets/rs-1'), ruleSet);
     await setDoc(doc(db, 'tenants/acme/definitions/def-1'), definition);
     await setDoc(doc(db, 'tenants/acme/requests/req-1'), valueRequest);
@@ -138,6 +139,22 @@ describe('tenant isolation', () => {
     await assertFails(updateDoc(doc(alice(), 'tenants/acme'), { name: 'Renamed' }));
     await assertFails(updateDoc(doc(alice(), 'tenants/acme'), { 'config.allowedDatasets': ['everything'] }));
     await assertFails(setDoc(doc(bob(), 'tenants/acme'), acmeTenant));
+  });
+
+  it('lets only an admin of the tenant read invites, and nobody write them', async () => {
+    await assertSucceeds(getDoc(doc(alice(), 'tenants/acme/invites/inv-1')));
+    await assertSucceeds(getDocs(collection(alice(), 'tenants/acme/invites')));
+    await assertFails(getDoc(doc(uma(), 'tenants/acme/invites/inv-1')));
+    await assertFails(getDocs(collection(uma(), 'tenants/acme/invites')));
+    await assertFails(getDoc(doc(bob(), 'tenants/acme/invites/inv-1')));
+    await assertFails(getDoc(doc(nobody(), 'tenants/acme/invites/inv-1')));
+    // The invited person cannot look for their own invite; the Function claims it for them.
+    await assertFails(getDocs(query(collection(nobody(), 'tenants/acme/invites'), where('email', '==', 'new@acme.test'))));
+    // Nobody invites, accepts or revokes through the database directly.
+    await assertFails(setDoc(doc(alice(), 'tenants/acme/invites/inv-2'), { id: 'inv-2', email: 'x@acme.test', role: 'admin', status: 'pending', invitedBy: 'alice', acceptedBy: null, createdAt: '2026-01-02T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' }));
+    await assertFails(updateDoc(doc(alice(), 'tenants/acme/invites/inv-1'), { status: 'revoked' }));
+    await assertFails(updateDoc(doc(uma(), 'tenants/acme/invites/inv-1'), { status: 'accepted', acceptedBy: 'uma' }));
+    await assertFails(deleteDoc(doc(alice(), 'tenants/acme/invites/inv-1')));
   });
 
   it('lets a user read their own users document, admins read any, and nobody write', async () => {
