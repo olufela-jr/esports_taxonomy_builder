@@ -24,7 +24,8 @@ apps/web/                React + Vite app
   src/data/mode.ts       decides memory or Firestore once, before sign-in
   src/data/store.ts      every Firestore or in-memory storage call, scoped to the signed-in tenant
   src/data/auth.ts       every sign-in call (Google through Firebase Auth, or a local user) and the tenant and role claims
-  src/components/        RuleSetList, RuleSetEditor (Author), Builder (Build), CsvChecker (Check), AppShell, SignIn
+  src/data/members.ts    every membership change (invite, role, remove, claim an invite): the Callables, or a memory double
+  src/components/        RuleSetList, RuleSetEditor (Author), Builder (Build), CsvChecker (Check), Compliance, Dictionary, Members, AppShell, SignIn
   e2e/                   Playwright browser regressions
 functions/               @taxo/functions: the scanCampaigns Callable with the tenant guard (BigQuery body is Stage 2)
 scripts/                 one-off Admin SDK scripts: migrate-v3 (data into the first tenant) and provision-user (claims)
@@ -92,6 +93,15 @@ the caller's tenant.
   single-page rewrite).
 - The Function is built (`pnpm --filter @taxo/functions build`) but not deployed yet: it
   needs the Blaze plan and a deploy-time manifest without the `workspace:*` dependency.
+
+### Members (the admin section)
+
+Day to day, a workspace admin manages access from the app: the Members action lists who is in
+the workspace, invites someone by email with a role, changes roles and removes access. An
+invited person signs in with the Google account for that email and joins automatically; an
+account that already exists is added at once. A workspace always keeps at least one admin, and
+nobody removes themselves. The scripts below remain for bootstrap (the first admin of a new
+tenant) and rescue.
 
 ### Provisioning and migration (Admin SDK scripts)
 

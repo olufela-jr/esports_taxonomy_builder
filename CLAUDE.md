@@ -48,8 +48,12 @@ round-trip and every violation type; keep it green after every change.
   and is refused if the document moved on.
 - Tenancy (v3, D35, D36): every document lives under `tenants/{tenantId}/`. A user belongs
   to one tenant and holds one role, `admin` or `user`, carried as custom claims on the ID
-  token and set only by `scripts/provision-user.ts`. The app, the Security Rules and the
-  Function read the claims; nothing reads a tenant from data or a request body. Any member
+  token and set only server-side: by the membership Callables behind the Members screen
+  (`functions/src/members.ts`, called through `apps/web/src/data/members.ts`), or by
+  `scripts/provision-user.ts` for bootstrap. Admins invite by email; an invite at
+  `tenants/{tenantId}/invites/{id}` is claimed by that email's first sign-in. The app, the
+  Security Rules and the Functions read the claims; nothing reads a tenant from data or a
+  request body. A tenant always keeps at least one admin. Any member
   reads the tenant's Rule Sets; only an admin creates, updates or deletes, and every write
   stamps `updatedBy` with the caller's uid (D31). The runtime mode (`memory` or
   `firestore`) is decided once in `apps/web/src/data/mode.ts`; auth and the store follow it.
@@ -207,6 +211,13 @@ at 1 GB. The web app calls both only through `apps/web/src/data/scan.ts`. Whitel
 parameters, never string-concatenated. Service account: `bigquery.dataViewer` +
 `bigquery.jobUser`, read-only. Bundle the Function with esbuild so `@taxo/shared` is
 inlined: pnpm's symlinked `node_modules` makes this essential, do not rely on hoisting.
+
+## Members and the super user
+The admin section (`v3/members.md`, 2026-09-30) is done: Members action for admins, invites,
+roles, removal, all through Callables. Next, as its own release: a super user above tenants
+(a separate `superuser` claim, set by the script), read-only inside tenants it is not an admin
+of, with a tenant switcher and a Tenants screen to create tenants and invite their first admin.
+Decided 2026-09-30: read-only, not a rules bypass for writes.
 
 ## Do not
 - Do not duplicate engine logic outside `@taxo/shared`.

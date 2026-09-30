@@ -11,6 +11,7 @@ on `main`, and each phase gets one notes file here, updated with every commit in
 | [phase-3.md](phase-3.md) | Batch build: combinations of codes as a CSV, then the child batch across parents |
 | [phase-4.md](phase-4.md) | The BigQuery scan and the impact preview, Functions deployed in the same project |
 | [phase-5.md](phase-5.md) | Drafts, blocking in Build while a request is pending, in-app notice |
+| [members.md](members.md) | The admin section: Members screen, invites claimed on first sign-in, membership Callables |
 | [compliance-board.md](compliance-board.md) | The Compliance action: violation codes, the cross-Rule aggregator, and the board that says what fails and why |
 | [demo-data.md](demo-data.md) | The "Paid search (demo)" Rule Set, its sample names and the BigQuery table, for testing every feature end to end |
 
