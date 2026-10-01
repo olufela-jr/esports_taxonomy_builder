@@ -263,8 +263,11 @@ function Workspace(props: WorkspaceProps) {
   const [location, setLocation] = useLocation();
   const [onRuleSetPage, ruleSetParams] = useRoute<{ ruleSetId: string; '*'?: string }>('/rules/:ruleSetId/*?');
   const routeRuleSetId = onRuleSetPage && ruleSetParams.ruleSetId !== 'new' ? ruleSetParams.ruleSetId : null;
-  // /rules/:ruleSetId/:ruleId opens one Rule of the Rule Set.
-  const routeRuleId = onRuleSetPage ? (ruleSetParams['*'] ?? '').split('/')[0] || null : null;
+  // /rules/:ruleSetId/:ruleId opens one Rule of the Rule Set, and
+  // /rules/:ruleSetId/:ruleId/segments/:segmentId one of its segments beside it.
+  const routeRest = onRuleSetPage ? (ruleSetParams['*'] ?? '').split('/') : [];
+  const routeRuleId = routeRest[0] || null;
+  const routeSegmentId = routeRest[1] === 'segments' ? routeRest[2] || null : null;
 
   useEffect(() => {
     onLocationChange(location);
@@ -316,6 +319,7 @@ function Workspace(props: WorkspaceProps) {
           key={editKey}
           existing={openedRuleSet ?? null}
           ruleId={routeRuleId}
+          segmentId={routeSegmentId}
           edit={edits[editKey]}
           onEdit={editFor(editKey)}
           definitions={definitions}
@@ -340,7 +344,7 @@ function Workspace(props: WorkspaceProps) {
           <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} user={user} requests={requests} drafts={drafts} onCreateRequest={onCreateRequest} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} /></Route>
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} /></Route>
           <Route path="/compliance"><Compliance ruleSet={selectedRuleSet} definitions={definitions} scanner={scanner} onSelectRule={onSelectRule} /></Route>
-          <Route path="/definitions"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
+          <Route path="/definitions/*?"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
           <Route path="/members">{canManage ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} canManageRoles={canEdit} inviteTenantId={isSuper ? viewedTenantId : undefined} /> : <MembersAdminsOnly />}</Route>
           <Route path="/tenants">{isSuper && directory && accessQueue ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} accessRequests={accessRequests} accessQueue={accessQueue} onOpen={(id) => { onSelectTenant(id); setLocation('/rules'); }} /> : <TenantsSuperOnly />}</Route>
           <Route component={NotFound} />

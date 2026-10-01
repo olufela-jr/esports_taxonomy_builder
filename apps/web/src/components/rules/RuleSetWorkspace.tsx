@@ -16,6 +16,7 @@ export type RuleSetEdit = { name: string; rules: Rule[]; baseUpdatedAt: string }
 type RuleSetWorkspaceProps = {
   existing: RuleSet | null; // null: a new Rule Set, not saved yet
   ruleId: string | null;    // the Rule open in the editor; null shows the Rule Set page
+  segmentId: string | null; // the segment open in the Rule editor's drawer
   edit: RuleSetEdit | undefined;
   onEdit: (edit: RuleSetEdit | null) => void; // null drops the edits
   definitions: Definition[];
@@ -32,7 +33,7 @@ type RuleSetWorkspaceProps = {
 // The Rule Set being managed: its draft, the save bar and conflict handling,
 // around either the Rule Set page or one Rule's editor. Saving always writes
 // the whole Rule Set, which is one document, with the version it started from.
-export function RuleSetWorkspace({ existing, ruleId, edit, onEdit, definitions, readOnly, storeKind, justCreated, onCreate, onUpdate, onDelete, onCreated, onDeleted }: RuleSetWorkspaceProps) {
+export function RuleSetWorkspace({ existing, ruleId, segmentId, edit, onEdit, definitions, readOnly, storeKind, justCreated, onCreate, onUpdate, onDelete, onCreated, onDeleted }: RuleSetWorkspaceProps) {
   const isNew = existing === null;
   const [saved, setSaved] = useState(justCreated);
   // A save against Firestore can take seconds on a cold connection; while one
@@ -126,7 +127,7 @@ export function RuleSetWorkspace({ existing, ruleId, edit, onEdit, definitions, 
       <fieldset disabled={readOnly} className="min-w-0">
         {ruleId
           ? rule
-            ? <RuleEditor rule={rule} ruleIndex={rules.indexOf(rule)} ruleSetName={name} base={base} rules={rules} draftRuleSet={draftRuleSet} issues={issues.rules[rule.id] ?? []} definitions={definitions} onRules={(next) => change({ rules: next })} />
+            ? <RuleEditor rule={rule} ruleIndex={rules.indexOf(rule)} ruleSetName={name} base={base} segmentId={segmentId} readOnly={readOnly} rules={rules} draftRuleSet={draftRuleSet} issues={issues.rules[rule.id] ?? []} definitions={definitions} onRules={(next) => change({ rules: next })} />
             : <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center text-sm text-muted-foreground" data-testid="text-rule-missing">This Rule is not in the Rule Set. <Link href={base} className="font-semibold text-primary underline">Back to {name || 'the Rule Set'}</Link></div>
           : <RuleSetPage name={name} rules={rules} base={base} isNew={isNew} readOnly={readOnly} draftRuleSet={draftRuleSet} issues={issues} definitions={definitions} onName={(next) => change({ name: next })} onRules={(next) => change({ rules: next })} onDelete={deleteRuleSet} />}
       </fieldset>

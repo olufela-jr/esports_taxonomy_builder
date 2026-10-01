@@ -27,6 +27,7 @@ type SegmentChipRowProps = {
   onReorder?: (segmentId: string, toIndex: number) => void;
   showName?: boolean; // the composed name and compose's errors under the chips
   badges?: boolean; // the Global/Local badges; off where scope does not matter
+  numbered?: boolean; // each chip's position in the name, from 1
   compact?: boolean;
   testId?: string;
 };
@@ -35,7 +36,7 @@ type SegmentChipRowProps = {
 // on a chip comes out of compose: the chips split its name on the delimiter,
 // which no value can contain, and compose skips exactly the segments with no
 // value, so the tokens line up with the filled segments in order.
-export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples = false, seed = 0, selectedSegmentId, leavingSegmentId, onSelect, onAdd, onReorder, showName = false, badges = true, compact = false, testId = 'chip-row' }: SegmentChipRowProps) {
+export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples = false, seed = 0, selectedSegmentId, leavingSegmentId, onSelect, onAdd, onReorder, showName = false, badges = true, numbered = false, compact = false, testId = 'chip-row' }: SegmentChipRowProps) {
   const container = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const segments = rule.segments;
@@ -86,6 +87,7 @@ export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples
                 : 'border-border bg-card text-foreground';
           const chip = (
             <>
+              {numbered && <span className="font-mono text-[10px] font-semibold text-primary" data-testid={`${testId}-index-${segment.key}`}>{index + 1}</span>}
               {inherited && <Lock className="h-3 w-3 shrink-0" aria-label="Inherited" />}
               <span className={`truncate ${mode === 'labels' ? 'font-bold' : 'font-mono'} ${placeholder || sample ? 'italic' : ''}`}>{text}</span>
               {!segment.required && <span className="text-[10px] font-semibold text-muted-foreground" title="Optional">opt</span>}

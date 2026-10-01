@@ -227,3 +227,9 @@ export async function backToRuleSet(page: Page) {
   await page.getByTestId('crumb-1').click();
   await page.getByTestId('list-rule-groups').waitFor();
 }
+
+// In the Rule editor: open a segment in the drawer by clicking its chip.
+export async function openSegment(page: Page, key: string) {
+  await page.getByTestId(`chips-rule-seg-${key}`).click();
+  await page.getByTestId('drawer-segment').waitFor();
+}

@@ -4,7 +4,8 @@ import { X } from 'lucide-react';
 // A side panel over the right of the page. Not modal: the page behind stays
 // visible and usable (the segment chips above all). Escape closes it, and
 // opening it moves focus to its first field.
-export function Drawer({ title, eyebrow, onClose, children, testId }: { title: string; eyebrow?: ReactNode; onClose: () => void; children: ReactNode; testId?: string }) {
+// top: where the panel starts, so it can sit below a sticky bar it must not hide.
+export function Drawer({ title, eyebrow, onClose, children, testId, top = 0 }: { title: string; eyebrow?: ReactNode; onClose: () => void; children: ReactNode; testId?: string; top?: number }) {
   const panel = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export function Drawer({ title, eyebrow, onClose, children, testId }: { title: s
   }, [onClose]);
 
   return (
-    <aside ref={panel} className="drawer-enter fixed inset-y-0 right-0 z-30 flex w-full max-w-[440px] flex-col border-l border-border bg-card shadow-2xl" aria-label={title} data-testid={testId}>
+    <aside ref={panel} style={{ top }} className="drawer-enter fixed bottom-0 right-0 z-30 flex w-full max-w-[440px] flex-col border-l border-border bg-card shadow-2xl" aria-label={title} data-testid={testId}>
       <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
         <div className="min-w-0">
           {eyebrow && <div className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wider text-primary">{eyebrow}</div>}

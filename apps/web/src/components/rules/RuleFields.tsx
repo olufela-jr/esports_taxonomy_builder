@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ArrowDown, ArrowUp, Database, Trash2 } from 'lucide-react';
-import { ancestorsOf, entriesFromCodes, isPlatform, PLATFORMS, resolveRule, UTM_PARAMS, type Definition, type Rule, type Segment, type UtmMapping, type UtmParam, type UtmSource } from '@taxo/shared';
-import { Link } from 'wouter';
-import { iconButton, inputClass } from '../styles';
-import { cleanTags, entriesFromCodeList, parseList, slugify } from './draft';
+import { Database } from 'lucide-react';
+import { ancestorsOf, isPlatform, PLATFORMS, resolveRule, UTM_PARAMS, type Definition, type Rule, type Segment, type UtmMapping, type UtmParam, type UtmSource } from '@taxo/shared';
+import { inputClass } from '../styles';
+import { cleanTags, parseList, slugify } from './draft';
 
 // The Rule editor's controls, one component per concern. Each works on one
 // Rule; ruleIndex is the Rule's place in the Rule Set, kept in test ids.
@@ -21,29 +20,6 @@ export function CommaListInput({ value, onChange, className, placeholder, testId
   }, [value]);
 
   return <input className={className} value={draft} onChange={(event) => { setDraft(event.target.value); onChange(parseList(event.target.value)); }} placeholder={placeholder} data-testid={testId} />;
-}
-
-// definitions and platform: the shared definitions an enum segment may take
-// its values from, filtered to those on the Rule's platform (a definition with
-// no platforms fits every Rule; a scoped one needs the Rule on that platform).
-export function SegmentEditor({ segment, ruleIndex, segmentIndex, segmentCount, definitions, platform, inheritedBy, onChange, onMove, onRemove }: { segment: Segment; ruleIndex: number; segmentIndex: number; segmentCount: number; definitions: Definition[]; platform: string | undefined; inheritedBy: string[]; onChange: (updates: Partial<Segment>) => void; onMove: (direction: -1 | 1) => void; onRemove: () => void }) {
-  const definitionId = segment.kind === 'enum' ? segment.definitionId : undefined;
-  const offered = definitions.filter((definition) => definition.platforms.length === 0 || (platform !== undefined && definition.platforms.includes(platform)) || definition.id === definitionId);
-  const chosen = definitions.find((definition) => definition.id === definitionId);
-  return <div className="rounded-lg border border-border/30 bg-background/50 p-4" data-testid={`card-segment-${ruleIndex}-${segmentIndex}`}><div className="grid gap-4 sm:grid-cols-[1fr_1fr_145px_auto] sm:items-end">
-    <label className="text-[13px] font-bold text-foreground">Label:<input className={`${inputClass} mt-2`} value={segment.label} onChange={(event) => {
-      const newLabel = event.target.value;
-      onChange({ label: newLabel, key: slugify(newLabel) || `segment_${segmentIndex + 1}` });
-    }} data-testid={`input-segment-label-${ruleIndex}-${segmentIndex}`} /></label>
-    <label className="text-[13px] font-bold text-foreground">Key:<input className={`${inputClass} mt-2 font-mono`} value={segment.key} onChange={(event) => onChange({ key: event.target.value.toLowerCase().replaceAll(' ', '_') })} data-testid={`input-segment-key-${ruleIndex}-${segmentIndex}`} /></label>
-    <label className="text-[13px] font-bold text-foreground">Type:<select className={`${inputClass} mt-2`} value={segment.kind} onChange={(event) => onChange(event.target.value === 'enum' ? { kind: 'enum', allowedValues: segment.kind === 'enum' ? segment.allowedValues : entriesFromCodes(['value']) } : { kind: 'freeform', maxLength: segment.kind === 'freeform' ? segment.maxLength : 32, illegalChars: segment.kind === 'freeform' ? segment.illegalChars : [' ', '/', '?', '#', '&'] })} data-testid={`select-segment-kind-${ruleIndex}-${segmentIndex}`}><option value="enum">Allowed values</option><option value="freeform">Freeform</option></select></label>
-    <div className="mb-0.5 flex items-center gap-1">
-      <button type="button" className={iconButton} onClick={() => onMove(-1)} disabled={segmentIndex === 0} aria-label="Move segment up" data-testid={`button-move-segment-up-${ruleIndex}-${segmentIndex}`}><ArrowUp className="h-4 w-4" /></button>
-      <button type="button" className={iconButton} onClick={() => onMove(1)} disabled={segmentIndex === segmentCount - 1} aria-label="Move segment down" data-testid={`button-move-segment-down-${ruleIndex}-${segmentIndex}`}><ArrowDown className="h-4 w-4" /></button>
-      <button type="button" className="rounded-md p-2 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:opacity-30" onClick={onRemove} disabled={inheritedBy.length > 0} title={inheritedBy.length > 0 ? `Inherited by ${inheritedBy.join(', ')}` : undefined} aria-label="Remove segment" data-testid={`button-remove-segment-${ruleIndex}-${segmentIndex}`}><Trash2 className="h-4 w-4" /></button>
-    </div></div>
-     <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end">{segment.kind === 'enum' ? <div className="flex flex-1 flex-col gap-4 sm:flex-row sm:items-end"><label className="text-[13px] font-bold text-foreground sm:w-60">Values from:<select className={`${inputClass} mt-2`} value={definitionId ?? ''} onChange={(event) => onChange(event.target.value ? { definitionId: event.target.value, allowedValues: [] } : { definitionId: undefined, allowedValues: segment.allowedValues.length > 0 ? segment.allowedValues : entriesFromCodes(['value']) })} data-testid={`select-segment-source-${ruleIndex}-${segmentIndex}`}><option value="">This Rule's own list</option>{offered.map((definition) => <option key={definition.id} value={definition.id}>{definition.name}{definition.platforms.length > 0 ? ` (${definition.platforms.join(', ')})` : ''}</option>)}</select></label>{definitionId ? <div className="flex-1 text-[12px] text-muted-foreground" data-testid={`text-segment-definition-${ruleIndex}-${segmentIndex}`}>{chosen ? <>Shared values from <Link href="/definitions" className="font-semibold text-primary underline">Definitions</Link>: {chosen.entries.length === 0 ? 'none yet' : chosen.entries.map((entry) => `${entry.label} (${entry.code})`).join(', ')}</> : <span className="font-semibold text-destructive">This definition no longer exists.</span>}</div> : <label className="flex-1 text-[13px] font-bold text-foreground">Allowed values: <span className="font-normal text-muted-foreground ml-1">(comma separated, matched exactly)</span><CommaListInput className={`${inputClass} mt-2 font-mono`} value={segment.allowedValues.map((entry) => entry.code)} onChange={(codes) => onChange({ allowedValues: entriesFromCodeList(codes, segment.allowedValues) })} placeholder="na, emea, apac" testId={`input-segment-values-${ruleIndex}-${segmentIndex}`} /></label>}</div> : <><label className="flex-1 text-[13px] font-bold text-foreground">Max characters:<input type="number" min="1" max="200" className={`${inputClass} mt-2`} value={segment.maxLength || ''} onChange={(event) => onChange({ maxLength: event.target.value === '' ? 0 : Number(event.target.value) })} data-testid={`input-segment-max-length-${ruleIndex}-${segmentIndex}`} /></label><label className="flex-1 text-[13px] font-bold text-foreground">Illegal characters: <span className="font-normal text-muted-foreground ml-1">(the delimiter is always illegal)</span><input className={`${inputClass} mt-2 font-mono`} value={segment.illegalChars.join('')} onChange={(event) => onChange({ illegalChars: Array.from(new Set([...event.target.value])) })} data-testid={`input-segment-illegal-chars-${ruleIndex}-${segmentIndex}`} /></label></>}<label className="flex items-center gap-2 pb-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={segment.required} onChange={(event) => onChange({ required: event.target.checked })} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary bg-[#EAE8E3]" data-testid={`checkbox-segment-required-${ruleIndex}-${segmentIndex}`} /> Required</label></div>
-  </div>;
 }
 
 // The parent's resolved segments a child may inherit: the leading run of
@@ -92,21 +68,6 @@ export function ParentPicker({ rule, ruleIndex, rules, draftRuleSet, definitions
         <label className="text-[13px] font-bold text-foreground">Inherit the parent's segments through:<select className={`${inputClass} mt-2`} value={String(Math.min(inheritedCount, inheritable.length))} disabled={inheritable.length === 0} onChange={(event) => pickCount(Number(event.target.value))} data-testid={`select-rule-inherit-${ruleIndex}`}><option value="0">None</option>{inheritable.map((segment, index) => <option key={segment.id} value={String(index + 1)}>{segment.label}{index + 1 === inheritable.length ? '' : ''}</option>)}</select>{error && <span className="mt-1 block text-[11px] font-semibold text-destructive">{error}</span>}{!error && inheritable.length === 0 && <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">The parent has no required segments to inherit.</span>}</label>
       )}
     </div>
-  );
-}
-
-// The segments a child reads from its parent, shown above its own so the
-// full name order is visible; they are edited on the parent.
-export function InheritedSegments({ rule, ruleIndex, draftRuleSet, definitions }: { rule: Rule; ruleIndex: number; draftRuleSet: { id: string; name: string; rules: Rule[] }; definitions: Definition[] }) {
-  if (!rule.parent || rule.parent.inheritSegmentIds.length === 0) return null;
-  const parent = draftRuleSet.rules.find((candidate) => candidate.id === rule.parent?.ruleId);
-  const { segments } = inheritableSegments(parent, draftRuleSet, definitions);
-  const inherited = rule.parent.inheritSegmentIds.map((id) => segments.find((segment) => segment.id === id)).filter((segment): segment is Segment => Boolean(segment));
-  if (inherited.length === 0) return null;
-  return (
-    <ol className="mb-4 flex flex-col gap-2" data-testid={`list-inherited-segments-${ruleIndex}`}>
-      {inherited.map((segment) => <li key={segment.id} className="flex items-center justify-between rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-2.5 text-[13px]"><span className="font-bold text-foreground">{segment.label} <span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span></span><span className="text-[11px] font-bold text-muted-foreground">Inherited from {parent?.name}</span></li>)}
-    </ol>
   );
 }
 

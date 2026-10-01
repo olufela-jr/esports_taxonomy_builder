@@ -1,0 +1,112 @@
+import { ArrowLeft, ArrowRight, Lock, Trash2 } from 'lucide-react';
+import { entriesFromCodes, type Definition, type Rule, type Segment } from '@taxo/shared';
+import { Link } from 'wouter';
+import type { SegmentMeta } from '@/lib/segment-meta';
+import { Drawer } from '../Drawer';
+import { ScopeBadge } from '../ScopeBadge';
+import { buttonDanger, iconButton, inputClass } from '../styles';
+import { entriesFromCodeList, slugify } from './draft';
+import { CommaListInput } from './RuleFields';
+
+const labelClass = 'block text-[13px] font-bold text-foreground';
+
+type SegmentDrawerProps = {
+  segment: Segment;          // as resolved: an inherited segment is the parent's
+  meta: SegmentMeta | undefined;
+  position: number;          // 1-based place in the whole name
+  total: number;
+  rule: Rule;                // the Rule being edited
+  ruleIndex: number;
+  ownIndex: number;          // place among the Rule's own segments; -1 when inherited
+  owner: Rule | undefined;   // the Rule an inherited segment belongs to
+  base: string;              // the Rule Set's URL
+  definitions: Definition[];
+  inheritedBy: string[];     // Rules that inherit this segment; it cannot be removed
+  top: number;
+  onChange: (updates: Partial<Segment>) => void;
+  onMove: (toIndex: number) => void;
+  onRemove: () => void;
+  onClose: () => void;
+};
+
+// One segment, edited beside the chips. An inherited segment is shown read
+// only with a way to its own Rule; a Global one shows its definition's values
+// and links to Definitions rather than editing them here.
+export function SegmentDrawer({ segment, meta, position, total, rule, ruleIndex, ownIndex, owner, base, definitions, inheritedBy, top, onChange, onMove, onRemove, onClose }: SegmentDrawerProps) {
+  const eyebrow = <span className="inline-flex items-center gap-2">Segment {position} of {total}{meta?.scope && <ScopeBadge scope={meta.scope} small testId="badge-drawer-scope" />}</span>;
+  const testId = 'drawer-segment';
+
+  if (ownIndex < 0) {
+    return (
+      <Drawer key={segment.id} title={segment.label} eyebrow={eyebrow} onClose={onClose} testId={testId} top={top}>
+        <p className="flex items-start gap-2 rounded-[4px] border border-border bg-muted/40 px-3 py-2 text-[12px] font-semibold text-muted-foreground" data-testid="text-drawer-inherited"><Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" /> Inherited from {owner?.name ?? 'the parent Rule'}. Change it there and every Rule that inherits it follows.</p>
+        <SegmentSummary segment={segment} />
+        {owner && <Link href={`${base}/${owner.id}/segments/${segment.id}`} className="mt-5 inline-flex text-[13px] font-bold text-primary underline-offset-2 hover:underline" data-testid="link-drawer-owner">Edit on {owner.name}</Link>}
+      </Drawer>
+    );
+  }
+
+  const definitionId = segment.kind === 'enum' ? segment.definitionId : undefined;
+  const platform = rule.tags?.platform;
+  const offered = definitions.filter((definition) => definition.platforms.length === 0 || (platform !== undefined && definition.platforms.includes(platform)) || definition.id === definitionId);
+  const chosen = definitions.find((definition) => definition.id === definitionId);
+  const ids = `${ruleIndex}-${ownIndex}`;
+  const ownCount = rule.segments.length;
+
+  return (
+    <Drawer key={segment.id} title={segment.label || 'Untitled segment'} eyebrow={eyebrow} onClose={onClose} testId={testId} top={top}>
+      <div className="space-y-5" data-testid={`card-segment-${ids}`}>
+        <label className={labelClass}>Label:<input className={`${inputClass} mt-2`} value={segment.label} onChange={(event) => onChange({ label: event.target.value, key: slugify(event.target.value) || `segment_${ownIndex + 1}` })} data-testid={`input-segment-label-${ids}`} /></label>
+        <label className={labelClass}>Key: <span className="ml-1 font-normal text-muted-foreground">(machine name)</span><input className={`${inputClass} mt-2 font-mono`} value={segment.key} onChange={(event) => onChange({ key: event.target.value.toLowerCase().replaceAll(' ', '_') })} data-testid={`input-segment-key-${ids}`} /></label>
+        <label className={labelClass}>Type:<select className={`${inputClass} mt-2`} value={segment.kind} onChange={(event) => onChange(event.target.value === 'enum' ? { kind: 'enum', allowedValues: segment.kind === 'enum' ? segment.allowedValues : entriesFromCodes(['value']) } : { kind: 'freeform', maxLength: segment.kind === 'freeform' ? segment.maxLength : 32, illegalChars: segment.kind === 'freeform' ? segment.illegalChars : [' ', '/', '?', '#', '&'] })} data-testid={`select-segment-kind-${ids}`}><option value="enum">Allowed values</option><option value="freeform">Freeform</option></select></label>
+
+        {segment.kind === 'enum' ? (
+          <>
+            <label className={labelClass}>Values from:<select className={`${inputClass} mt-2`} value={definitionId ?? ''} onChange={(event) => onChange(event.target.value ? { definitionId: event.target.value, allowedValues: [] } : { definitionId: undefined, allowedValues: segment.allowedValues.length > 0 ? segment.allowedValues : entriesFromCodes(['value']) })} data-testid={`select-segment-source-${ids}`}><option value="">Local list (this Rule only)</option>{offered.map((definition) => <option key={definition.id} value={definition.id}>Global: {definition.name}{definition.platforms.length > 0 ? ` (${definition.platforms.join(', ')})` : ''}</option>)}</select></label>
+            {definitionId ? (
+              <div className="rounded-[4px] border border-border bg-muted/30 p-3 text-[12px]" data-testid={`text-segment-definition-${ids}`}>
+                {chosen ? <>
+                  <div className="mb-2 flex items-center justify-between gap-2"><span className="font-bold text-foreground">{chosen.name}</span><ScopeBadge scope="global" small /></div>
+                  <div className="text-muted-foreground">{chosen.entries.length === 0 ? 'No values yet.' : chosen.entries.map((entry) => `${entry.label} (${entry.code})`).join(', ')}</div>
+                  <Link href={`/definitions/${chosen.id}`} className="mt-3 inline-flex font-bold text-primary underline-offset-2 hover:underline" data-testid="link-drawer-definition">Open in Definitions</Link>
+                  <p className="mt-1 text-[11px] text-muted-foreground">Global values are edited in Definitions, for every Rule that uses them.</p>
+                </> : <span className="font-semibold text-destructive">This definition no longer exists.</span>}
+              </div>
+            ) : (
+              <label className={labelClass}>Local values: <span className="ml-1 font-normal text-muted-foreground">(comma separated, matched exactly)</span><CommaListInput className={`${inputClass} mt-2 font-mono`} value={segment.allowedValues.map((entry) => entry.code)} onChange={(codes) => onChange({ allowedValues: entriesFromCodeList(codes, segment.allowedValues) })} placeholder="na, emea, apac" testId={`input-segment-values-${ids}`} /></label>
+            )}
+          </>
+        ) : (
+          <>
+            <label className={labelClass}>Max characters:<input type="number" min="1" max="200" className={`${inputClass} mt-2`} value={segment.maxLength || ''} onChange={(event) => onChange({ maxLength: event.target.value === '' ? 0 : Number(event.target.value) })} data-testid={`input-segment-max-length-${ids}`} /></label>
+            <label className={labelClass}>Illegal characters: <span className="ml-1 font-normal text-muted-foreground">(the delimiter is always illegal)</span><input className={`${inputClass} mt-2 font-mono`} value={segment.illegalChars.join('')} onChange={(event) => onChange({ illegalChars: Array.from(new Set([...event.target.value])) })} data-testid={`input-segment-illegal-chars-${ids}`} /></label>
+          </>
+        )}
+
+        <label className="flex items-center gap-2 text-[13px] font-bold text-foreground"><input type="checkbox" checked={segment.required} onChange={(event) => onChange({ required: event.target.checked })} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-segment-required-${ids}`} /> Required <span className="font-normal text-muted-foreground">(optional segments may only come last)</span></label>
+
+        <div className="flex items-center justify-between gap-3 border-t border-border pt-5">
+          <div className="flex items-center gap-1">
+            <button type="button" className={iconButton} onClick={() => onMove(ownIndex - 1)} disabled={ownIndex === 0} aria-label="Move segment earlier" title="Move earlier" data-testid={`button-move-segment-up-${ids}`}><ArrowLeft className="h-4 w-4" /></button>
+            <button type="button" className={iconButton} onClick={() => onMove(ownIndex + 1)} disabled={ownIndex === ownCount - 1} aria-label="Move segment later" title="Move later" data-testid={`button-move-segment-down-${ids}`}><ArrowRight className="h-4 w-4" /></button>
+          </div>
+          <button type="button" className={buttonDanger} onClick={onRemove} disabled={inheritedBy.length > 0} title={inheritedBy.length > 0 ? `Inherited by ${inheritedBy.join(', ')}` : undefined} data-testid={`button-remove-segment-${ids}`}><Trash2 className="h-4 w-4" /> Remove</button>
+        </div>
+        {inheritedBy.length > 0 && <p className="text-[11px] font-bold text-muted-foreground" data-testid={`text-segment-inherited-by-${ids}`}>Inherited by {inheritedBy.join(', ')}, so it cannot be removed.</p>}
+      </div>
+    </Drawer>
+  );
+}
+
+function SegmentSummary({ segment }: { segment: Segment }) {
+  return (
+    <dl className="mt-5 grid grid-cols-[110px_1fr] gap-x-3 gap-y-2 text-[13px]">
+      <dt className="font-bold text-muted-foreground">Key</dt><dd className="font-mono text-foreground">{segment.key}</dd>
+      <dt className="font-bold text-muted-foreground">Type</dt><dd className="text-foreground">{segment.kind === 'enum' ? 'Allowed values' : 'Freeform'}</dd>
+      {segment.kind === 'enum'
+        ? <><dt className="font-bold text-muted-foreground">Values</dt><dd className="font-mono text-foreground">{segment.allowedValues.map((entry) => entry.code).join(', ') || 'None'}</dd></>
+        : <><dt className="font-bold text-muted-foreground">Max characters</dt><dd className="text-foreground">{segment.maxLength}</dd></>}
+      <dt className="font-bold text-muted-foreground">Required</dt><dd className="text-foreground">{segment.required ? 'Yes' : 'No'}</dd>
+    </dl>
+  );
+}

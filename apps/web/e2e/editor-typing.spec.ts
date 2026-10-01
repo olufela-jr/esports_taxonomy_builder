@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { openRule, readRuleSets, seedRuleSets } from './fixtures';
+import { openRule, openSegment, readRuleSets, seedRuleSets } from './fixtures';
 
 // Every editor field must accept continuous typing without losing focus, and
 // must keep exactly what was typed, including a trailing comma in the allowed
@@ -50,6 +50,7 @@ test('Rule Set and Rule fields keep focus and value while typing', async ({ page
 
 test('Segment fields keep focus and value while typing, trailing comma included', async ({ page }) => {
   await openRule(page, 0);
+  await openSegment(page, 'segment_1');
   await typeAndCheck(page, page.getByTestId('input-segment-label-0-0'), 'Campaign Type');
   await expect(page.getByTestId('input-segment-key-0-0')).toHaveValue('campaign_type');
   await typeAndCheck(page, page.getByTestId('input-segment-key-0-0'), 'ctype');
@@ -76,10 +77,14 @@ test('Segment fields keep focus and value while typing, trailing comma included'
 
 test('adding and reordering segments keeps every field editable', async ({ page }) => {
   await openRule(page, 0);
-  await page.getByTestId('button-add-segment-0').click();
+  // Adding a segment opens it in the drawer, last in the name.
+  await page.getByTestId('button-add-segment-chip').click();
+  await expect(page.getByTestId('drawer-segment')).toContainText('Segment 2 of 2');
   await typeAndCheck(page, page.getByTestId('input-segment-label-0-1'), 'Market');
   await page.getByTestId('button-move-segment-up-0-1').click();
   await expect(page.getByTestId('input-segment-label-0-0')).toHaveValue('Market');
   await typeAndCheck(page, page.getByTestId('input-segment-label-0-0'), 'Market region');
+  await expect(page.getByTestId('chips-rule-index-market_region')).toHaveText('1');
+  await openSegment(page, 'segment_1');
   await typeAndCheck(page, page.getByTestId('input-segment-label-0-1'), 'Segment one renamed');
 });
