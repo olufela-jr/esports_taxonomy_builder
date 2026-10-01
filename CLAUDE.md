@@ -46,7 +46,9 @@ round-trip and every violation type; keep it green after every change.
   GCP project. All storage calls go through `apps/web/src/data/store.ts`, all sign-in
   calls through `apps/web/src/data/auth.ts`; an update carries the `updatedAt` it loaded
   and is refused if the document moved on.
-- Tenancy (v3, D35, D36): every document lives under `tenants/{tenantId}/`. A user belongs
+- Tenancy (v3, D35, D36): every document lives under `tenants/{tenantId}/`, except
+  `accessRequests/{uid}` (a person asking for access has no tenant yet; the owner and the
+  super user read it, only the Functions write it). A user belongs
   to one tenant and holds one role, `admin` or `user`, carried as custom claims on the ID
   token and set only server-side: by the membership Callables behind the Members screen
   (`functions/src/members.ts`, called through `apps/web/src/data/members.ts`), or by
@@ -221,6 +223,13 @@ separate `superuser` claim set only by `scripts/provision-user.ts --superuser`, 
 switcher, a Tenants screen (create, edit, invite a first admin), read-only inside tenants it
 is not an admin of. Decided 2026-09-30: read-only, not a rules bypass for writes; nothing in
 the app grants the claim.
+
+Access requests (`v3/access-requests.md`), built 2026-10-01: anyone signed in without a
+workspace presses Request access on the "No workspace yet" screen; the super user approves
+from the Tenants screen, choosing the workspace and role, or declines. Approval reuses the
+super user's invite path (`inviteMember` scoped to the chosen tenant), so claims are set one
+way. Decided 2026-10-01: super user only, just a button, any Google account. Not deployed
+yet, and it needs the super user release deployed and the claim granted first.
 
 ## Do not
 - Do not duplicate engine logic outside `@taxo/shared`.
