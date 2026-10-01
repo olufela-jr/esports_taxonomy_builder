@@ -5,7 +5,7 @@ import { AppShell } from '@/components/AppShell';
 import { Builder } from '@/components/Builder';
 import { Compliance } from '@/components/Compliance';
 import { CsvChecker } from '@/components/CsvChecker';
-import { Dictionary } from '@/components/Dictionary';
+import { Definitions } from '@/components/Definitions';
 import { Home, RulesAdminsOnly } from '@/components/Home';
 import { Members, MembersAdminsOnly } from '@/components/Members';
 import { Tenants, TenantsSuperOnly } from '@/components/Tenants';
@@ -344,7 +344,7 @@ function Workspace(props: WorkspaceProps) {
           <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} user={user} requests={requests} drafts={drafts} onCreateRequest={onCreateRequest} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} /></Route>
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} /></Route>
           <Route path="/compliance"><Compliance ruleSet={selectedRuleSet} definitions={definitions} scanner={scanner} onSelectRule={onSelectRule} /></Route>
-          <Route path="/definitions/*?"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
+          <Route path="/definitions/*?"><Definitions user={user} canEdit={canEdit} canOpenRules={canManage} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
           <Route path="/members">{canManage ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} canManageRoles={canEdit} inviteTenantId={isSuper ? viewedTenantId : undefined} /> : <MembersAdminsOnly />}</Route>
           <Route path="/tenants">{isSuper && directory && accessQueue ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} accessRequests={accessRequests} accessQueue={accessQueue} onOpen={(id) => { onSelectTenant(id); setLocation('/rules'); }} /> : <TenantsSuperOnly />}</Route>
           <Route component={NotFound} />

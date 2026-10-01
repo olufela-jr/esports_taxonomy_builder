@@ -49,9 +49,11 @@ test('an admin creates a definition, typing freely, and it is stored with its en
   expect(stored?.entries).toEqual([{ label: 'Performance', code: 'perf' }, { label: 'Brand', code: 'brand' }]);
   expect(stored?.platforms).toEqual(['google', 'meta']);
 
-  // The Dictionary is an action: a refresh lands back on it with the context intact.
+  // The new definition is open at its own address; a refresh stays on Definitions with the context intact.
+  await expect(page).toHaveURL(new RegExp(`/definitions/${stored?.id}$`));
   await page.reload();
-  await expect(page).toHaveURL(/\/definitions$/);
+  await expect(page.getByTestId('list-definitions')).toBeVisible();
+  await expect(page.getByTestId('select-shell-ruleset')).toBeVisible();
   await expect(page.getByTestId('select-shell-ruleset')).toBeVisible();
 });
 
