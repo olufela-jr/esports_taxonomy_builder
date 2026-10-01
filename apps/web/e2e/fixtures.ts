@@ -215,3 +215,15 @@ export async function seedNoWorkspace(page: Page) {
     window.__taxoTestNoWorkspace = true;
   });
 }
+
+// Manage Rules: open a Rule of the Rule Set page that is showing, by its
+// place in the Rule Set, and go back up to the Rule Set page.
+export async function openRule(page: Page, index: number) {
+  await page.getByTestId(`link-rule-node-${index}`).click();
+  await page.getByTestId(`card-rule-${index}`).waitFor();
+}
+
+export async function backToRuleSet(page: Page) {
+  await page.getByTestId('crumb-1').click();
+  await page.getByTestId('list-rule-groups').waitFor();
+}

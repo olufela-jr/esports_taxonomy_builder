@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { hierarchyRuleSet, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
+import { backToRuleSet, hierarchyRuleSet, openRule, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
 
 // v3 phase 2 step 4: Author lists every problem beside the Rule it belongs to
 // and protects Rules and segments that other Rules inherit from.
@@ -9,6 +9,7 @@ test('problems are listed per Rule and block saving until fixed', async ({ page 
   await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
   await expect(page.getByTestId('button-save-ruleset')).toBeEnabled();
+  await openRule(page, 1);
 
   // Give the child's own segment the key of the one it inherits: the problem shows on that Rule only.
   await page.getByTestId('input-segment-key-1-0').fill('campaign_type');
@@ -31,20 +32,23 @@ test('a parent Rule and the segments a child inherits cannot be removed', async 
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
   await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
+  // On the Rule Set page the parent cannot be removed; a Rule with no dependents can.
+  await expect(page.getByTestId('button-remove-rule-0')).toBeDisabled();
+  await expect(page.getByTestId('button-remove-rule-2')).toBeEnabled();
 
+  await openRule(page, 0);
   await expect(page.getByTestId('text-rule-dependents-0')).toContainText('Parent of Google Ad Groups');
   await expect(page.getByTestId('button-remove-rule-0')).toBeDisabled();
   await expect(page.getByTestId('button-remove-segment-0-0')).toBeDisabled();
   // The market segment is not inherited, so it can still go.
   await expect(page.getByTestId('button-remove-segment-0-1')).toBeEnabled();
-  // Rules with no dependents are removable as before.
-  await expect(page.getByTestId('button-remove-rule-2')).toBeEnabled();
 });
 
 test('an admin links a Rule to a parent, inherits its leading segments, and the link is stored by id', async ({ page }) => {
   await seedRuleSets(page, [paidMediaRuleSet], 'admin');
   await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
+  await openRule(page, 1);
 
   // The Meta Ad Sets Rule becomes a child of Google Campaigns.
   await page.getByTestId('select-rule-parent-1').selectOption('rule-google');
@@ -63,11 +67,21 @@ test('an admin links a Rule to a parent, inherits its leading segments, and the 
   const child = saved?.rules[1] as unknown as { parent?: { ruleId: string; inheritSegmentIds: string[] }; delimiter: string };
   expect(child.parent).toEqual({ ruleId: 'rule-google', inheritSegmentIds: ['seg-type', 'seg-market'] });
 
-  // Now the parent's Remove is blocked and its inherited segments are locked.
+  // The Rule Set page now shows the child under its parent, in the Google group,
+  // with the inherited segments greyed ahead of its own; the parent cannot be removed.
+  await backToRuleSet(page);
+  const parentNode = page.locator('li', { has: page.getByTestId('card-rule-node-rule-google') });
+  await expect(page.getByTestId('group-platform-google').getByTestId('card-rule-node-rule-meta')).toBeVisible();
+  await expect(parentNode.getByTestId('card-rule-node-rule-meta')).toBeVisible();
+  await expect(page.getByTestId('chips-node-1-seg-campaign_type')).toHaveAttribute('data-inherited', 'true');
+  await expect(page.getByTestId('chips-node-1-seg-market')).toHaveAttribute('data-inherited', 'true');
   await expect(page.getByTestId('button-remove-rule-0')).toBeDisabled();
+  await openRule(page, 0);
   await expect(page.getByTestId('button-remove-segment-0-1')).toBeDisabled();
 
   // Clearing the parent frees everything again.
+  await backToRuleSet(page);
+  await openRule(page, 1);
   await page.getByTestId('select-rule-parent-1').selectOption('');
   await expect(page.getByTestId('input-rule-delimiter-1')).toBeEnabled();
   await expect(page.getByTestId('list-inherited-segments-1')).toHaveCount(0);

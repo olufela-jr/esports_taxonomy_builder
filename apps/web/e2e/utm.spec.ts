@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { hierarchyRuleSet, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
+import { hierarchyRuleSet, paidMediaRuleSet, readRuleSets, seedRuleSets, openRule } from './fixtures';
 
 // v3 phase 2 step 8: Author's tracking panel and the tracking URL column Build writes.
 
@@ -42,6 +42,7 @@ test('an admin switches tracking on for a Rule, sees a bad base URL listed, and 
   await seedRuleSets(page, [paidMediaRuleSet], 'admin');
   await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
+  await openRule(page, 0);
 
   await page.getByTestId('checkbox-rule-utm-0').check();
   await expect(page.getByTestId('select-utm-kind-0-campaign')).toHaveValue('ruleName');

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { marketDefinition, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
+import { backToRuleSet, marketDefinition, openRule, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
 
 // v3 phase 2 step 3: a Rule's enum segment can take its values from a shared
 // definition. Author offers the definitions that fit the Rule's platform,
@@ -10,6 +10,7 @@ test('an admin points a segment at a definition, and Build offers its labels and
   await seedRuleSets(page, undefined, 'admin', [marketDefinition]);
   await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
+  await openRule(page, 0);
 
   // The Google Campaigns Rule's second segment, Market, moves from its own list to the shared Market.
   const source = page.getByTestId('select-segment-source-0-1');
@@ -53,7 +54,10 @@ test('a Rule using a definition keeps it from being deleted, and a scoped defini
   await page.getByTestId('link-nav-manage-rules').click();
   await page.getByTestId('card-ruleset-ruleset-paid').click();
   // The Google Rule may use the search-only definition; the Meta Rule is not offered it.
+  await openRule(page, 0);
   await expect(page.getByTestId('select-segment-source-0-0').locator('option', { hasText: 'Match type' })).toHaveCount(1);
+  await backToRuleSet(page);
+  await openRule(page, 1);
   await expect(page.getByTestId('select-segment-source-1-0').locator('option', { hasText: 'Match type' })).toHaveCount(0);
   await expect(page.getByTestId('select-segment-source-1-0').locator('option', { hasText: 'Market' })).toHaveCount(1);
 });

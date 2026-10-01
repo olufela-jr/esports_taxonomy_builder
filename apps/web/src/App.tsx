@@ -11,7 +11,7 @@ import { Members, MembersAdminsOnly } from '@/components/Members';
 import { Tenants, TenantsSuperOnly } from '@/components/Tenants';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { NotFound } from '@/components/NotFound';
-import { RuleSetEditor } from '@/components/RuleSetEditor';
+import { RuleSetWorkspace, type RuleSetEdit } from '@/components/rules/RuleSetWorkspace';
 import { RuleSetList } from '@/components/RuleSetList';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
 import { createAccessQueue, createAccessRequester, type AccessQueue, type AccessRequest } from '@/data/access';
@@ -261,17 +261,32 @@ function Workspace(props: WorkspaceProps) {
   const decided = requests.filter((request) => request.status !== 'pending');
   const definitionsBadge = canEdit ? requests.filter((request) => request.status === 'pending').length : decided.filter((request) => !seenDecided.includes(request.id)).length;
   const [location, setLocation] = useLocation();
-  const [onRuleSetPage, ruleSetParams] = useRoute<{ ruleSetId: string }>('/rules/:ruleSetId/*?');
+  const [onRuleSetPage, ruleSetParams] = useRoute<{ ruleSetId: string; '*'?: string }>('/rules/:ruleSetId/*?');
   const routeRuleSetId = onRuleSetPage && ruleSetParams.ruleSetId !== 'new' ? ruleSetParams.ruleSetId : null;
+  // /rules/:ruleSetId/:ruleId opens one Rule of the Rule Set.
+  const routeRuleId = onRuleSetPage ? (ruleSetParams['*'] ?? '').split('/')[0] || null : null;
 
   useEffect(() => {
     onLocationChange(location);
   }, [location, onLocationChange]);
 
-  // A Rule Set opened by its URL becomes the persistent context.
+  // A Rule Set (and a saved Rule) opened by its URL becomes the persistent context.
   useEffect(() => {
-    if (routeRuleSetId && ruleSets.some((item) => item.id === routeRuleSetId)) onSelectRuleSet(routeRuleSetId);
-  }, [routeRuleSetId, ruleSets, onSelectRuleSet]);
+    const opened = routeRuleSetId ? ruleSets.find((item) => item.id === routeRuleSetId) : undefined;
+    if (!opened) return;
+    onSelectRuleSet(opened.id);
+    if (routeRuleId && opened.rules.some((rule) => rule.id === routeRuleId)) onSelectRule(routeRuleId);
+  }, [routeRuleSetId, routeRuleId, ruleSets, onSelectRuleSet, onSelectRule]);
+
+  // Unsaved Rule Set edits, by Rule Set id ("new" for one not saved yet), so
+  // they survive moving between the Rule Set page, its Rules and other actions.
+  const [edits, setEdits] = useState<Record<string, RuleSetEdit>>({});
+  const editFor = (key: string) => (edit: RuleSetEdit | null) => setEdits((current) => {
+    const next = { ...current };
+    if (edit) next[key] = edit;
+    else delete next[key];
+    return next;
+  });
 
   // Picking a Rule Set in the sidebar while managing rules opens it.
   const selectRuleSet = (id: string | null) => {
@@ -291,11 +306,28 @@ function Workspace(props: WorkspaceProps) {
   }, [location, canEdit, decided, seenDecided]);
 
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
+  const isNewRuleSet = onRuleSetPage && ruleSetParams.ruleSetId === 'new';
   const openedRuleSet = routeRuleSetId ? ruleSets.find((item) => item.id === routeRuleSetId) : undefined;
-  const ruleSetPage = !canManage
+  const editKey = isNewRuleSet ? 'new' : openedRuleSet?.id ?? '';
+  const ruleSetPage = !canManage || (isNewRuleSet && !canEdit)
     ? <RulesAdminsOnly />
-    : openedRuleSet
-      ? <RuleSetEditor key={openedRuleSet.id} existing={openedRuleSet} definitions={definitions} readOnly={!canEdit} storeKind={storeKind} justCreated={openedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => setLocation('/rules')} onDeleted={() => { onSelectRuleSet(null); setLocation('/rules'); }} />
+    : isNewRuleSet || openedRuleSet
+      ? <RuleSetWorkspace
+          key={editKey}
+          existing={openedRuleSet ?? null}
+          ruleId={routeRuleId}
+          edit={edits[editKey]}
+          onEdit={editFor(editKey)}
+          definitions={definitions}
+          readOnly={!canEdit}
+          storeKind={storeKind}
+          justCreated={editKey === justCreatedId}
+          onCreate={onCreate}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onCreated={(id, ruleId) => { setJustCreatedId(id); onSelectRuleSet(id); setLocation(ruleId ? `/rules/${id}/${ruleId}` : `/rules/${id}`); }}
+          onDeleted={() => { onSelectRuleSet(null); setLocation('/rules'); }}
+        />
       : <NotFound />;
 
   return (
@@ -304,7 +336,6 @@ function Workspace(props: WorkspaceProps) {
         <Switch>
           <Route path="/"><Home canManage={canManage} ruleSets={ruleSets} selectedRuleSet={selectedRuleSet} selectedRule={selectedRule} /></Route>
           <Route path="/rules">{canManage ? <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={(id) => setLocation(`/rules/${id}`)} onCreate={() => setLocation('/rules/new')} /> : <RulesAdminsOnly />}</Route>
-          <Route path="/rules/new">{canEdit ? <RuleSetEditor key="new" existing={null} definitions={definitions} storeKind={storeKind} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setJustCreatedId(id); onSelectRuleSet(id); setLocation(`/rules/${id}`); }} onClose={() => setLocation('/rules')} onDeleted={() => setLocation('/rules')} /> : <RulesAdminsOnly />}</Route>
           <Route path="/rules/:ruleSetId/*?">{ruleSetPage}</Route>
           <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} user={user} requests={requests} drafts={drafts} onCreateRequest={onCreateRequest} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} /></Route>
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} /></Route>

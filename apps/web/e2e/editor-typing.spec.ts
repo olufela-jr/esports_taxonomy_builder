@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { readRuleSets, seedRuleSets } from './fixtures';
+import { openRule, readRuleSets, seedRuleSets } from './fixtures';
 
 // Every editor field must accept continuous typing without losing focus, and
 // must keep exactly what was typed, including a trailing comma in the allowed
@@ -24,6 +24,8 @@ test.beforeEach(async ({ page }) => {
 
 test('Rule Set and Rule fields keep focus and value while typing', async ({ page }) => {
   await typeAndCheck(page, page.getByTestId('input-ruleset-name'), 'Regional paid media, EMEA');
+  // The Rule Set page keeps the draft while a Rule is open, so the name survives.
+  await openRule(page, 0);
 
   await typeAndCheck(page, page.getByTestId('input-rule-name-0'), 'Google Campaigns 2026');
   // The key follows the name as a slug, then accepts its own edits.
@@ -47,6 +49,7 @@ test('Rule Set and Rule fields keep focus and value while typing', async ({ page
 });
 
 test('Segment fields keep focus and value while typing, trailing comma included', async ({ page }) => {
+  await openRule(page, 0);
   await typeAndCheck(page, page.getByTestId('input-segment-label-0-0'), 'Campaign Type');
   await expect(page.getByTestId('input-segment-key-0-0')).toHaveValue('campaign_type');
   await typeAndCheck(page, page.getByTestId('input-segment-key-0-0'), 'ctype');
@@ -72,6 +75,7 @@ test('Segment fields keep focus and value while typing, trailing comma included'
 });
 
 test('adding and reordering segments keeps every field editable', async ({ page }) => {
+  await openRule(page, 0);
   await page.getByTestId('button-add-segment-0').click();
   await typeAndCheck(page, page.getByTestId('input-segment-label-0-1'), 'Market');
   await page.getByTestId('button-move-segment-up-0-1').click();
