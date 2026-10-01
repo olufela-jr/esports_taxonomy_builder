@@ -17,6 +17,7 @@ on `main`, and each phase gets one notes file here, updated with every commit in
 | [access-test.md](access-test.md) | The live test of sending someone the link, to run once access requests are deployed |
 | [compliance-board.md](compliance-board.md) | The Compliance action: violation codes, the cross-Rule aggregator, and the board that says what fails and why |
 | [demo-data.md](demo-data.md) | The "Paid search (demo)" Rule Set, its sample names and the BigQuery table, for testing every feature end to end |
+| [ui-revamp.md](ui-revamp.md) | Homepage, Manage Rules with the Rule Set tree and the chip-row Rule editor, Definitions with Global and Local lists |
 
 Conventions for the notes files are the same as `migration/README.md`:
 

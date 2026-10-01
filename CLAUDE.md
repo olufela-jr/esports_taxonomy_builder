@@ -86,16 +86,31 @@ round-trip and every violation type; keep it green after every change.
 - `source = { dataset, table, nameColumn, filter? }` per Rule. Stage 1 stores it only.
 
 ## UI rule: action-first with persistent context
-Top navigation is the three actions, Author, Build, Check, plus Dictionary (v3, added
-2026-09-25 by decision): the tenant's shared definitions, where admins author them and
-standard users request new values; and Compliance (added 2026-09-30 by decision): what
-fails and why across every Rule in the selected Rule Set, from a CSV or a live scan.
-Check is single-Rule only and links across to Compliance; the pooled "All Rules" figure
-and the strict per-row view both moved to the board, which pools through the same
-`rollup` so the two can never disagree. The selected Rule Set and Rule are persistent context
-carried across all of them. Switching action must NOT reset them.
-(Implemented in the prototype, including restore across refresh. Preserve it through
-migration; the browser regression test in checklist step 3 guards it.)
+The homepage (`/`) offers three boxes: Manage Rules (admins, and the super user read only),
+Build and Check. The sidebar actions are Home, Manage Rules, Build, Check, Compliance and
+Definitions (renamed 2026-10-01 from Author and Dictionary, no redirects from the old paths).
+- Manage Rules: `/rules` lists Rule Sets; `/rules/:ruleSetId` is the Rule Set page, Rules
+  grouped by platform as parent and child trees; `/rules/:ruleSetId/:ruleId` edits one Rule,
+  and `.../segments/:segmentId` opens a segment in a drawer beside the Rule's chips. Standard
+  users have no Manage Rules entry, and its links say it is for admins.
+- Definitions (v3, added 2026-09-25): every value list in the workspace. Global means a
+  tenant-wide stored definition; Local means an enum segment's own list, read off the Rule
+  Sets and edited only in its Rule. Use "Global" and "Local" in the UI, never "shared" for
+  definitions. Admins author Global definitions there; standard users request new values.
+- Compliance (added 2026-09-30 by decision): what fails and why across every Rule in the
+  selected Rule Set, from a CSV or a live scan. Check is single-Rule only and links across to
+  Compliance; the pooled "All Rules" figure and the strict per-row view both live on the
+  board, which pools through the same `rollup` so the two can never disagree.
+
+The selected Rule Set and Rule are persistent context carried across all of them, and a Rule
+Set or Rule opened by its URL becomes the context. Switching action must NOT reset them.
+(Implemented in the prototype, including restore across refresh. Preserve it; the browser
+regression test in checklist step 3 guards it.)
+
+Every single-name preview is a `SegmentChipRow` (`apps/web/src/components/SegmentChipRow.tsx`),
+whose values always come from `compose`: the Rule editor's chip header, the Rule Set page's
+nodes and the example at the top of Build. Tables of many names stay plain text. Unsaved Rule
+Set edits are held in `App` per Rule Set until Save. Log of the revamp in `v3/ui-revamp.md`.
 
 ## v3 phase 1, Foundation, done (2026-09-24)
 The code side of `docs/spec-v3.md` release phase 1 is in place; the log is in `v3/`, one
