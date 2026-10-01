@@ -197,3 +197,21 @@ export async function readRuleSets(page: Page): Promise<Array<{ id: string; name
     return JSON.parse(JSON.stringify(store.ruleSets.getSnapshot()));
   });
 }
+
+// Access requests from accounts with no workspace yet. The local user's own
+// request uses its uid, "you"; the others are strangers in the super user's queue.
+export const samRequest = { uid: 'sam', email: 'sam@elsewhere.test', name: 'Sam Rivera', status: 'pending', tenantId: null, role: null, decidedBy: null, createdAt: '2026-09-29T09:00:00.000Z', updatedAt: '2026-09-29T09:00:00.000Z' };
+export const tessRequest = { uid: 'tess', email: 'tess@elsewhere.test', name: 'Tess Okafor', status: 'declined', tenantId: null, role: null, decidedBy: 'you', createdAt: '2026-09-28T09:00:00.000Z', updatedAt: '2026-09-28T10:00:00.000Z' };
+
+export async function seedAccessRequests(page: Page, requests: unknown[]) {
+  await page.addInitScript((requests) => {
+    window.__taxoTestAccessRequests = requests;
+  }, requests as never);
+}
+
+// Runs the local user signed in but with no workspace (no tenant or role claim).
+export async function seedNoWorkspace(page: Page) {
+  await page.addInitScript(() => {
+    window.__taxoTestNoWorkspace = true;
+  });
+}

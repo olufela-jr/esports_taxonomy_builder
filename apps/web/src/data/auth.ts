@@ -45,6 +45,8 @@ declare global {
   interface Window {
     __taxoTestRole?: Role;
     __taxoTestSuper?: boolean;
+    // A signed-in account with no workspace yet, for the "No workspace yet" screen.
+    __taxoTestNoWorkspace?: boolean;
   }
 }
 
@@ -76,7 +78,8 @@ function userFromClaims(firebaseUser: FirebaseUser, claims: Record<string, unkno
 // ---- In-memory -----------------------------------------------------------------
 
 export function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin', superuser: boolean = window.__taxoTestSuper ?? false): AuthSession {
-  let user: User | null = localUser(role, superuser);
+  const current = (): User => (window.__taxoTestNoWorkspace ? { ...localUser(role, superuser), email: 'you@local.test', tenantId: null, role: null } : localUser(role, superuser));
+  let user: User | null = current();
   const listeners = new Set<Listener>();
 
   function set(next: User | null) {
@@ -92,9 +95,9 @@ export function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin', 
       listener(user);
       return () => { listeners.delete(listener); };
     },
-    async signIn() { set(localUser(role, superuser)); },
+    async signIn() { set(current()); },
     async signOut() { set(null); },
-    async refreshClaims() { set(localUser(role, superuser)); },
+    async refreshClaims() { set(current()); },
   };
 }
 

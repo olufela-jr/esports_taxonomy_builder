@@ -1,14 +1,20 @@
 import { type FormEvent, useState } from 'react';
-import { Building2, Check, ExternalLink, Plus, Send, UserPlus } from 'lucide-react';
+import { Building2, Check, ExternalLink, Inbox, Plus, Send, UserPlus } from 'lucide-react';
 import { PLATFORMS, platformName } from '@taxo/shared';
+import type { AccessQueue, AccessRequest } from '@/data/access';
+import type { Role } from '@/data/auth';
 import type { MembersService } from '@/data/members';
 import type { Store, Tenant } from '@/data/store';
 import { checkTenantDraft, type TenantDraft, type TenantsDirectory } from '@/data/tenants';
 import { PageHeading } from './PageHeading';
-import { buttonPrimary, buttonQuiet, cardClass, inputClass } from './styles';
+import { buttonDanger, buttonPrimary, buttonQuiet, cardClass, inputClass, tableBody, tableCard, tableClass, tableHead, tableHeadCell, tableRow, tableWrap } from './styles';
 
 function message(cause: unknown, fallback: string): string {
   return cause instanceof Error && cause.message ? cause.message : fallback;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
 }
 
 function parseDatasets(text: string): string[] {
@@ -23,19 +29,23 @@ type TenantsProps = {
   membersService: MembersService;
   viewedTenantId: string | null;
   storeKind: Store['kind'];
+  // Access requests from accounts with no workspace yet, and the super user's decisions on them.
+  accessRequests: AccessRequest[];
+  accessQueue: AccessQueue;
   onOpen: (id: string) => void;
 };
 
 // The super user's screen: every tenant, a form to create or edit one, and an
 // invite for a tenant's first admin. Everything a tenant holds is reached by
 // opening it, which switches the workspace the rest of the app shows.
-export function Tenants({ tenants, directory, membersService, viewedTenantId, storeKind, onOpen }: TenantsProps) {
+export function Tenants({ tenants, directory, membersService, viewedTenantId, storeKind, accessRequests, accessQueue, onOpen }: TenantsProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = selectedId && selectedId !== NEW ? tenants.find((tenant) => tenant.id === selectedId) ?? null : null;
 
   return (
     <div>
       <PageHeading eyebrow="Super user" title="Tenants" description="Every client workspace. Open one to work in it (read only unless you are an admin there), create a new one, or invite its first admin." action={<button type="button" className={buttonPrimary} onClick={() => setSelectedId(NEW)} data-testid="button-create-tenant"><Plus className="h-4 w-4" /> New tenant</button>} />
+      <AccessRequests requests={accessRequests} tenants={tenants} queue={accessQueue} />
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <div className="space-y-4" data-testid="list-tenants">
           {tenants.length === 0 && <p className="text-xs font-semibold text-muted-foreground" data-testid="text-no-tenants">No tenants yet. Create the first one.</p>}
@@ -48,6 +58,75 @@ export function Tenants({ tenants, directory, membersService, viewedTenantId, st
         </section>
       </div>
     </div>
+  );
+}
+
+// People who signed in with the link and asked for access. The super user
+// picks the workspace and role for each, or declines. Pending first, then the
+// decided ones as a record; a declined request can still be approved later.
+function AccessRequests({ requests, tenants, queue }: { requests: AccessRequest[]; tenants: Tenant[]; queue: AccessQueue }) {
+  const pending = requests.filter((request) => request.status === 'pending');
+  const decided = requests.filter((request) => request.status !== 'pending');
+  if (requests.length === 0) return null;
+  return (
+    <section className={`${tableCard} mb-6`} data-testid="section-access-requests">
+      <div className="flex items-center justify-between px-5 pt-5 pb-3"><div className="flex items-center gap-2 font-display text-xl font-medium text-foreground"><Inbox className="h-4 w-4 text-muted-foreground" /> Access requests</div><span className="text-[11px] font-bold text-muted-foreground" data-testid="text-access-request-count">{pending.length} waiting</span></div>
+      <div className={tableWrap}>
+        <table className={tableClass}>
+          <thead className={tableHead}><tr><th className={tableHeadCell}>Person</th><th className={tableHeadCell}>Asked</th><th className={tableHeadCell}>Workspace</th><th className={tableHeadCell}>Role</th><th className={tableHeadCell}></th></tr></thead>
+          <tbody className={tableBody}>
+            {[...pending, ...decided].map((request) => <AccessRequestRow key={request.uid} request={request} tenants={tenants} queue={queue} />)}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function AccessRequestRow({ request, tenants, queue }: { request: AccessRequest; tenants: Tenant[]; queue: AccessQueue }) {
+  // With one workspace there is nothing to choose; with more, the super user picks one explicitly.
+  const [picked, setPicked] = useState('');
+  const tenantId = picked || (tenants.length === 1 ? tenants[0].id : '');
+  const [role, setRole] = useState<Role>('user');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const open = request.status !== 'approved';
+  const tenantName = (id: string | null) => tenants.find((tenant) => tenant.id === id)?.name ?? id ?? '';
+
+  const run = async (action: () => Promise<unknown>) => {
+    setBusy(true);
+    setError('');
+    try {
+      await action();
+    } catch (cause) {
+      setError(message(cause, 'That did not go through.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <tr className={tableRow} data-testid={`row-access-request-${request.uid}`}>
+      <td className="px-5 py-3"><div className="font-semibold text-foreground">{request.name}</div><div className="text-muted-foreground">{request.email}</div>{error && <div className="mt-1 font-semibold text-destructive" role="alert" data-testid={`text-access-request-error-${request.uid}`}>{error}</div>}</td>
+      <td className="px-5 py-3 text-muted-foreground">{formatDate(request.createdAt)}</td>
+      {open ? (
+        <>
+          <td className="px-5 py-3"><select className={`${inputClass} w-44`} value={tenantId} onChange={(event) => setPicked(event.target.value)} disabled={busy} aria-label={`Workspace for ${request.email}`} data-testid={`select-access-tenant-${request.uid}`}><option value="">Pick a workspace</option>{tenants.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)}</select></td>
+          <td className="px-5 py-3"><select className={`${inputClass} w-28`} value={role} onChange={(event) => setRole(event.target.value as Role)} disabled={busy} aria-label={`Role for ${request.email}`} data-testid={`select-access-role-${request.uid}`}><option value="user">User</option><option value="admin">Admin</option></select></td>
+          <td className="px-5 py-3 text-right"><div className="flex items-center justify-end gap-2">
+            {request.status === 'declined' && <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground" data-testid={`text-access-status-${request.uid}`}>declined</span>}
+            <button type="button" className={buttonPrimary} disabled={busy || !tenantId} onClick={() => void run(() => queue.approve(request.uid, tenantId, role))} data-testid={`button-approve-access-${request.uid}`}><Check className="h-4 w-4" /> Approve</button>
+            {request.status === 'pending' && <button type="button" className={buttonDanger} disabled={busy} onClick={() => void run(() => queue.decline(request.uid))} data-testid={`button-decline-access-${request.uid}`}>Decline</button>}
+          </div></td>
+        </>
+      ) : (
+        <>
+          <td className="px-5 py-3 font-semibold text-foreground" data-testid={`text-access-tenant-${request.uid}`}>{tenantName(request.tenantId)}</td>
+          <td className="px-5 py-3 capitalize">{request.role}</td>
+          <td className="px-5 py-3 text-right"><span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary" data-testid={`text-access-status-${request.uid}`}>approved</span></td>
+        </>
+      )}
+    </tr>
   );
 }
 

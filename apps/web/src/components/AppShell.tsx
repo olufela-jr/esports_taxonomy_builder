@@ -39,6 +39,8 @@ type AppShellProps = {
   onSelectRule: (id: string) => void;
   onSignOut: () => Promise<void>;
   dictionaryBadge: number;
+  // Access requests waiting on the super user.
+  tenantsBadge: number;
   // Admins get the Members action (the admin section); the super user gets it
   // too, plus Tenants and the workspace switcher.
   canManage: boolean;
@@ -53,7 +55,7 @@ type AppShellProps = {
 
 // The action-first shell: the persistent Rule Set and Rule context, the
 // actions, the signed-in user, and the workspace for the current action.
-export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, canManage, isSuper, roleHere, tenants, tenantId, onSelectTenant, children }: AppShellProps) {
+export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, tenantsBadge, canManage, isSuper, roleHere, tenants, tenantId, onSelectTenant, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -137,7 +139,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           <div className="mt-6 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Admin</div>
           <nav className="mt-2 space-y-1" aria-label="Admin navigation">
             <NavItem href="/members" label="Members" active={current === 'members'} />
-            {isSuper && <NavItem href="/tenants" label="Tenants" active={current === 'tenants'} />}
+            {isSuper && <NavItem href="/tenants" label="Tenants" active={current === 'tenants'} badge={tenantsBadge} />}
           </nav>
         </>}
         

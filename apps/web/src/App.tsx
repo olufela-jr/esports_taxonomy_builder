@@ -13,6 +13,7 @@ import { NotFound } from '@/components/NotFound';
 import { RuleSetEditor } from '@/components/RuleSetEditor';
 import { RuleSetList } from '@/components/RuleSetList';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
+import { createAccessQueue, createAccessRequester, type AccessQueue, type AccessRequest } from '@/data/access';
 import { createAuth, type Role, type User } from '@/data/auth';
 import { detectMode } from '@/data/mode';
 import { createInviteClaimer, createMembersService, type MembersService } from '@/data/members';
@@ -32,6 +33,8 @@ function App() {
   const scanner = useMemo(() => createScanner(mode), [mode]);
   // Claims a waiting invite for an account with no workspace yet.
   const inviteClaimer = useMemo(() => createInviteClaimer(mode), [mode]);
+  // Asks for access, and follows that request, for an account with no workspace yet.
+  const accessRequester = useMemo(() => createAccessRequester(mode), [mode]);
   const [user, setUser] = useState<User | null | undefined>(() => auth.getUser());
   useEffect(() => auth.subscribe(setUser), [auth]);
 
@@ -52,6 +55,16 @@ function App() {
     }
     return directory.subscribe(setTenants);
   }, [directory]);
+  // The super user's queue of access requests.
+  const accessQueue = useMemo(() => (isSuper ? createAccessQueue(mode) : null), [mode, isSuper]);
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>(() => accessQueue?.getSnapshot() ?? []);
+  useEffect(() => {
+    if (!accessQueue) {
+      setAccessRequests([]);
+      return;
+    }
+    return accessQueue.subscribe(setAccessRequests);
+  }, [accessQueue]);
   const uid = user?.uid ?? null;
   const viewedTenantId = isSuper ? (ui.tenantId ?? user?.tenantId ?? tenants[0]?.id ?? null) : (user?.tenantId ?? null);
   // The caller's role in the workspace shown; null when they are not a member of it.
@@ -114,15 +127,15 @@ function App() {
     return <SignIn kind={auth.kind} onSignIn={auth.signIn} />;
   }
   // The super user with no tenant to look at yet: only the Tenants screen makes sense.
-  if (isSuper && directory && !viewedTenantId) {
-    return <TenantsStandalone user={user} tenants={tenants} directory={directory} onSignOut={auth.signOut} />;
+  if (isSuper && directory && accessQueue && !viewedTenantId) {
+    return <TenantsStandalone user={user} tenants={tenants} directory={directory} accessRequests={accessRequests} accessQueue={accessQueue} onSignOut={auth.signOut} />;
   }
   // Signed in without a tenant or role claim: nothing is readable yet.
   if (!isSuper && (!user.tenantId || !user.role)) {
-    return <NoWorkspace user={user} onAcceptInvite={inviteClaimer.accept} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
+    return <NoWorkspace user={user} requester={accessRequester} onAcceptInvite={inviteClaimer.accept} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
   }
   if (!viewedTenantId || !store || !membersService) {
-    return <NoWorkspace user={user} onAcceptInvite={inviteClaimer.accept} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
+    return <NoWorkspace user={user} requester={accessRequester} onAcceptInvite={inviteClaimer.accept} onRetry={auth.refreshClaims} onSignOut={auth.signOut} />;
   }
 
   return (
@@ -134,6 +147,8 @@ function App() {
         roleHere={roleHere}
         tenants={tenants}
         directory={directory}
+        accessRequests={accessRequests}
+        accessQueue={accessQueue}
         viewedTenantId={viewedTenantId}
         onSelectTenant={selectTenant}
         ruleSets={ruleSets}
@@ -170,7 +185,7 @@ function App() {
 }
 
 // The Tenants screen on its own, for a super user with nothing to open yet.
-function TenantsStandalone({ user, tenants, directory, onSignOut }: { user: User; tenants: Tenant[]; directory: TenantsDirectory; onSignOut: () => Promise<void> }) {
+function TenantsStandalone({ user, tenants, directory, accessRequests, accessQueue, onSignOut }: { user: User; tenants: Tenant[]; directory: TenantsDirectory; accessRequests: AccessRequest[]; accessQueue: AccessQueue; onSignOut: () => Promise<void> }) {
   // Inviting needs a members service, which needs a workspace; with no tenant
   // yet there is nothing to invite into, so the cards' invite is a no-op here.
   const noInvites: MembersService = {
@@ -183,7 +198,7 @@ function TenantsStandalone({ user, tenants, directory, onSignOut }: { user: User
     <div className="min-h-[100dvh] bg-background">
       <div className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">
         <div className="mb-6 flex items-center justify-between text-xs text-muted-foreground"><span>Signed in as {user.email ?? user.name}, super user</span><button type="button" className="underline" onClick={() => void onSignOut()} data-testid="button-sign-out">Sign out</button></div>
-        <Tenants tenants={tenants} directory={directory} membersService={noInvites} viewedTenantId={null} storeKind="firestore" onOpen={() => { /* the first tenant opens by default once it exists */ }} />
+        <Tenants tenants={tenants} directory={directory} membersService={noInvites} viewedTenantId={null} storeKind="firestore" accessRequests={accessRequests} accessQueue={accessQueue} onOpen={() => { /* the first tenant opens by default once it exists */ }} />
       </div>
     </div>
   );
@@ -198,6 +213,8 @@ type WorkspaceProps = {
   roleHere: Role | null;
   tenants: Tenant[];
   directory: TenantsDirectory | null;
+  accessRequests: AccessRequest[];
+  accessQueue: AccessQueue | null;
   viewedTenantId: string;
   onSelectTenant: (id: string) => void;
   ruleSets: RuleSet[];
@@ -233,7 +250,7 @@ type WorkspaceProps = {
 // Inside the router: syncs the last action with the URL, redirects the root to
 // it, and renders the shell plus the actions (and the admin section).
 function Workspace(props: WorkspaceProps) {
-  const { user, canEdit, isSuper, roleHere, tenants, directory, viewedTenantId, onSelectTenant, ruleSets, definitions, requests, drafts, tenant, members, invites, membersService, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
+  const { user, canEdit, isSuper, roleHere, tenants, directory, accessRequests, accessQueue, viewedTenantId, onSelectTenant, ruleSets, definitions, requests, drafts, tenant, members, invites, membersService, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
   // In-app notice (O17): an admin sees how many requests wait; a member sees
   // how many of theirs were decided since they last opened the Dictionary.
   const [seenDecided, setSeenDecided] = useState<string[]>(() => readSeenDecided());
@@ -276,7 +293,7 @@ function Workspace(props: WorkspaceProps) {
       : <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
 
   return (
-    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge} canManage={canEdit || isSuper} isSuper={isSuper} roleHere={roleHere} tenants={tenants} tenantId={viewedTenantId} onSelectTenant={onSelectTenant}>
+    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge} tenantsBadge={accessRequests.filter((request) => request.status === 'pending').length} canManage={canEdit || isSuper} isSuper={isSuper} roleHere={roleHere} tenants={tenants} tenantId={viewedTenantId} onSelectTenant={onSelectTenant}>
       <ErrorBoundary resetKey={location}>
         <Switch>
           <Route path="/author">{author}</Route>
@@ -285,7 +302,7 @@ function Workspace(props: WorkspaceProps) {
           <Route path="/compliance"><Compliance ruleSet={selectedRuleSet} definitions={definitions} scanner={scanner} onSelectRule={onSelectRule} /></Route>
           <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
           <Route path="/members">{canEdit || isSuper ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} canManageRoles={canEdit} inviteTenantId={isSuper ? viewedTenantId : undefined} /> : <MembersAdminsOnly />}</Route>
-          <Route path="/tenants">{isSuper && directory ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} onOpen={(id) => { onSelectTenant(id); setLocation('/author'); }} /> : <TenantsSuperOnly />}</Route>
+          <Route path="/tenants">{isSuper && directory && accessQueue ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} accessRequests={accessRequests} accessQueue={accessQueue} onOpen={(id) => { onSelectTenant(id); setLocation('/author'); }} /> : <TenantsSuperOnly />}</Route>
           <Route path="/">{author}</Route>
           <Route component={NotFound} />
         </Switch>
