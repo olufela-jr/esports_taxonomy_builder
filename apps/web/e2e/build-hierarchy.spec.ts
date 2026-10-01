@@ -13,6 +13,8 @@ test('a child is built under a pasted parent name; a non-compliant parent blocks
 
   await expect(page.getByTestId('section-build-parent')).toBeVisible();
   await expect(page.getByTestId('section-build-segments')).toBeHidden();
+  // An example parent name, as chips from compose over sample values.
+  await expect(page.getByTestId('chips-build-parent-example')).toBeVisible();
 
   await page.getByTestId('input-build-parent').fill('nope_zz');
   await expect(page.getByTestId('status-build-parent-violations')).toContainText('Value is not in the allowed list');
@@ -27,6 +29,11 @@ test('a child is built under a pasted parent name; a non-compliant parent blocks
 
   await page.getByTestId('select-build-match').selectOption('exa');
   await expect(page.getByTestId('text-build-preview')).toHaveText('perf_exa');
+  // The output chips: the inherited segment greyed first, the delimiter as its own chip.
+  await expect(page.getByTestId('chips-build-output-seg-campaign_type')).toHaveText('perf');
+  await expect(page.getByTestId('chips-build-output-seg-campaign_type')).toHaveAttribute('data-inherited', 'true');
+  await expect(page.getByTestId('chips-build-output-seg-match')).toHaveText('exa');
+  await expect(page.getByTestId('chips-build-output-delimiter')).toHaveText('_');
   await expect(page.getByTestId('button-copy-build-name')).toBeEnabled();
 });
 

@@ -78,3 +78,13 @@
 @layer utilities {
   .text-balance { text-wrap: balance; }
 }
+/* Segment chips and the segment drawer: in, out and (with useFlip) reorder. */
+@keyframes chip-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+@keyframes chip-out { to { opacity: 0; transform: scale(.85); } }
+@keyframes drawer-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+.chip-enter { animation: chip-in 180ms ease-out; }
+.chip-leave { animation: chip-out 150ms ease-in forwards; }
+.drawer-enter { animation: drawer-in 180ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .chip-enter, .chip-leave, .drawer-enter { animation: none; }
+}

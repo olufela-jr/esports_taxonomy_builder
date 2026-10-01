@@ -7,6 +7,9 @@ import { BatchBuilder } from './BatchBuilder';
 import { ChildBatchBuilder } from './ChildBatchBuilder';
 import { PageHeading } from './PageHeading';
 import { EmptyState as SharedEmptyState } from './results';
+import { SegmentChipRow } from './SegmentChipRow';
+import { exampleSelections } from '@/lib/examples';
+import { segmentMeta } from '@/lib/segment-meta';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 function EmptyState() {
@@ -114,6 +117,9 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
     }
   }
   const parentReady = !rule.parent || Boolean(parentName && parentParse?.valid);
+  // An example parent name, from compose over sample values.
+  const parentExample = resolvedParent ? compose(resolvedParent, exampleSelections(resolvedParent)).name : '';
+  const meta = segmentMeta(rule, ruleSet);
   const children = ruleSet.rules.filter((candidate) => candidate.parent?.ruleId === rule.id);
 
   const selections = { ...values, ...inheritedValues };
@@ -219,11 +225,11 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
           {rule.parent && parentRule && (
             <div className="mb-6 rounded-lg border border-border/50 bg-muted/20 p-4" data-testid="section-build-parent">
               <label htmlFor="build-parent" className="text-[13px] font-bold text-foreground">Under {parentRule.name}:<span className="ml-2 font-normal text-muted-foreground">paste the {parentRule.name.toLowerCase()} name this belongs to</span></label>
-              <input id="build-parent" className={`${inputClass} mt-2 font-mono`} value={parentName} onChange={(event) => setParentNames((current) => ({ ...current, [rule.id]: event.target.value }))} placeholder={`e.g. ${resolvedParent?.segments.map((segment) => segment.kind === 'enum' ? segment.allowedValues[0]?.code ?? 'value' : segment.label.toLowerCase()).join(parentRule.delimiter) ?? ''}`} data-testid="input-build-parent" />
+              <input id="build-parent" className={`${inputClass} mt-2 font-mono`} value={parentName} onChange={(event) => setParentNames((current) => ({ ...current, [rule.id]: event.target.value }))} placeholder={parentExample ? `e.g. ${parentExample}` : undefined} data-testid="input-build-parent" />
               {parentName && parentParse && !parentParse.valid && (
                 <ul className="mt-3 list-disc pl-5 text-xs font-semibold text-destructive" data-testid="status-build-parent-violations">{parentParse.violations.map((violation) => <li key={`${violation.segmentKey}-${violation.reason}`}>{violation.segmentKey === NAME_VIOLATION_KEY ? violation.reason : `${violation.segmentKey}: ${violation.reason}`}</li>)}</ul>
               )}
-              {!parentName && <p className="mt-2 text-[11px] font-bold text-muted-foreground">The inherited segments fill in from the {parentRule.name.toLowerCase()} name.</p>}
+              {!parentName && <div className="mt-2 flex flex-col gap-2"><p className="text-[11px] font-bold text-muted-foreground">The inherited segments fill in from the {parentRule.name.toLowerCase()} name. For example:</p>{resolvedParent && <SegmentChipRow rule={resolvedParent} meta={segmentMeta(parentRule, ruleSet)} mode="example" compact testId="chips-build-parent-example" />}</div>}
               {parentParse?.valid && <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-primary" data-testid="text-build-parent-ok"><Check className="h-3.5 w-3.5" /> Valid {parentRule.name.toLowerCase()} name; inherited segments locked.</p>}
             </div>
           )}
@@ -298,7 +304,7 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
                   const label = request ? `"${request.label}" (${request.code})` : 'a value';
                   return (
                     <li key={draft.id} className="flex flex-col gap-2 rounded-[4px] bg-card px-3 py-2 text-[12px] sm:flex-row sm:items-center sm:justify-between" data-testid={`row-draft-${draft.id}`}>
-                      <span className="font-semibold text-foreground">{Object.values(draft.selections).filter(Boolean).join(active.delimiter) || 'Nothing chosen yet'} <span className="ml-2 font-normal text-muted-foreground" data-testid={`text-draft-status-${draft.id}`}>{draft.status === 'ready' ? `${label} approved, ready to resume` : request?.status === 'rejected' ? `${label} rejected${request.reason ? `: ${request.reason}` : ''}` : `waiting for ${label}`}</span></span>
+                      <span className="flex flex-col gap-1.5 font-semibold text-foreground">{Object.values(draft.selections).some(Boolean) ? <SegmentChipRow rule={active} meta={meta} mode="values" selections={draft.selections} compact testId={`chips-draft-${draft.id}`} /> : 'Nothing chosen yet'} <span className="font-normal text-muted-foreground" data-testid={`text-draft-status-${draft.id}`}>{draft.status === 'ready' ? `${label} approved, ready to resume` : request?.status === 'rejected' ? `${label} rejected${request.reason ? `: ${request.reason}` : ''}` : `waiting for ${label}`}</span></span>
                       <span className="flex gap-2"><button type="button" className={buttonQuiet} onClick={() => void resumeDraft(draft)} data-testid={`button-resume-draft-${draft.id}`}>{draft.status === 'ready' ? 'Resume' : 'Open'}</button><button type="button" className={buttonQuiet} onClick={() => void discardDraft(draft)} data-testid={`button-delete-draft-${draft.id}`}>Discard</button></span>
                     </li>
                   );
@@ -313,7 +319,8 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
               <div className="font-display text-2xl font-medium text-foreground">Output</div>
               {valid ? <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-primary" /><span className="text-[10px] font-bold text-foreground">Compliant</span></div> : <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/30 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /><span className="text-[10px] font-bold text-foreground">Incomplete</span></div>}
             </div>
-            <div className="my-8 break-all font-mono text-xl leading-relaxed text-primary sm:text-2xl" data-testid="text-build-preview">{displayOutput}</div>
+            <div className="mt-6"><SegmentChipRow rule={active} meta={meta} mode="values" selections={selections} badges={false} testId="chips-build-output" /></div>
+            <div className="my-6 break-all font-mono text-xl leading-relaxed text-primary sm:text-2xl" data-testid="text-build-preview">{displayOutput}</div>
             <div className="border-t border-border/50 pt-5">
               <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground">
                 <span>{valid ? 'Name is compliant' : `${missing.length} required segment${missing.length === 1 ? '' : 's'} remaining`}</span>
