@@ -98,6 +98,9 @@ beforeEach(async () => {
     await setDoc(doc(db, 'tenants/acme/requests/req-1'), valueRequest);
     await setDoc(doc(db, 'tenants/acme/drafts/draft-1'), buildDraft);
     await setDoc(doc(db, 'tenants/other/rulesets/rs-9'), { ...ruleSet, id: 'rs-9', createdBy: 'bob', updatedBy: 'bob' });
+    // nobody (no claims) has asked for access; stranger has too.
+    await setDoc(doc(db, 'accessRequests/nobody'), { uid: 'nobody', email: 'nobody@elsewhere.test', name: 'Nobody', status: 'pending', tenantId: null, role: null, decidedBy: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+    await setDoc(doc(db, 'accessRequests/stranger'), { uid: 'stranger', email: 'stranger@elsewhere.test', name: 'Stranger', status: 'pending', tenantId: null, role: null, decidedBy: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
     // The pre-v3 collection, left in place by the migration until it is deleted explicitly.
     await setDoc(doc(db, 'rulesets/rs-legacy'), { ...ruleSet, id: 'rs-legacy' });
   });
@@ -202,6 +205,25 @@ describe('the super user', () => {
     await assertSucceeds(updateDoc(doc(fela(), 'tenants/other/rulesets/rs-9'), { name: 'Fela edit', updatedAt: '2026-01-05T00:00:00.000Z', updatedBy: 'fela' }));
     await assertSucceeds(getDoc(doc(fela(), RS1)));
     await assertFails(updateDoc(doc(fela(), RS1), { name: 'Cross-tenant edit', updatedBy: 'fela' }));
+  });
+});
+
+describe('access requests', () => {
+  it('lets the requester read only their own, the super user read all, and nobody write', async () => {
+    await assertSucceeds(getDoc(doc(nobody(), 'accessRequests/nobody')));
+    await assertFails(getDoc(doc(nobody(), 'accessRequests/stranger')));
+    await assertFails(getDocs(collection(nobody(), 'accessRequests')));
+    await assertFails(getDoc(doc(anonymous(), 'accessRequests/nobody')));
+    // A tenant admin is not the super user: no queue for them.
+    await assertFails(getDoc(doc(alice(), 'accessRequests/nobody')));
+    await assertFails(getDocs(collection(alice(), 'accessRequests')));
+    await assertSucceeds(getDocs(collection(sam(), 'accessRequests')));
+    await assertSucceeds(getDoc(doc(sam(), 'accessRequests/stranger')));
+    // Only the Functions write: not the requester (self-approval), not the super user directly.
+    await assertFails(updateDoc(doc(nobody(), 'accessRequests/nobody'), { status: 'approved', tenantId: 'acme', role: 'admin' }));
+    await assertFails(setDoc(doc(env.authenticatedContext('newcomer').firestore(), 'accessRequests/newcomer'), { uid: 'newcomer', status: 'pending' }));
+    await assertFails(updateDoc(doc(sam(), 'accessRequests/stranger'), { status: 'declined' }));
+    await assertFails(deleteDoc(doc(sam(), 'accessRequests/stranger')));
   });
 });
 

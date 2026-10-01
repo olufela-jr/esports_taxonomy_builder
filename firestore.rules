@@ -3,8 +3,9 @@ rules_version = '2';
 // v3 tenancy. Every document lives under tenants/{tenantId}; the caller's
 // tenantId claim must match the path for any read or write, and only the
 // admin role writes Rule Sets. The tenant document and the users mirror are
-// written by the provisioning scripts only. Nothing outside tenants/ matches,
-// so the legacy /rulesets collection and every other path are denied.
+// written by the provisioning scripts only. Outside tenants/ only
+// accessRequests/ matches (a person asking for access has no tenant yet), so
+// the legacy /rulesets collection and every other path are denied.
 //
 // The rules language cannot loop over the inline Rules, so anything about
 // their content is checked by checkRuleSet in @taxo/shared before every save;
@@ -97,6 +98,15 @@ service cloud.firestore {
         && data.updatedAt is string
         && data.createdBy is string
         && data.updatedBy is string;
+    }
+
+    // Access requests from signed-in accounts with no workspace yet, keyed by
+    // uid so an account has at most one. The requester reads their own (the
+    // waiting screen follows it live), the super user reads all to decide them,
+    // and only the access-request Functions write.
+    match /accessRequests/{uid} {
+      allow read: if isSuper() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
     }
 
     match /tenants/{tenantId} {

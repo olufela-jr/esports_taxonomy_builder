@@ -4,7 +4,8 @@
 // must be whitelisted in the tenant config, and a Rule is resolved (parents
 // and shared definitions) before any name is judged. BigQuery is read-only,
 // in this same project, with a bytes cap on every query. Membership changes
-// (claims and the users mirror) run only here, never from the client.
+// (claims and the users mirror) run only here, never from the client, and so
+// do access requests from accounts with no workspace yet.
 import { randomUUID } from 'node:crypto';
 import { BigQuery } from '@google-cloud/bigquery';
 import { initializeApp } from 'firebase-admin/app';
@@ -12,6 +13,7 @@ import { getAuth, type UserRecord } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { definitionDependents, resolveRule, type Definition, type EnumEntry, type Rule, type RuleSet } from '@taxo/shared';
+import { decideAccessRequest as decideAccessRequestLogic, requestAccess as requestAccessLogic, type AccessPorts, type AccessRequest } from './access';
 import { acceptInvite as acceptInviteLogic, inviteMember as inviteMemberLogic, removeMember as removeMemberLogic, revokeInvite as revokeInviteLogic, setMemberRole as setMemberRoleLogic, type Account, type AuthPort, type Invite, type Member, type MembersStore, type Ports } from './members';
 import { buildScanQuery, evaluateNames, impactOf, MAX_BYTES_BILLED, type NameReader } from './scan';
 import { assertDatasetAllowed, inviteScope, readTenantConfig, tenantFromAuth, type TenantConfig } from './tenant';
@@ -226,21 +228,44 @@ export const acceptInvite = onCall({ region: 'asia-south1' }, async (request) =>
 
 // ---- Tenants (super user) -----------------------------------------------------------
 
+function firestoreTenantsStore(db: Firestore): TenantPorts['store'] {
+  return {
+    async getTenant(id) {
+      const snapshot = await db.doc(`tenants/${id}`).get();
+      return snapshot.exists ? (snapshot.data() as TenantDocument) : null;
+    },
+    async writeTenant(tenant) {
+      await db.doc(`tenants/${tenant.id}`).set(tenant);
+    },
+  };
+}
+
 function tenantPorts(): TenantPorts {
+  return { now: () => new Date().toISOString(), store: firestoreTenantsStore(getFirestore()) };
+}
+
+export const createTenant = onCall({ region: 'asia-south1' }, async (request) => createTenantLogic(tenantPorts(), request.auth, request.data));
+export const updateTenant = onCall({ region: 'asia-south1' }, async (request) => updateTenantLogic(tenantPorts(), request.auth, request.data));
+
+// ---- Access requests (anyone signed in asks; the super user decides) ----------------
+
+function accessPorts(): AccessPorts {
   const db = getFirestore();
   return {
-    now: () => new Date().toISOString(),
-    store: {
-      async getTenant(id) {
-        const snapshot = await db.doc(`tenants/${id}`).get();
-        return snapshot.exists ? (snapshot.data() as TenantDocument) : null;
+    members: memberPorts(),
+    tenants: firestoreTenantsStore(db),
+    requests: {
+      async getRequest(uid) {
+        const snapshot = await db.doc(`accessRequests/${uid}`).get();
+        return snapshot.exists ? (snapshot.data() as AccessRequest) : null;
       },
-      async writeTenant(tenant) {
-        await db.doc(`tenants/${tenant.id}`).set(tenant);
+      async writeRequest(request) {
+        await db.doc(`accessRequests/${request.uid}`).set(request);
       },
     },
   };
 }
 
-export const createTenant = onCall({ region: 'asia-south1' }, async (request) => createTenantLogic(tenantPorts(), request.auth, request.data));
-export const updateTenant = onCall({ region: 'asia-south1' }, async (request) => updateTenantLogic(tenantPorts(), request.auth, request.data));
+// Like acceptInvite, callable by a signed-in account with no workspace.
+export const requestAccess = onCall({ region: 'asia-south1' }, async (request) => requestAccessLogic(accessPorts(), request.auth));
+export const decideAccessRequest = onCall({ region: 'asia-south1' }, async (request) => decideAccessRequestLogic(accessPorts(), request.auth, request.data));
