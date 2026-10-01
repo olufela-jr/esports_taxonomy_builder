@@ -21,7 +21,7 @@ async function someoneElseRenames(page: import('@playwright/test').Page, name: s
 }
 
 test('a save on top of someone else\'s change is refused, and Reload catches up', async ({ page }) => {
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await expect(page.getByTestId('input-ruleset-name')).toHaveValue('Paid media (test)');
   await page.getByTestId('input-ruleset-name').fill('My rename');
@@ -46,7 +46,7 @@ test('a save on top of someone else\'s change is refused, and Reload catches up'
 });
 
 test('saving twice in a row from one editor keeps working', async ({ page }) => {
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('input-ruleset-name').fill('First save');
   await page.getByTestId('button-save-ruleset').click();

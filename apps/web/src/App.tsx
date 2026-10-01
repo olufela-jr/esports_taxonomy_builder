@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation, useRoute } from 'wouter';
 
 import { AppShell } from '@/components/AppShell';
 import { Builder } from '@/components/Builder';
 import { Compliance } from '@/components/Compliance';
 import { CsvChecker } from '@/components/CsvChecker';
 import { Dictionary } from '@/components/Dictionary';
+import { Home, RulesAdminsOnly } from '@/components/Home';
 import { Members, MembersAdminsOnly } from '@/components/Members';
 import { Tenants, TenantsSuperOnly } from '@/components/Tenants';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -247,28 +248,40 @@ type WorkspaceProps = {
   onDeleteDraft: (id: string) => Promise<void>;
 };
 
-// Inside the router: syncs the last action with the URL, redirects the root to
-// it, and renders the shell plus the actions (and the admin section).
+// Inside the router: records the last action, keeps the Rule Set context in
+// step with a /rules/:ruleSetId URL, and renders the shell plus the actions
+// (and the admin section).
 function Workspace(props: WorkspaceProps) {
   const { user, canEdit, isSuper, roleHere, tenants, directory, accessRequests, accessQueue, viewedTenantId, onSelectTenant, ruleSets, definitions, requests, drafts, tenant, members, invites, membersService, scanner, storeKind, ui, selectedRuleSet, selectedRule, onSelectRuleSet, onSelectRule, onLocationChange, onSignOut, onCreate, onUpdate, onDelete, onCreateDefinition, onUpdateDefinition, onDeleteDefinition, onCreateRequest, onUpdateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft } = props;
+  // Manage Rules is for admins; the super user may look, read only (D36).
+  const canManage = canEdit || isSuper;
   // In-app notice (O17): an admin sees how many requests wait; a member sees
-  // how many of theirs were decided since they last opened the Dictionary.
+  // how many of theirs were decided since they last opened Definitions.
   const [seenDecided, setSeenDecided] = useState<string[]>(() => readSeenDecided());
   const decided = requests.filter((request) => request.status !== 'pending');
-  const dictionaryBadge = canEdit ? requests.filter((request) => request.status === 'pending').length : decided.filter((request) => !seenDecided.includes(request.id)).length;
+  const definitionsBadge = canEdit ? requests.filter((request) => request.status === 'pending').length : decided.filter((request) => !seenDecided.includes(request.id)).length;
   const [location, setLocation] = useLocation();
+  const [onRuleSetPage, ruleSetParams] = useRoute<{ ruleSetId: string }>('/rules/:ruleSetId/*?');
+  const routeRuleSetId = onRuleSetPage && ruleSetParams.ruleSetId !== 'new' ? ruleSetParams.ruleSetId : null;
 
   useEffect(() => {
-    if (location === '/') {
-      setLocation(ui.lastAction || '/author');
-      return;
-    }
     onLocationChange(location);
-  }, [location, ui.lastAction, setLocation, onLocationChange]);
+  }, [location, onLocationChange]);
 
-  // Opening the Dictionary marks every decided request as seen, in this browser.
+  // A Rule Set opened by its URL becomes the persistent context.
   useEffect(() => {
-    if (!location.startsWith('/dictionary') || canEdit) return;
+    if (routeRuleSetId && ruleSets.some((item) => item.id === routeRuleSetId)) onSelectRuleSet(routeRuleSetId);
+  }, [routeRuleSetId, ruleSets, onSelectRuleSet]);
+
+  // Picking a Rule Set in the sidebar while managing rules opens it.
+  const selectRuleSet = (id: string | null) => {
+    onSelectRuleSet(id);
+    if (location.startsWith('/rules')) setLocation(id ? `/rules/${id}` : '/rules');
+  };
+
+  // Opening Definitions marks every decided request as seen, in this browser.
+  useEffect(() => {
+    if (!location.startsWith('/definitions') || canEdit) return;
     const ids = decided.map((request) => request.id);
     if (ids.some((id) => !seenDecided.includes(id))) {
       const next = [...new Set([...seenDecided, ...ids])];
@@ -277,33 +290,28 @@ function Workspace(props: WorkspaceProps) {
     }
   }, [location, canEdit, decided, seenDecided]);
 
-  // Author: an open Rule Set edits it (read only unless the user is an admin);
-  // otherwise the list, or a new draft.
-  const [creating, setCreating] = useState(false);
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
-  useEffect(() => {
-    // Picking a Rule Set from the shell while a draft is open abandons the draft.
-    if (ui.ruleSetId) setCreating(false);
-  }, [ui.ruleSetId]);
-
-  const author = selectedRuleSet
-    ? <RuleSetEditor key={selectedRuleSet.id} existing={selectedRuleSet} definitions={definitions} readOnly={!canEdit} storeKind={storeKind} justCreated={selectedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => onSelectRuleSet(null)} />
-    : creating && canEdit
-      ? <RuleSetEditor key="new" existing={null} definitions={definitions} storeKind={storeKind} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setCreating(false); setJustCreatedId(id); onSelectRuleSet(id); }} onClose={() => setCreating(false)} />
-      : <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={onSelectRuleSet} onCreate={() => setCreating(true)} />;
+  const openedRuleSet = routeRuleSetId ? ruleSets.find((item) => item.id === routeRuleSetId) : undefined;
+  const ruleSetPage = !canManage
+    ? <RulesAdminsOnly />
+    : openedRuleSet
+      ? <RuleSetEditor key={openedRuleSet.id} existing={openedRuleSet} definitions={definitions} readOnly={!canEdit} storeKind={storeKind} justCreated={openedRuleSet.id === justCreatedId} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={onSelectRuleSet} onClose={() => setLocation('/rules')} onDeleted={() => { onSelectRuleSet(null); setLocation('/rules'); }} />
+      : <NotFound />;
 
   return (
-    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={onSelectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} dictionaryBadge={dictionaryBadge} tenantsBadge={accessRequests.filter((request) => request.status === 'pending').length} canManage={canEdit || isSuper} isSuper={isSuper} roleHere={roleHere} tenants={tenants} tenantId={viewedTenantId} onSelectTenant={onSelectTenant}>
+    <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={selectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} definitionsBadge={definitionsBadge} tenantsBadge={accessRequests.filter((request) => request.status === 'pending').length} canManage={canManage} isSuper={isSuper} roleHere={roleHere} tenants={tenants} tenantId={viewedTenantId} onSelectTenant={onSelectTenant}>
       <ErrorBoundary resetKey={location}>
         <Switch>
-          <Route path="/author">{author}</Route>
+          <Route path="/"><Home canManage={canManage} ruleSets={ruleSets} selectedRuleSet={selectedRuleSet} selectedRule={selectedRule} /></Route>
+          <Route path="/rules">{canManage ? <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={(id) => setLocation(`/rules/${id}`)} onCreate={() => setLocation('/rules/new')} /> : <RulesAdminsOnly />}</Route>
+          <Route path="/rules/new">{canEdit ? <RuleSetEditor key="new" existing={null} definitions={definitions} storeKind={storeKind} onCreate={onCreate} onUpdate={onUpdate} onDelete={onDelete} onSaved={(id) => { setJustCreatedId(id); onSelectRuleSet(id); setLocation(`/rules/${id}`); }} onClose={() => setLocation('/rules')} onDeleted={() => setLocation('/rules')} /> : <RulesAdminsOnly />}</Route>
+          <Route path="/rules/:ruleSetId/*?">{ruleSetPage}</Route>
           <Route path="/build"><Builder ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} onSelectRule={onSelectRule} user={user} requests={requests} drafts={drafts} onCreateRequest={onCreateRequest} onCreateDraft={onCreateDraft} onUpdateDraft={onUpdateDraft} onDeleteDraft={onDeleteDraft} /></Route>
           <Route path="/check"><CsvChecker ruleSet={selectedRuleSet} rule={selectedRule} definitions={definitions} scanner={scanner} /></Route>
           <Route path="/compliance"><Compliance ruleSet={selectedRuleSet} definitions={definitions} scanner={scanner} onSelectRule={onSelectRule} /></Route>
-          <Route path="/dictionary"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
-          <Route path="/members">{canEdit || isSuper ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} canManageRoles={canEdit} inviteTenantId={isSuper ? viewedTenantId : undefined} /> : <MembersAdminsOnly />}</Route>
-          <Route path="/tenants">{isSuper && directory && accessQueue ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} accessRequests={accessRequests} accessQueue={accessQueue} onOpen={(id) => { onSelectTenant(id); setLocation('/author'); }} /> : <TenantsSuperOnly />}</Route>
-          <Route path="/">{author}</Route>
+          <Route path="/definitions"><Dictionary user={user} canEdit={canEdit} definitions={definitions} requests={requests} ruleSets={ruleSets} tenant={tenant} scanner={scanner} storeKind={storeKind} onCreateDefinition={onCreateDefinition} onUpdateDefinition={onUpdateDefinition} onDeleteDefinition={onDeleteDefinition} onCreateRequest={onCreateRequest} onUpdateRequest={onUpdateRequest} drafts={drafts} onUpdateDraft={onUpdateDraft} /></Route>
+          <Route path="/members">{canManage ? <Members user={user} members={members} invites={invites} service={membersService} storeKind={storeKind} canManageRoles={canEdit} inviteTenantId={isSuper ? viewedTenantId : undefined} /> : <MembersAdminsOnly />}</Route>
+          <Route path="/tenants">{isSuper && directory && accessQueue ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} accessRequests={accessRequests} accessQueue={accessQueue} onOpen={(id) => { onSelectTenant(id); setLocation('/rules'); }} /> : <TenantsSuperOnly />}</Route>
           <Route component={NotFound} />
         </Switch>
       </ErrorBoundary>

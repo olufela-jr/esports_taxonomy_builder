@@ -39,7 +39,7 @@ test('the super user sees waiting requests on Tenants, with a count in the nav',
   await seedRuleSets(page);
   await seedSuper(page);
   await seedAccessRequests(page, [samRequest, tessRequest]);
-  await page.goto('/author');
+  await page.goto('/rules');
   await expect(page.getByTestId('link-nav-tenants')).toContainText('1');
 
   await page.getByTestId('link-nav-tenants').click();

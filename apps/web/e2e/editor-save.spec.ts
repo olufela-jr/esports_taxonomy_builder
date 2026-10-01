@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('a slow create disables Save and never creates twice', async ({ page }) => {
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.evaluate(() => {
     const store = window.__taxoStore;
     if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');

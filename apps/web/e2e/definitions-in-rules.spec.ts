@@ -8,7 +8,7 @@ import { marketDefinition, paidMediaRuleSet, readRuleSets, seedRuleSets } from '
 
 test('an admin points a segment at a definition, and Build offers its labels and writes its code', async ({ page }) => {
   await seedRuleSets(page, undefined, 'admin', [marketDefinition]);
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
 
   // The Google Campaigns Rule's second segment, Market, moves from its own list to the shared Market.
@@ -45,12 +45,12 @@ test('a Rule using a definition keeps it from being deleted, and a scoped defini
   const searchOnly = { ...marketDefinition, id: 'def-match', name: 'Match type', platforms: ['google', 'microsoft'], entries: [{ label: 'Broad', code: 'brd' }] };
   await seedRuleSets(page, [usingMarket], 'admin', [marketDefinition, searchOnly]);
 
-  await page.goto('/dictionary');
+  await page.goto('/definitions');
   await page.getByTestId('card-definition-def-market').click();
   await expect(page.getByTestId('text-definition-dependents')).toContainText('Paid media (test) / Google Campaigns (Market)');
   await expect(page.getByTestId('button-delete-definition')).toBeDisabled();
 
-  await page.getByTestId('link-nav-author').click();
+  await page.getByTestId('link-nav-manage-rules').click();
   await page.getByTestId('card-ruleset-ruleset-paid').click();
   // The Google Rule may use the search-only definition; the Meta Rule is not offered it.
   await expect(page.getByTestId('select-segment-source-0-0').locator('option', { hasText: 'Match type' })).toHaveCount(1);

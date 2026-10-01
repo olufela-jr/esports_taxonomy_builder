@@ -17,7 +17,7 @@ async function typeAndCheck(page: Page, field: Locator, text: string, expected =
 
 test.beforeEach(async ({ page }) => {
   await seedRuleSets(page);
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('button-create-ruleset').click();
   await expect(page.getByTestId('button-save-ruleset')).toBeVisible();
 });

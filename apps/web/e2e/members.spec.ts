@@ -9,7 +9,7 @@ import { carolMember, pendingInvite, readInvites, readMembers, seedMembers, seed
 test('an admin sees members and invites, and the nav shows the admin section', async ({ page }) => {
   await seedRuleSets(page);
   await seedMembers(page, [umaMember, carolMember], [pendingInvite]);
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('link-nav-members').click();
   await expect(page).toHaveURL(/\/members$/);
 
@@ -101,7 +101,7 @@ test('removing a member takes them out of the list; the caller and the last admi
 test('a standard user has no admin section and /members says so', async ({ page }) => {
   await seedRuleSets(page, undefined, 'user');
   await seedMembers(page, [umaMember], [pendingInvite]);
-  await page.goto('/author');
+  await page.goto('/rules');
   await expect(page.getByTestId('link-nav-members')).toHaveCount(0);
 
   await page.goto('/members');

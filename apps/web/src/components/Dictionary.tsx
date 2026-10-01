@@ -74,7 +74,7 @@ export function Dictionary(props: DictionaryProps) {
 
   return (
     <div>
-      <PageHeading eyebrow="Shared definitions" title="Dictionary" description={canEdit ? 'The values every Rule Set in this workspace can share. Add definitions, set their codes and platforms, and handle requests from your team.' : 'The values every Rule Set in this workspace shares. If a value you need is missing, request it and an admin will add it.'} action={canEdit ? <button type="button" className={buttonPrimary} onClick={() => setSelectedId(NEW)} data-testid="button-create-definition"><Plus className="h-4 w-4" /> New definition</button> : undefined} />
+      <PageHeading eyebrow="Global definitions" title="Definitions" description={canEdit ? 'The values every Rule Set in this workspace can share. Add definitions, set their codes and platforms, and handle requests from your team.' : 'The values every Rule Set in this workspace shares. If a value you need is missing, request it and an admin will add it.'} action={canEdit ? <button type="button" className={buttonPrimary} onClick={() => setSelectedId(NEW)} data-testid="button-create-definition"><Plus className="h-4 w-4" /> New definition</button> : undefined} />
 
       <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
         <nav className="flex flex-col gap-2" aria-label="Definitions" data-testid="list-definitions">

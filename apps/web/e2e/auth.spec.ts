@@ -25,21 +25,24 @@ test('signing out shows the sign-in screen and signing in restores the context',
   await expect(page.getByTestId('select-shell-rule')).toHaveValue('rule-meta');
 });
 
-test('a standard user sees every Rule Set read only in Author but still builds', async ({ page }) => {
+test('a standard user has no Manage Rules, only Build and Check, and still builds', async ({ page }) => {
   await seedRuleSets(page, undefined, 'user');
-  await page.goto('/author');
+  await page.goto('/');
   await expect(page.getByTestId('text-user-role')).toHaveText('User');
-  await expect(page.getByTestId('button-create-ruleset')).toHaveCount(0);
-  await expect(page.getByTestId('card-ruleset-ruleset-paid')).toBeVisible();
+  await expect(page.getByTestId('box-home-build')).toBeVisible();
+  await expect(page.getByTestId('box-home-check')).toBeVisible();
+  await expect(page.getByTestId('box-home-rules')).toHaveCount(0);
+  await expect(page.getByTestId('link-nav-manage-rules')).toHaveCount(0);
+
+  // A Manage Rules link opened directly says it is for admins.
+  await page.goto('/rules');
+  await expect(page.getByTestId('text-rules-admins-only')).toBeVisible();
+  await expect(page.getByTestId('card-ruleset-ruleset-paid')).toHaveCount(0);
+  await page.goto('/rules/ruleset-paid');
+  await expect(page.getByTestId('text-rules-admins-only')).toBeVisible();
+  await expect(page.getByTestId('input-ruleset-name')).toHaveCount(0);
 
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
-  await expect(page.getByTestId('text-read-only')).toBeVisible();
-  await expect(page.getByTestId('button-save-ruleset')).toHaveCount(0);
-  await expect(page.getByTestId('button-delete-ruleset')).toHaveCount(0);
-  await expect(page.getByTestId('input-ruleset-name')).toBeDisabled();
-  await expect(page.getByTestId('input-rule-name-0')).toBeDisabled();
-  await expect(page.getByTestId('button-add-rule')).toBeDisabled();
-
   await page.getByTestId('link-nav-build').click();
   await page.getByTestId('select-shell-rule').selectOption('rule-meta');
   await expect(page.getByText('An example Meta Ad Sets name.')).toBeVisible();
@@ -51,7 +54,7 @@ test('a standard user sees every Rule Set read only in Author but still builds',
 
 test('an admin edits any Rule Set in the workspace, whoever created it', async ({ page }) => {
   await seedRuleSets(page);
-  await page.goto('/author');
+  await page.goto('/rules');
   await expect(page.getByTestId('button-create-ruleset')).toBeVisible();
 
   // ruleset-global was created by someone else; the role, not the creator, decides.

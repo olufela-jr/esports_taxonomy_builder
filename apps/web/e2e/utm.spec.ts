@@ -40,7 +40,7 @@ test('Build writes a tracking URL per name whose utm_campaign is the parent name
 
 test('an admin switches tracking on for a Rule, sees a bad base URL listed, and the mapping is stored', async ({ page }) => {
   await seedRuleSets(page, [paidMediaRuleSet], 'admin');
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
 
   await page.getByTestId('checkbox-rule-utm-0').check();

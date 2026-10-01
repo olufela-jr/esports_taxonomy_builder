@@ -6,7 +6,7 @@ import { hierarchyRuleSet, paidMediaRuleSet, readRuleSets, seedRuleSets } from '
 
 test('problems are listed per Rule and block saving until fixed', async ({ page }) => {
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
   await expect(page.getByTestId('button-save-ruleset')).toBeEnabled();
 
@@ -29,7 +29,7 @@ test('problems are listed per Rule and block saving until fixed', async ({ page 
 
 test('a parent Rule and the segments a child inherits cannot be removed', async ({ page }) => {
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
 
   await expect(page.getByTestId('text-rule-dependents-0')).toContainText('Parent of Google Ad Groups');
@@ -43,7 +43,7 @@ test('a parent Rule and the segments a child inherits cannot be removed', async 
 
 test('an admin links a Rule to a parent, inherits its leading segments, and the link is stored by id', async ({ page }) => {
   await seedRuleSets(page, [paidMediaRuleSet], 'admin');
-  await page.goto('/author');
+  await page.goto('/rules');
   await page.getByTestId('card-ruleset-ruleset-paid').click();
 
   // The Meta Ad Sets Rule becomes a child of Google Campaigns.

@@ -29,7 +29,7 @@ const pendingRequest = {
 
 test('an admin creates a definition, typing freely, and it is stored with its entries and platforms', async ({ page }) => {
   await seedRuleSets(page, undefined, 'admin', [marketDefinition, objectiveDefinition]);
-  await page.goto('/dictionary');
+  await page.goto('/definitions');
   await expect(page.getByTestId('card-definition-def-market')).toBeVisible();
   await expect(page.getByTestId('card-definition-def-objective')).toBeVisible();
 
@@ -51,13 +51,13 @@ test('an admin creates a definition, typing freely, and it is stored with its en
 
   // The Dictionary is an action: a refresh lands back on it with the context intact.
   await page.reload();
-  await expect(page).toHaveURL(/\/dictionary$/);
+  await expect(page).toHaveURL(/\/definitions$/);
   await expect(page.getByTestId('select-shell-ruleset')).toBeVisible();
 });
 
 test('a duplicate code blocks saving with the reason shown', async ({ page }) => {
   await seedRuleSets(page, undefined, 'admin', [marketDefinition]);
-  await page.goto('/dictionary');
+  await page.goto('/definitions');
   await page.getByTestId('card-definition-def-market').click();
   await page.getByTestId('button-add-entry').click();
   await page.getByTestId('input-entry-label-2').fill('Britain');
@@ -68,7 +68,7 @@ test('a duplicate code blocks saving with the reason shown', async ({ page }) =>
 
 test('a standard user reads definitions and submits a request', async ({ page }) => {
   await seedRuleSets(page, undefined, 'user', [marketDefinition]);
-  await page.goto('/dictionary');
+  await page.goto('/definitions');
   await expect(page.getByTestId('button-create-definition')).toHaveCount(0);
   await expect(page.getByTestId('view-definition')).toContainText('United Kingdom');
   await expect(page.getByTestId('row-value-uk')).toBeVisible();
@@ -93,7 +93,7 @@ test('a standard user reads definitions and submits a request', async ({ page })
 
 test('an admin approves a request, which adds the value, or rejects it with a reason', async ({ page }) => {
   await seedRuleSets(page, undefined, 'admin', [marketDefinition], [pendingRequest, { ...pendingRequest, id: 'req-fr', label: 'France', code: 'fr', note: '' }]);
-  await page.goto('/dictionary');
+  await page.goto('/definitions');
   await expect(page.getByTestId('card-request-req-de')).toContainText('Germany');
 
   await page.getByTestId('button-approve-request-req-de').click();

@@ -68,7 +68,7 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
   if (resolution.errors.length > 0) {
     return (
       <div>
-        <PageHeading eyebrow="Workspace" title="Compose names" description={`${rule.name} cannot be built until Author fixes the problems below.`} />
+        <PageHeading eyebrow="Workspace" title="Compose names" description={`${rule.name} cannot be built until an admin fixes the problems below in Manage Rules.`} />
         <ul className="list-disc rounded-xl border border-destructive/30 bg-destructive/10 py-4 pl-9 pr-4 text-sm font-semibold text-destructive" data-testid="text-build-resolution-errors">{resolution.errors.map((message) => <li key={message}>{message}</li>)}</ul>
       </div>
     );

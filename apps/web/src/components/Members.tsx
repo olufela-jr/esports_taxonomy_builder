@@ -66,7 +66,7 @@ export function Members({ user, members, invites, service, storeKind, canManageR
 
   return (
     <div>
-      <PageHeading eyebrow="Admin" title="Members" description={canManageRoles ? 'Who is in this workspace and what they can do. Admins author Rule Sets and the Dictionary; users build and check.' : 'Who is in this workspace. As the super user you can invite people and revoke invites here; only an admin of this workspace changes roles or removes members.'} />
+      <PageHeading eyebrow="Admin" title="Members" description={canManageRoles ? 'Who is in this workspace and what they can do. Admins manage Rule Sets and definitions; users build and check.' : 'Who is in this workspace. As the super user you can invite people and revoke invites here; only an admin of this workspace changes roles or removes members.'} />
       <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
         <div className="space-y-6">
           <section className={tableCard} data-testid="section-members">

@@ -9,7 +9,7 @@ import { seedMembers, seedRuleSets, seedSuper, umaMember } from './fixtures';
 test('the super user gets the workspace switcher and the Tenants screen', async ({ page }) => {
   await seedRuleSets(page);
   await seedSuper(page);
-  await page.goto('/author');
+  await page.goto('/rules');
   await expect(page.getByTestId('text-user-role')).toHaveText('Super user, admin here');
   await expect(page.getByTestId('select-shell-tenant')).toHaveValue('local');
   await expect(page.getByTestId('select-shell-tenant').locator('option')).toHaveText(['Local workspace', 'North Wind']);
@@ -74,7 +74,7 @@ test('opening another tenant is read only there, invites its first admin, and sw
   await expect(page.getByTestId('text-tenant-notice-north-wind')).toContainText('lead@northwind.test is invited as admin of North Wind');
 
   await page.getByTestId('button-open-tenant-north-wind').click();
-  await expect(page).toHaveURL(/\/author$/);
+  await expect(page).toHaveURL(/\/rules$/);
   await expect(page.getByTestId('select-shell-tenant')).toHaveValue('north-wind');
   await expect(page.getByTestId('text-user-role')).toHaveText('Super user, read only here');
   await expect(page.getByTestId('button-create-ruleset')).toHaveCount(0);
@@ -90,7 +90,7 @@ test('opening another tenant is read only there, invites its first admin, and sw
   // Back to the own workspace: the seeds and the admin role return, with the selection reset.
   await page.getByTestId('select-shell-tenant').selectOption('local');
   await expect(page.getByTestId('text-user-role')).toHaveText('Super user, admin here');
-  await page.getByTestId('link-nav-author').click();
+  await page.getByTestId('link-nav-manage-rules').click();
   await expect(page.getByTestId('card-ruleset-ruleset-paid')).toBeVisible();
   await expect(page.getByTestId('select-member-role-uma')).toHaveCount(0);
 
@@ -102,7 +102,7 @@ test('opening another tenant is read only there, invites its first admin, and sw
 
 test('a plain admin has no switcher, no Tenants item, and /tenants says so', async ({ page }) => {
   await seedRuleSets(page);
-  await page.goto('/author');
+  await page.goto('/rules');
   await expect(page.getByTestId('select-shell-tenant')).toHaveCount(0);
   await expect(page.getByTestId('link-nav-tenants')).toHaveCount(0);
   await expect(page.getByTestId('text-user-role')).toHaveText('Admin');

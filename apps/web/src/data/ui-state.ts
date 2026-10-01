@@ -4,7 +4,7 @@ import type { RuleSet } from './types';
 // the last action used. Per-browser, so it lives in localStorage; Rule Set data
 // itself goes through the store module.
 
-export type ActionPath = '/author' | '/build' | '/check' | '/compliance' | '/dictionary' | '/members' | '/tenants';
+export type ActionPath = '/rules' | '/build' | '/check' | '/compliance' | '/definitions' | '/members' | '/tenants';
 
 // ruleId is the selected Rule's immutable id, never its editable key.
 // tenantId is the workspace a super user is looking at; null means their own.
@@ -15,7 +15,7 @@ export type UiState = {
   lastAction: ActionPath;
 };
 
-export const defaultUiState: UiState = { tenantId: null, ruleSetId: null, ruleId: null, lastAction: '/author' };
+export const defaultUiState: UiState = { tenantId: null, ruleSetId: null, ruleId: null, lastAction: '/build' };
 
 const STORAGE_KEY = 'campaign-tool-ui-state-v4';
 // v3 stored ruleId as the Rule's key (Rules had no ids yet).
@@ -33,7 +33,7 @@ type StoredState = {
 };
 
 export function isActionPath(value: unknown): value is ActionPath {
-  return value === '/author' || value === '/build' || value === '/check' || value === '/compliance' || value === '/dictionary' || value === '/members' || value === '/tenants';
+  return value === '/rules' || value === '/build' || value === '/check' || value === '/compliance' || value === '/definitions' || value === '/members' || value === '/tenants';
 }
 
 // Check's All Rules scope became the Compliance board, so someone who was last
@@ -41,7 +41,7 @@ export function isActionPath(value: unknown): value is ActionPath {
 // it. The key is not bumped: an unknown lastAction already falls back, and a
 // new key would throw away everyone's Rule Set selection for nothing.
 function actionFrom(lastAction: unknown, wasAllRules: boolean): ActionPath {
-  const action = isActionPath(lastAction) ? lastAction : '/author';
+  const action = isActionPath(lastAction) ? lastAction : '/build';
   return action === '/check' && wasAllRules ? '/compliance' : action;
 }
 

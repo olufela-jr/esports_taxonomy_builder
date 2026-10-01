@@ -38,11 +38,11 @@ type AppShellProps = {
   onSelectRuleSet: (id: string | null) => void;
   onSelectRule: (id: string) => void;
   onSignOut: () => Promise<void>;
-  dictionaryBadge: number;
+  definitionsBadge: number;
   // Access requests waiting on the super user.
   tenantsBadge: number;
-  // Admins get the Members action (the admin section); the super user gets it
-  // too, plus Tenants and the workspace switcher.
+  // Admins get Manage Rules and the Members action (the admin section); the
+  // super user gets them too, read only, plus Tenants and the workspace switcher.
   canManage: boolean;
   isSuper: boolean;
   // The super user's role in the workspace shown, if any.
@@ -55,23 +55,26 @@ type AppShellProps = {
 
 // The action-first shell: the persistent Rule Set and Rule context, the
 // actions, the signed-in user, and the workspace for the current action.
-export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, dictionaryBadge, tenantsBadge, canManage, isSuper, roleHere, tenants, tenantId, onSelectTenant, children }: AppShellProps) {
+export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, definitionsBadge, tenantsBadge, canManage, isSuper, roleHere, tenants, tenantId, onSelectTenant, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const current = location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/dictionary') ? 'dictionary' : location.startsWith('/members') ? 'members' : location.startsWith('/tenants') ? 'tenants' : 'author';
+  const current = location.startsWith('/rules') ? 'rules' : location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/definitions') ? 'definitions' : location.startsWith('/members') ? 'members' : location.startsWith('/tenants') ? 'tenants' : location === '/' ? 'home' : '';
+  const currentLabel = current === 'rules' ? 'Manage Rules' : current;
 
   const selectedRuleSet = ruleSets.find(rs => rs.id === ruleSetId);
 
   return (
     <div className="min-h-[100dvh] bg-background">
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`} data-testid="sidebar">
+      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col overflow-y-auto bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`} data-testid="sidebar">
         <div className="flex items-center gap-3 px-2">
-          <IconMark />
-          <div>
-            <div className="font-display text-[17px] font-medium tracking-tight">Campaign Naming</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-primary mt-0.5">Rule Set Tool</div>
-          </div>
+          <Link href="/" className="flex items-center gap-3" aria-label="Home" data-testid="link-home">
+            <IconMark />
+            <div>
+              <div className="font-display text-[17px] font-medium tracking-tight">Campaign Naming</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-primary mt-0.5">Rule Set Tool</div>
+            </div>
+          </Link>
           <button className="ml-auto rounded-md p-1.5 text-sidebar-foreground/55 hover:bg-sidebar-accent lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-navigation"><X className="h-4 w-4" /></button>
         </div>
         
@@ -94,8 +97,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
               value={ruleSetId || ''}
               onChange={(e) => {
                 if (e.target.value === 'manage') {
-                  onSelectRuleSet(null);
-                  setLocation('/author');
+                  setLocation('/rules');
                 } else {
                   onSelectRuleSet(e.target.value);
                 }
@@ -106,7 +108,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
               {ruleSets.map(rs => (
                 <option key={rs.id} value={rs.id}>{rs.name}</option>
               ))}
-              <option value="manage">-- Manage Rule Sets --</option>
+              {canManage && <option value="manage">-- Manage Rule Sets --</option>}
             </select>
           </div>
 
@@ -129,11 +131,12 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
 
         <div className="mt-8 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Actions</div>
         <nav className="mt-2 space-y-1" aria-label="Main navigation">
-          <NavItem href="/author" label="Author" active={current === 'author'} />
+          <NavItem href="/" label="Home" active={current === 'home'} />
+          {canManage && <NavItem href="/rules" label="Manage Rules" active={current === 'rules'} />}
           <NavItem href="/build" label="Build" active={current === 'build'} />
           <NavItem href="/check" label="Check" active={current === 'check'} />
           <NavItem href="/compliance" label="Compliance" active={current === 'compliance'} />
-          <NavItem href="/dictionary" label="Dictionary" active={current === 'dictionary'} badge={dictionaryBadge} />
+          <NavItem href="/definitions" label="Definitions" active={current === 'definitions'} badge={definitionsBadge} />
         </nav>
         {canManage && <>
           <div className="mt-6 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Admin</div>
@@ -159,7 +162,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
       <main className="min-h-[100dvh] lg:pl-[248px]">
         <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur-md sm:px-8">
           <button className="rounded-lg border border-border bg-card p-2 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu className="h-5 w-5" /></button>
-          <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><span className="font-mono text-[10px] uppercase tracking-[0.15em]">Workspace</span><ChevronRight className="h-3.5 w-3.5" /><span className="font-semibold text-foreground capitalize">{current}</span></div>
+          <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><span className="font-mono text-[10px] uppercase tracking-[0.15em]">Workspace</span><ChevronRight className="h-3.5 w-3.5" /><span className="font-semibold text-foreground capitalize">{currentLabel}</span></div>
           <div className="ml-auto flex h-8 w-8 items-center justify-center rounded bg-primary text-[11px] font-semibold text-primary-foreground lg:hidden" title={user.name} aria-hidden="true">{initials(user.name)}</div>
         </header>
         <div className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">{children}</div>
