@@ -55,7 +55,7 @@ function draftOf(request: ValueRequest): ValueRequestDraft {
 }
 
 function buildDraftOf(draft: BuildDraft): BuildDraftDraft {
-  return { ruleSetId: draft.ruleSetId, ruleId: draft.ruleId, selections: draft.selections, parentName: draft.parentName, blockedSegmentId: draft.blockedSegmentId, blockedSegmentKey: draft.blockedSegmentKey, requestId: draft.requestId, status: draft.status };
+  return { ruleSetId: draft.ruleSetId, ruleId: draft.ruleId, selections: draft.selections, parentName: draft.parentName, ...(draft.optional ? { optional: draft.optional } : {}), blockedSegmentId: draft.blockedSegmentId, blockedSegmentKey: draft.blockedSegmentKey, requestId: draft.requestId, status: draft.status };
 }
 
 export function Dictionary(props: DictionaryProps) {

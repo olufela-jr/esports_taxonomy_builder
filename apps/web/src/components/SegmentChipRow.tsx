@@ -15,6 +15,9 @@ type SegmentChipRowProps = {
   meta?: Record<string, SegmentMeta>;
   mode: ChipMode;
   selections?: Record<string, string>; // values mode
+  // values mode: segments with no value yet show a sample value, greyed, so
+  // the row reads as a whole example name before anything is filled.
+  fillExamples?: boolean;
   seed?: number; // example mode: 0 is each enum's first code
   selectedSegmentId?: string | null;
   leavingSegmentId?: string | null; // a segment on its way out, for the exit animation
@@ -32,13 +35,17 @@ type SegmentChipRowProps = {
 // on a chip comes out of compose: the chips split its name on the delimiter,
 // which no value can contain, and compose skips exactly the segments with no
 // value, so the tokens line up with the filled segments in order.
-export function SegmentChipRow({ rule, meta = {}, mode, selections, seed = 0, selectedSegmentId, leavingSegmentId, onSelect, onAdd, onReorder, showName = false, badges = true, compact = false, testId = 'chip-row' }: SegmentChipRowProps) {
+export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples = false, seed = 0, selectedSegmentId, leavingSegmentId, onSelect, onAdd, onReorder, showName = false, badges = true, compact = false, testId = 'chip-row' }: SegmentChipRowProps) {
   const container = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const segments = rule.segments;
   useFlip(container, segments.map((segment) => segment.id).join('|'));
 
-  const chosen = mode === 'example' ? exampleSelections(rule, seed) : mode === 'values' ? selections ?? {} : null;
+  const own: Record<string, string> = {};
+  for (const [key, value] of Object.entries(selections ?? {})) if (value) own[key] = value;
+  const chosen = mode === 'example' ? exampleSelections(rule, seed) : mode === 'values' ? (fillExamples ? { ...exampleSelections(rule, seed), ...own } : own) : null;
+  // The segments showing a sample rather than a chosen value.
+  const sampled = new Set(mode === 'example' ? segments.map((segment) => segment.key) : fillExamples ? segments.filter((segment) => !own[segment.key]).map((segment) => segment.key) : []);
   const result = chosen ? compose(rule, chosen) : null;
   const values: Record<string, string> = {};
   if (chosen && result && result.name && rule.delimiter) {
@@ -67,17 +74,20 @@ export function SegmentChipRow({ rule, meta = {}, mode, selections, seed = 0, se
           const value = values[segment.id];
           const text = mode === 'labels' ? segment.label : value ?? segment.label;
           const placeholder = mode !== 'labels' && value === undefined;
+          const sample = mode === 'values' && fillExamples && !placeholder && sampled.has(segment.key);
           const selected = selectedSegmentId === segment.id;
           const draggable = Boolean(onReorder) && !inherited;
           const tone = inherited
             ? 'border-dashed border-border bg-muted/40 text-muted-foreground'
-            : placeholder
+            : placeholder || sample
               ? 'border-dashed border-border bg-card text-muted-foreground'
-              : 'border-border bg-card text-foreground';
+              : fillExamples
+                ? 'border-primary/60 bg-primary/10 text-foreground'
+                : 'border-border bg-card text-foreground';
           const chip = (
             <>
               {inherited && <Lock className="h-3 w-3 shrink-0" aria-label="Inherited" />}
-              <span className={`truncate ${mode === 'labels' ? 'font-bold' : 'font-mono'} ${placeholder ? 'italic' : ''}`}>{text}</span>
+              <span className={`truncate ${mode === 'labels' ? 'font-bold' : 'font-mono'} ${placeholder || sample ? 'italic' : ''}`}>{text}</span>
               {!segment.required && <span className="text-[10px] font-semibold text-muted-foreground" title="Optional">opt</span>}
               {info?.scope && badges && !compact && <ScopeBadge scope={info.scope} small testId={`${testId}-scope-${segment.key}`} />}
             </>
@@ -97,7 +107,7 @@ export function SegmentChipRow({ rule, meta = {}, mode, selections, seed = 0, se
               >
                 {onSelect
                   ? <button type="button" className={className} onClick={() => onSelect(segment.id)} aria-pressed={selected} title={inherited ? 'Inherited from the parent Rule' : undefined} data-testid={`${testId}-seg-${segment.key}`} data-inherited={inherited || undefined} data-selected={selected || undefined}>{chip}</button>
-                  : <span className={className} title={inherited ? 'Inherited from the parent Rule' : undefined} data-testid={`${testId}-seg-${segment.key}`} data-inherited={inherited || undefined}>{chip}</span>}
+                  : <span className={className} title={inherited ? 'Inherited from the parent Rule' : undefined} data-testid={`${testId}-seg-${segment.key}`} data-inherited={inherited || undefined} data-sample={sample || undefined}>{chip}</span>}
               </div>
             </Fragment>
           );

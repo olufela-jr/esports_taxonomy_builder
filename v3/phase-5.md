@@ -62,3 +62,23 @@ is saved as a draft and resumes on approval. O17: in-app notice first.
   and asks again through the Dictionary. No automatic re-request.
 - The notice is a badge, not a toast or email (O17: in-app first). The "seen" list is a
   per-browser convenience in localStorage, never shared.
+
+### Amended 2026-10-01: Build is batch only
+
+Single mode was removed from Build by decision: a single name is a batch of one, so the
+one-off form, the Single or Batch toggle and the per-name parent step are gone. What lived
+only in Single moved to the batch:
+
+- Requests and drafts: both batch screens offer "Value missing? Request it" on enum segments
+  that read a shared definition (`components/BatchDrafts.tsx`). Sending saves the batch's
+  choices as a draft; the segment locks and Generate stays off until the draft is resumed
+  after approval, which ticks the approved code. This replaces "Blocking applies to Single
+  mode" above.
+- Draft shape: `selections` now holds a list of values per segment key, `parentName` a child
+  batch's pasted parent lines, and the new optional `optional` the include, omit or both
+  choice per optional segment. Drafts saved before hold one string per key and still resume.
+  The Security Rules check is unchanged (`selections is map`).
+- Base URL: a Tracking URL base card above the batch, checked with the engine's new
+  `checkBaseUrl`; rows whose URL cannot be built are counted with the first reason.
+- Chaining: a child batch now carries its names on to its own children, so every level of a
+  hierarchy is buildable without the old "Build under this" button.

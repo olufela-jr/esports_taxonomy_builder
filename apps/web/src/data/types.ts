@@ -46,19 +46,25 @@ export type ValueRequestDraft = Pick<ValueRequest, 'definitionId' | 'label' | 'c
 // rejected; ready: approved, the draft can resume; done: resumed and used.
 export type DraftStatus = 'blocked' | 'ready' | 'done';
 
+// Build is batch only: a draft keeps the batch's choices.
+export type OptionalMode = 'include' | 'omit' | 'both';
+
 export type BuildDraft = {
   id: string;
   ruleSetId: string;
   ruleId: string;
-  selections: Record<string, string>; // the codes chosen so far, by segment key
-  parentName: string;                 // the parent step's name, if the Rule has a parent
+  // The values ticked or typed so far, by segment key. Drafts saved before
+  // Build went batch only hold one string per key; readers accept both.
+  selections: Record<string, string[] | string>;
+  parentName: string;                 // a child batch's parent names, one per line
+  optional?: Record<string, OptionalMode>; // include, omit or both per optional segment
   blockedSegmentId: string;
   blockedSegmentKey: string;
   requestId: string;
   status: DraftStatus;
 } & Audit;
 
-export type BuildDraftDraft = Pick<BuildDraft, 'ruleSetId' | 'ruleId' | 'selections' | 'parentName' | 'blockedSegmentId' | 'blockedSegmentKey' | 'requestId' | 'status'>;
+export type BuildDraftDraft = Pick<BuildDraft, 'ruleSetId' | 'ruleId' | 'selections' | 'parentName' | 'optional' | 'blockedSegmentId' | 'blockedSegmentKey' | 'requestId' | 'status'>;
 
 // The tenant document at tenants/{tenantId}. Written only by the provisioning
 // and migration scripts; the app and the scan Function read it.

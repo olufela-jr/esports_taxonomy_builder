@@ -42,10 +42,11 @@ test('a standard user sees every Rule Set read only in Author but still builds',
 
   await page.getByTestId('link-nav-build').click();
   await page.getByTestId('select-shell-rule').selectOption('rule-meta');
-  await expect(page.getByText('Values for Meta Ad Sets.')).toBeVisible();
-  await page.getByTestId('select-build-targeting').selectOption('broad');
-  await page.getByTestId('input-build-audience').fill('gamers');
-  await expect(page.getByTestId('text-build-preview')).toHaveText('broad_gamers');
+  await expect(page.getByText('An example Meta Ad Sets name.')).toBeVisible();
+  await page.getByTestId('checkbox-batch-targeting-broad').check();
+  await page.getByTestId('textarea-batch-audience').fill('gamers');
+  await page.getByTestId('button-batch-generate').click();
+  await expect(page.getByTestId('row-batch-0')).toContainText('broad_gamers');
 });
 
 test('an admin edits any Rule Set in the workspace, whoever created it', async ({ page }) => {

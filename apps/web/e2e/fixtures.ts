@@ -124,7 +124,7 @@ export async function seedRuleSets(page: Page, ruleSets: unknown[] = [paidMediaR
   }, { seed: ruleSets as never, role, definitions: definitions as never, requests: requests as never, drafts: drafts as never });
 }
 
-export async function readDrafts(page: Page): Promise<Array<{ id: string; ruleId: string; selections: Record<string, string>; blockedSegmentKey: string; requestId: string; status: string }>> {
+export async function readDrafts(page: Page): Promise<Array<{ id: string; ruleId: string; selections: Record<string, string[] | string>; parentName: string; blockedSegmentKey: string; requestId: string; status: string }>> {
   return page.evaluate(() => {
     const store = window.__taxoStore;
     if (!store) throw new Error('The app did not expose __taxoStore; was it started with a test seed?');

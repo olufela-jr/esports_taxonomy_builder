@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildTrackingUrl,
+  checkBaseUrl,
   causeLabel,
   checkBatchChoices,
   checkDefinition,
@@ -881,6 +882,8 @@ describe("tracking URLs", () => {
     expect(badBase.errors).toEqual(["The base URL already carries utm_source; remove them so the mapping can set them."]);
     expect(buildTrackingUrl(resolvedChild, ruleSet, { names: {}, selections, baseUrl: "not a url" }).errors).toEqual(["The base URL must be an absolute http or https URL."]);
     expect(buildTrackingUrl(childOf(ruleSet, "r_ad_group"), ruleSet, { names: {}, selections }).errors[0]).toContain("resolve it with resolveRule");
+    expect(checkBaseUrl("https://x.test/landing?ref=1")).toEqual([]);
+    expect(checkBaseUrl("https://x.test/?utm_source=old")).toEqual(["The base URL already carries utm_source; remove them so the mapping can set them."]);
   });
 
   it("checks a mapping at authoring time, including codes that could never be emitted", () => {

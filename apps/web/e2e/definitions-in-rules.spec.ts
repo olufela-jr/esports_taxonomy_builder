@@ -25,14 +25,14 @@ test('an admin points a segment at a definition, and Build offers its labels and
   expect(market.definitionId).toBe('def-market');
   expect(market.allowedValues).toEqual([]);
 
-  // Build resolves the definition: labels in the dropdown, the code in the name.
+  // Build resolves the definition: labels on the choices, the code in the name.
   await page.getByTestId('link-nav-build').click();
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
-  await page.getByTestId('select-build-campaign_type').selectOption('perf');
-  const marketControl = page.getByTestId('select-build-market');
-  await expect(marketControl.locator('option', { hasText: 'United States (us)' })).toHaveCount(1);
-  await marketControl.selectOption('us');
-  await expect(page.getByTestId('text-build-preview')).toHaveText('perf_us');
+  await page.getByTestId('checkbox-batch-campaign_type-perf').check();
+  await expect(page.getByTestId('batch-segment-market')).toContainText('United States (us)');
+  await page.getByTestId('checkbox-batch-market-us').check();
+  await page.getByTestId('button-batch-generate').click();
+  await expect(page.getByTestId('row-batch-0')).toContainText('perf_us');
 });
 
 test('a Rule using a definition keeps it from being deleted, and a scoped definition is only offered on its platforms', async ({ page }) => {

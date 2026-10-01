@@ -200,6 +200,12 @@ the impact preview (done 2026-09-27, `v3/phase-4.md`); phase 5 drafts and Build 
 it all end to end: the "Paid search (demo)" Rule Set (`scripts/demo/`, `pnpm seed:ruleset`,
 BigQuery table `marketing.paid_search_names`), log in `v3/demo-data.md`.
 
+## Build is batch only (2026-10-01)
+Decided 2026-10-01: Build has no one-off Single mode; a single name is a batch of one.
+Requests and drafts (D42) work inside the batch, a child batch carries its names to its own
+children, and the base URL sits above the batch. Log in `v3/phase-5.md`. Do not reintroduce
+a Single mode.
+
 ## Stage 2 (only after the checklist)
 Callable Cloud Functions `scanCampaigns` and `previewImpact` in `functions/`, importing
 `@taxo/shared`, deployed 2026-09-27 in this project (BigQuery lives here too, O2; log in

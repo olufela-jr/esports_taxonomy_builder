@@ -2,14 +2,13 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { paidMediaRuleSet, seedRuleSets } from './fixtures';
 
-// Phase 3: Build's Batch mode generates every combination as a CSV of codes.
+// Phase 3: Build (batch only) generates every combination as a CSV of codes.
 
 test('a batch of two types by all markets counts four, previews four, and downloads a CSV of codes', async ({ page }) => {
   await seedRuleSets(page, [paidMediaRuleSet], 'admin');
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
-  await page.getByTestId('button-build-mode-batch').click();
 
   await expect(page.getByTestId('text-batch-count')).toContainText('0');
   await expect(page.getByTestId('button-batch-generate')).toBeDisabled();
@@ -34,7 +33,6 @@ test('freeform values come one per line and the count follows them', async ({ pa
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-meta');
-  await page.getByTestId('button-build-mode-batch').click();
 
   await page.getByTestId('checkbox-batch-targeting-broad').check();
   await page.getByTestId('textarea-batch-audience').fill('runners\nwalkers\n');

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { hierarchyRuleSet, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
 
-// v3 phase 2 step 8: Author's tracking panel and Build's URL output.
+// v3 phase 2 step 8: Author's tracking panel and the tracking URL column Build writes.
 
 const mapping = {
   source: { kind: 'tag', ruleId: 'rule-google-ad-groups', tag: 'platform' },
@@ -15,24 +15,27 @@ const mapping = {
 
 const withUtm = { ...hierarchyRuleSet, rules: hierarchyRuleSet.rules.map((rule) => (rule.id === 'rule-google-ad-groups' ? { ...rule, utm: mapping } : rule)) };
 
-test('Build outputs a tracking URL whose utm_campaign is the parent name and utm_content the built name', async ({ page }) => {
+test('Build writes a tracking URL per name whose utm_campaign is the parent name and utm_content the built name', async ({ page }) => {
   await seedRuleSets(page, [withUtm], 'admin');
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google-ad-groups');
   await expect(page.getByTestId('section-build-url')).toBeVisible();
-  await expect(page.getByTestId('button-copy-build-url')).toHaveCount(0);
+  await expect(page.getByTestId('input-build-base-url')).toHaveValue('https://shop.example.com/sale?ref=abc');
 
-  await page.getByTestId('input-build-parent').fill('perf_uk');
-  await page.getByTestId('select-build-match').selectOption('exa');
-  await expect(page.getByTestId('text-build-preview')).toHaveText('perf_exa');
-  await expect(page.getByTestId('text-build-url')).toHaveText('https://shop.example.com/sale?ref=abc&utm_source=google&utm_medium=cpc&utm_campaign=perf_uk&utm_content=perf_exa');
-  await expect(page.getByTestId('button-copy-build-url')).toBeEnabled();
+  await page.getByTestId('textarea-parent-lines').fill('perf_uk');
+  await page.getByTestId('checkbox-batch-match-exa').check();
+  await page.getByTestId('button-child-batch-generate').click();
+  await expect(page.getByTestId('preview-group-perf_uk')).toContainText('perf_exa');
+  await expect(page.getByTestId('preview-group-perf_uk')).toContainText('https://shop.example.com/sale?ref=abc&utm_source=google&utm_medium=cpc&utm_campaign=perf_uk&utm_content=perf_exa');
+  await expect(page.getByTestId('text-batch-url-failures')).toHaveCount(0);
 
-  // An edited base URL that already carries a UTM is refused, not merged.
+  // An edited base URL that already carries a UTM is refused, not merged: the
+  // field says so, and the generated rows say they have no URL.
   await page.getByTestId('input-build-base-url').fill('https://shop.example.com/?utm_source=old');
   await expect(page.getByTestId('status-build-url-errors')).toContainText('already carries utm_source');
-  await expect(page.getByTestId('button-copy-build-url')).toBeDisabled();
+  await page.getByTestId('button-child-batch-generate').click();
+  await expect(page.getByTestId('text-batch-url-failures')).toContainText('1 row has no tracking URL: The base URL already carries utm_source');
 });
 
 test('an admin switches tracking on for a Rule, sees a bad base URL listed, and the mapping is stored', async ({ page }) => {

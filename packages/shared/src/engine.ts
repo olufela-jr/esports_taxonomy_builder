@@ -1419,7 +1419,7 @@ export function checkUtmMapping(rule: Rule, ruleSet: RuleSet, definitions: Defin
   }
 
   if (mapping.baseUrl) {
-    errors.push(...baseUrlErrors(mapping.baseUrl));
+    errors.push(...checkBaseUrl(mapping.baseUrl));
   }
 
   // Names that will feed a value must be emittable: check each named Rule's
@@ -1447,7 +1447,9 @@ export function checkUtmMapping(rule: Rule, ruleSet: RuleSet, definitions: Defin
   return errors;
 }
 
-function baseUrlErrors(baseUrl: string): string[] {
+// A base URL the mapping or the builder supplies: absolute http(s), with no
+// utm_ parameters of its own. Build checks a typed one before generating.
+export function checkBaseUrl(baseUrl: string): string[] {
   let parsed: URL;
   try {
     parsed = new URL(baseUrl);
@@ -1542,7 +1544,7 @@ export function buildTrackingUrl(rule: Rule, ruleSet: RuleSet, context: UtmConte
   if (!baseUrl) {
     errors.push("A base URL is needed.");
   } else {
-    errors.push(...baseUrlErrors(baseUrl));
+    errors.push(...checkBaseUrl(baseUrl));
   }
 
   const valueErrors = values.some((value) => value.errors.length > 0);

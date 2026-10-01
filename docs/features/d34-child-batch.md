@@ -8,7 +8,7 @@ Authority: this sheet is the source of truth for D34. Where it conflicts with `d
 
 A child Rule (a Rule with a parent, for example ad group under campaign) can be batch built across one or more parent names at once. The child's own segment choices are set once and applied under every parent, and each parent can be narrowed to drop values that do not belong under it. A child batch never runs without parents, because inherited segments take their values from the parent name.
 
-Single mode is unchanged and keeps its one-parent step. Top-level Rules (no parent) batch exactly as before.
+Single mode is unchanged and keeps its one-parent step. (Superseded 2026-10-01: Build is batch only, see `v3/phase-5.md`.) Top-level Rules (no parent) batch exactly as before.
 
 ## 2. Dependencies (verify, do not assume)
 

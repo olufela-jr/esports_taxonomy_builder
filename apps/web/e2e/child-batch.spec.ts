@@ -9,7 +9,6 @@ test('pasted parents are checked, a bad one is removed, narrowing trims one pare
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google-ad-groups');
-  await page.getByTestId('button-build-mode-batch').click();
   await expect(page.getByTestId('text-child-batch-empty')).toBeVisible();
 
   await page.getByTestId('textarea-parent-lines').fill('perf_uk\nbad_zz\nbrand_us');
@@ -52,7 +51,6 @@ test('a parent batch carries a chosen subset of its names into the child batch',
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
-  await page.getByTestId('button-build-mode-batch').click();
   await page.getByTestId('checkbox-batch-campaign_type-brand').check();
   await page.getByTestId('button-batch-select-all-market').click();
   await page.getByTestId('button-batch-generate').click();

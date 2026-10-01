@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Download, Play, X } from 'lucide-react';
-import { ancestorsOf, buildTrackingUrl, checkParents, countUnderParents, enumerateUnderParents, NAME_VIOLATION_KEY, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
-import type { RuleSet } from '@/data/store';
-import { BATCH_ROW_CAP } from './BatchBuilder';
+import { ArrowRight, ChevronDown, ChevronRight, Download, Play, X } from 'lucide-react';
+import { ancestorsOf, buildTrackingUrl, checkParents, parse, countUnderParents, enumerateUnderParents, NAME_VIOLATION_KEY, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
+import type { OptionalMode, RuleSet } from '@/data/store';
+import { BATCH_ROW_CAP, firstValues } from './BatchBuilder';
+import { BlockedNotice, DraftsPanel, RequestValue, useBatchDrafts, type Drafting } from './BatchDrafts';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 // D34: a child Rule batch built across one or more parent names at once
@@ -19,6 +20,12 @@ type ChildBatchBuilderProps = {
   ruleSet: RuleSet;
   baseUrl: string;
   carried: ParentLine[]; // from "Build children under these names" on a parent batch
+  children: Rule[];      // Rules whose parent is this one, for carrying on down the hierarchy
+  onCarry: (childId: string, lines: ParentLine[]) => void;
+  drafting: Drafting;
+  // The first parent's inherited values and the first value per own segment,
+  // for the example name at the top of Build.
+  onPreview: (selections: Record<string, string>) => void;
 };
 
 type PreviewRow = { parentName: string; selections: Record<string, string>; name: string; url: string };
@@ -63,20 +70,25 @@ function linesToText(lines: ParentLine[], ancestors: Rule[]): string {
   return lines.map((line) => [line.name, ...ancestors.map((ancestor) => line.ancestors?.[ancestor.id] ?? '')].join('\t').replace(/\t+$/, '')).join('\n');
 }
 
-export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, carried }: ChildBatchBuilderProps) {
+export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, carried, children, onCarry, drafting, onPreview }: ChildBatchBuilderProps) {
   const ancestors = neededAncestors(rule, ruleSet);
   const [text, setText] = useState(() => linesToText(carried, ancestors));
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [lines, setLines] = useState<Record<string, string>>({});
-  const [optional, setOptional] = useState<Record<string, 'include' | 'omit' | 'both'>>({});
+  const [optional, setOptional] = useState<Record<string, OptionalMode>>({});
   const [narrow, setNarrow] = useState<Record<string, BatchChoices>>({});
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [generated, setGenerated] = useState<number | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  // Every generated row, for the carry-over list: the name and the ancestor
+  // names a grandchild's tracking URL may read. Unticked names are left behind.
+  const [carry, setCarry] = useState<ParentLine[]>([]);
+  const [left, setLeft] = useState<Set<string>>(new Set());
+  const [urlFailures, setUrlFailures] = useState<{ count: number; first: string }>({ count: 0, first: '' });
 
   useEffect(() => {
-    setText(linesToText(carried, ancestors)); setPicked({}); setLines({}); setOptional({}); setNarrow({}); setOpen({}); setPreview([]); setGenerated(null);
+    setText(linesToText(carried, ancestors)); setPicked({}); setLines({}); setOptional({}); setNarrow({}); setOpen({}); setPreview([]); setGenerated(null); setCarry([]); setLeft(new Set()); setUrlFailures({ count: 0, first: '' });
     setDownloadUrl((current) => { if (current) URL.revokeObjectURL(current); return null; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rule.id, carried]);
@@ -92,6 +104,8 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
   // value differs per parent, so the shared controls skip them.
   const inheritedKeys = new Set(parentRule.segments.map((segment) => segment.key).filter((key) => active.segments.some((segment) => segment.key === key)));
   const own = active.segments.filter((segment) => !inheritedKeys.has(segment.key));
+  const drafts = useBatchDrafts(drafting, ruleSet, rule, own, { picked, lines, optional, parentText: text }, (state) => { setPicked(state.picked); setLines(state.lines); setOptional(state.optional); setText(state.parentText); });
+  const { blockedKey, activeDraft, activeRequest } = drafts;
 
   const choices: BatchChoices = {};
   for (const segment of own) {
@@ -101,6 +115,10 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
     else if (mode === 'omit') choices[segment.key] = [''];
     else choices[segment.key] = mode === 'both' ? [...values, ''] : values;
   }
+  const firstParent = valid[0] ? parse(parentRule, valid[0].name).selections : {};
+  const first = { ...Object.fromEntries(Object.entries(firstParent).filter(([key]) => inheritedKeys.has(key))), ...firstValues(choices) };
+  const firstKey = JSON.stringify(first);
+  useEffect(() => { onPreview(first); }, [rule.id, firstKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Narrowing can only remove: keep each parent's subset inside the shared choices.
   const effectiveNarrow: Record<string, BatchChoices> = {};
   for (const [name, subsets] of Object.entries(narrow)) {
@@ -120,7 +138,7 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
   }
   const total = counts?.total ?? 0;
   const overCap = total > BATCH_ROW_CAP;
-  const canGenerate = counts !== null && total > 0 && !overCap;
+  const canGenerate = counts !== null && total > 0 && !overCap && !blockedKey;
   const mapping = active.utm;
 
   const togglePick = (key: string, code: string) => setPicked((current) => {
@@ -143,14 +161,23 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
     const header = ['parent_name', ...ancestors.map((ancestor) => ancestor.key), ...active.segments.map((segment) => segment.key), 'name', ...(mapping ? ['tracking_url'] : [])];
     const chunks: string[] = [`${header.join(',')}\n`];
     const rows: PreviewRow[] = [];
+    const nextCarry: ParentLine[] = [];
     let count = 0;
+    let failed = 0;
+    let firstFailure = '';
     for (const row of enumerateUnderParents(active, parentRule, input)) {
       const line = input.parents.find((item) => item.name === row.parentName);
       let url = '';
       if (mapping) {
         const names: Record<string, string> = { [rule.id]: row.name, [parentRule.id]: row.parentName, ...(line?.ancestors ?? {}) };
-        url = buildTrackingUrl(active, ruleSet, { names, selections: row.selections, baseUrl }).url ?? '';
+        const tracking = buildTrackingUrl(active, ruleSet, { names, selections: row.selections, baseUrl });
+        url = tracking.url ?? '';
+        if (!tracking.url) {
+          failed += 1;
+          if (!firstFailure) firstFailure = [...tracking.errors, ...tracking.values.flatMap((value) => value.errors)][0] ?? '';
+        }
       }
+      nextCarry.push({ name: row.name, ancestors: { [parentRule.id]: row.parentName, ...(line?.ancestors ?? {}) } });
       const cells = [row.parentName, ...ancestors.map((ancestor) => line?.ancestors?.[ancestor.id] ?? ''), ...active.segments.map((segment) => row.selections[segment.key] ?? ''), row.name, ...(mapping ? [url] : [])];
       chunks.push(`${cells.map(csvCell).join(',')}\n`);
       if (rows.length < PREVIEW_ROWS) rows.push({ parentName: row.parentName, selections: row.selections, name: row.name, url });
@@ -160,6 +187,9 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
     setDownloadUrl((current) => { if (current) URL.revokeObjectURL(current); return URL.createObjectURL(blob); });
     setPreview(rows);
     setGenerated(count);
+    setCarry(nextCarry);
+    setLeft(new Set());
+    setUrlFailures({ count: failed, first: firstFailure });
   };
 
   const grouped = preview.reduce<Array<{ parentName: string; rows: PreviewRow[] }>>((groups, row) => {
@@ -199,15 +229,17 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <span className="text-[13px] font-bold text-foreground">{segment.label}<span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span></span>
                     <div className="flex items-center gap-2">
-                      {!segment.required && <select className={`${inputClass} h-8 w-auto`} value={optional[segment.key] ?? 'include'} onChange={(event) => setOptional((current) => ({ ...current, [segment.key]: event.target.value as 'include' | 'omit' | 'both' }))} aria-label={`${segment.label}: include, omit or both`} data-testid={`select-batch-optional-${segment.key}`}><option value="include">Include</option><option value="omit">Omit</option><option value="both">Both</option></select>}
-                      {segment.kind === 'enum' && (optional[segment.key] ?? 'include') !== 'omit' && <button type="button" className="text-[12px] font-bold text-primary underline-offset-2 hover:underline" onClick={() => selectAll(segment)} data-testid={`button-batch-select-all-${segment.key}`}>{(picked[segment.key] ?? []).length === segment.allowedValues.length ? 'Clear' : 'Select all'}</button>}
+                      {!segment.required && <select className={`${inputClass} h-8 w-auto`} disabled={blockedKey === segment.key} value={optional[segment.key] ?? 'include'} onChange={(event) => setOptional((current) => ({ ...current, [segment.key]: event.target.value as 'include' | 'omit' | 'both' }))} aria-label={`${segment.label}: include, omit or both`} data-testid={`select-batch-optional-${segment.key}`}><option value="include">Include</option><option value="omit">Omit</option><option value="both">Both</option></select>}
+                      {segment.kind === 'enum' && blockedKey !== segment.key && (optional[segment.key] ?? 'include') !== 'omit' && <button type="button" className="text-[12px] font-bold text-primary underline-offset-2 hover:underline" onClick={() => selectAll(segment)} data-testid={`button-batch-select-all-${segment.key}`}>{(picked[segment.key] ?? []).length === segment.allowedValues.length ? 'Clear' : 'Select all'}</button>}
                     </div>
                   </div>
                   {(optional[segment.key] ?? 'include') === 'omit' ? <p className="text-[12px] font-bold text-muted-foreground">Left out of every name.</p> : segment.kind === 'enum' ? (
-                    <div className="flex flex-wrap gap-x-4 gap-y-2">{segment.allowedValues.map((entry) => <label key={entry.code} className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground"><input type="checkbox" checked={(picked[segment.key] ?? []).includes(entry.code)} onChange={() => togglePick(segment.key, entry.code)} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-batch-${segment.key}-${entry.code}`} /> {entry.label === entry.code ? entry.label : `${entry.label} (${entry.code})`}</label>)}</div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-2">{segment.allowedValues.map((entry) => <label key={entry.code} className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground"><input type="checkbox" checked={(picked[segment.key] ?? []).includes(entry.code)} onChange={() => togglePick(segment.key, entry.code)} disabled={blockedKey === segment.key} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-batch-${segment.key}-${entry.code}`} /> {entry.label === entry.code ? entry.label : `${entry.label} (${entry.code})`}</label>)}</div>
                   ) : (
                     <textarea className={`${inputClass} h-24 py-2 font-mono`} value={lines[segment.key] ?? ''} onChange={(event) => setLines((current) => ({ ...current, [segment.key]: event.target.value }))} placeholder="One value per line" data-testid={`textarea-batch-${segment.key}`} />
                   )}
+                  {blockedKey === segment.key && activeRequest && <BlockedNotice segmentKey={segment.key} request={activeRequest} onDiscard={activeDraft ? () => void drafts.discard(activeDraft) : undefined} />}
+                  {segment.kind === 'enum' && blockedKey !== segment.key && (optional[segment.key] ?? 'include') !== 'omit' && <RequestValue segment={segment} definition={drafts.definitionFor(segment)} onSend={drafts.send} />}
                 </div>
               ))}
             </div>
@@ -242,6 +274,7 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
             </ul>
           </div>
         )}
+        <DraftsPanel rule={rule} drafts={drafts.myDrafts} requests={drafting.requests} onResume={(draft) => void drafts.resume(draft)} onDiscard={(draft) => void drafts.discard(draft)} />
       </section>
 
       <section className="self-start xl:sticky xl:top-[92px]">
@@ -250,10 +283,20 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
           <div className="my-6 font-display text-4xl tracking-tight text-foreground" data-testid="text-child-batch-total">{total.toLocaleString()}<span className="ml-2 text-base text-muted-foreground">{total === 1 ? 'name' : 'names'}</span></div>
           {failing.length > 0 && <p className="mb-4 text-[12px] font-bold text-destructive" data-testid="text-child-batch-blocked">Fix or remove the failing parent {failing.length === 1 ? 'line' : 'lines'} first.</p>}
           {overCap && <p className="mb-4 text-[12px] font-bold text-destructive" data-testid="text-child-batch-over-cap">Above the {BATCH_ROW_CAP.toLocaleString()} row limit. Narrow the choices.</p>}
+          {blockedKey && <p className="mb-4 text-[12px] font-bold text-muted-foreground" data-testid="text-batch-blocked">Waiting on a requested value; Generate opens once it is approved and the draft resumed.</p>}
           {countError && <p className="mb-4 text-[12px] font-semibold text-muted-foreground" data-testid="text-child-batch-error">{countError}</p>}
           <button type="button" className={`${buttonPrimary} w-full`} disabled={!canGenerate} onClick={generate} data-testid="button-child-batch-generate"><Play className="h-4 w-4" /> Generate</button>
           {generated !== null && downloadUrl && <a className={`${buttonQuiet} mt-3 w-full`} href={downloadUrl} download={`${active.key || 'batch'}-${generated}-names.csv`} data-testid="link-child-batch-download"><Download className="h-4 w-4" /> Download CSV ({generated.toLocaleString()} rows)</a>}
+          {urlFailures.count > 0 && <p className="mt-3 text-[11px] font-bold text-destructive" data-testid="text-batch-url-failures">{urlFailures.count.toLocaleString()} {urlFailures.count === 1 ? 'row has' : 'rows have'} no tracking URL{urlFailures.first ? `: ${urlFailures.first}` : '.'}</p>}
         </div>
+        {children.length > 0 && carry.length > 0 && (
+          <div className="mt-4 rounded-xl bg-card p-6 shadow-sm border border-border/30" data-testid="section-batch-carry">
+            <div className="font-display text-xl font-medium text-foreground">Build children under these names</div>
+            <p className="mt-1 text-[12px] font-bold text-muted-foreground">Untick any name to leave it out{carry.length > PREVIEW_ROWS ? `; the first ${PREVIEW_ROWS} are listed, all ${carry.length.toLocaleString()} carry across` : ''}.</p>
+            <div className="mt-3 max-h-48 overflow-y-auto rounded-[4px] border border-border/50 p-2">{carry.slice(0, PREVIEW_ROWS).map((line) => <label key={line.name} className="flex items-center gap-2 py-0.5 font-mono text-[12px] text-foreground"><input type="checkbox" checked={!left.has(line.name)} onChange={() => setLeft((current) => { const next = new Set(current); if (next.has(line.name)) next.delete(line.name); else next.add(line.name); return next; })} className="h-3.5 w-3.5 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-carry-${line.name}`} /> {line.name}</label>)}</div>
+            <div className="mt-3 flex flex-col gap-2">{children.map((child) => <button key={child.id} type="button" className={`${buttonQuiet} w-full justify-between`} disabled={carry.length - left.size === 0} onClick={() => onCarry(child.id, carry.filter((line) => !left.has(line.name)))} data-testid={`button-carry-child-${child.id}`}>Build {child.name} under {carry.length - left.size === 1 ? 'this name' : `these ${(carry.length - left.size).toLocaleString()} names`} <ArrowRight className="h-4 w-4" /></button>)}</div>
+          </div>
+        )}
         {grouped.length > 0 && (
           <div className="mt-4 overflow-x-auto rounded-xl bg-card p-4 shadow-sm border border-border/30" data-testid="table-child-batch-preview">
             <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Preview{generated !== null && generated > preview.length ? `, first ${preview.length} of ${generated.toLocaleString()}` : ''}</div>

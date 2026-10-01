@@ -16,7 +16,7 @@ import type { Mode } from './mode';
 import { seedDefinitions, seedRuleSets } from './seeds';
 import type { Audit, BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, Invite, RuleSet, RuleSetDraft, Tenant, TenantUser, ValueRequest, ValueRequestDraft } from './types';
 
-export type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, Invite, RuleSet, RuleSetDraft, Tenant, TenantUser, ValueRequest, ValueRequestDraft } from './types';
+export type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, Invite, OptionalMode, RuleSet, RuleSetDraft, Tenant, TenantUser, ValueRequest, ValueRequestDraft } from './types';
 
 // Who the store writes as: the signed-in user's tenant, uid and role. The role
 // decides what the requests subscription may ask for: an admin lists every
