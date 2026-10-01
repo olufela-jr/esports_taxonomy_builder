@@ -1,7 +1,8 @@
 # Access test: the first real outside sign-in
 
-To run after the super user and access request releases are deployed (`v3/access-requests.md`,
-"Not deployed yet"). Every access path had only ever been exercised by the account that is
+Ready to run: the super user and access request releases were deployed on 2026-10-01
+(`v3/access-requests.md`, "Deploy"). Sign out and in first so the super user claim is on your
+token. Every access path had only ever been exercised by the account that is
 already the `esports` admin, plus Playwright cases against the in-memory doubles. This is the
 test of what a person handed the link actually sees, run live against
 https://media-taxonomy-tool.web.app with one colleague, through the path real use will take:

@@ -228,8 +228,9 @@ Access requests (`v3/access-requests.md`), built 2026-10-01: anyone signed in wi
 workspace presses Request access on the "No workspace yet" screen; the super user approves
 from the Tenants screen, choosing the workspace and role, or declines. Approval reuses the
 super user's invite path (`inviteMember` scoped to the chosen tenant), so claims are set one
-way. Decided 2026-10-01: super user only, just a button, any Google account. Not deployed
-yet, and it needs the super user release deployed and the claim granted first.
+way. Decided 2026-10-01: super user only, just a button, any Google account. Deployed
+2026-10-01 together with the super user release, and the claim granted to
+misterfela@gmail.com.
 
 ## Do not
 - Do not duplicate engine logic outside `@taxo/shared`.

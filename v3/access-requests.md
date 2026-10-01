@@ -91,18 +91,25 @@ Three commits: Functions and rules, the web app, these notes.
 | `pnpm build` | Clean |
 | `pnpm --filter @taxo/functions build` | `deploy/index.js` 43.6 kB, both new Callables in it |
 
-## Not deployed yet
+## Deploy
 
-Nothing here is live, and it depends on the super user release, which is not live either:
-`firebase functions:list` on 2026-10-01 showed seven Callables, without `createTenant` or
-`updateTenant`. To ship both releases:
+Deployed 2026-10-01 with the user's go, together with the super user release, which had not
+been live either (`firebase functions:list` beforehand showed seven Callables, without
+`createTenant` or `updateTenant`):
 
-1. `firebase deploy --only functions --force`: creates `createTenant`, `updateTenant`,
-   `requestAccess` and `decideAccessRequest`, and updates the re-scoped `inviteMember` and
-   `revokeInvite` plus the rest.
-2. `./deploy.sh`: rules and hosting together (the app and the rules must agree).
-3. `pnpm provision:user --email misterfela@gmail.com --superuser`, then sign out and in. Until
-   that claim is on the token there is no queue to approve from.
+1. `firebase deploy --only functions --force`: created `createTenant`, `updateTenant`,
+   `requestAccess` and `decideAccessRequest`; updated the other seven, including the
+   re-scoped `inviteMember` and `revokeInvite`, and `previewImpact`, which had been running an
+   older bundle (`v3/compliance-board.md`).
+2. `./deploy.sh --skip-tests` (the full suite had passed after the last code change; only docs
+   changed since): rules and hosting released, and the live page serves
+   `assets/index-B18Rehz7.js`, the bundle just built.
+3. `pnpm provision:user --email misterfela@gmail.com --superuser`: the claim is set, tenant
+   claims unchanged (still admin of `esports`). It takes effect at the next sign-in.
+
+Checked afterwards: `firebase functions:list` shows all eleven Callables, and calling
+`requestAccess` or `decideAccessRequest` without signing in returns `UNAUTHENTICATED`, "Sign in
+first.", so the guard runs rather than the function being missing.
 
 ## Leftovers
 

@@ -85,3 +85,9 @@ Three commits, Functions first, screen last.
 - Granting the claim is a script step by design; nothing in the app makes a super user.
 - Cross-tenant reporting (one screen over every tenant) is not built; the super user opens
   one workspace at a time.
+
+## Deploy
+
+Deployed 2026-10-01, in one pass with the access requests release that builds on it: Functions
+first, then rules and hosting, then `pnpm provision:user --email misterfela@gmail.com
+--superuser`. The steps and the checks are recorded once, in `v3/access-requests.md`, "Deploy".
