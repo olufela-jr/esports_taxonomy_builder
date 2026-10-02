@@ -41,6 +41,10 @@ round-trip and every violation type; keep it green after every change.
 - Tailwind (v4, kept from the prototype by decision), no component library. Native HTML
   elements, shared class strings in `components/styles.ts`, restrained internal-console
   styling.
+- Loading (2026-10-02): the action screens load on demand from `apps/web/src/screens.ts`
+  and are prefetched once the app is idle; Firebase, React and the icons are vendor chunks
+  (`apps/web/vite.config.ts`). Hosting serves `/assets/**` as immutable for a year and the
+  app shell as `no-cache` (`firebase.json`), so a deploy is picked up at once.
 - Firebase: Hosting, Auth (Google sign-in), Firestore. Project `media-taxonomy-tool`,
   Firestore in `asia-south1`. One Callable Cloud Function for BigQuery, read-only, same
   GCP project. All storage calls go through `apps/web/src/data/store.ts`, all sign-in

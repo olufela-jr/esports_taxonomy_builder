@@ -38,7 +38,14 @@ type SegmentChipRowProps = {
 // value, so the tokens line up with the filled segments in order.
 export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples = false, seed = 0, selectedSegmentId, leavingSegmentId, onSelect, onAdd, onReorder, showName = false, badges = true, numbered = false, compact = false, testId = 'chip-row' }: SegmentChipRowProps) {
   const container = useRef<HTMLDivElement>(null);
+  // The chip being dragged: state for its faded look, a ref for the drop, which
+  // can arrive before React has re-rendered with the state.
   const [dragging, setDragging] = useState<string | null>(null);
+  const draggedId = useRef<string | null>(null);
+  const startDrag = (id: string | null) => {
+    draggedId.current = id;
+    setDragging(id);
+  };
   const segments = rule.segments;
   useFlip(container, segments.map((segment) => segment.id).join('|'));
 
@@ -58,10 +65,11 @@ export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples
   const ownIds = segments.filter((segment) => !meta[segment.id]?.inherited).map((segment) => segment.id);
   const onDrop = (event: DragEvent, target: Segment) => {
     event.preventDefault();
-    if (!dragging || !onReorder || dragging === target.id) return;
+    const moving = draggedId.current;
+    if (!moving || !onReorder || moving === target.id) return;
     const toIndex = ownIds.indexOf(target.id);
-    if (toIndex >= 0) onReorder(dragging, toIndex);
-    setDragging(null);
+    if (toIndex >= 0) onReorder(moving, toIndex);
+    startDrag(null);
   };
 
   const chipHeight = compact ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-[13px]';
@@ -102,8 +110,8 @@ export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples
                 role="listitem"
                 data-flip-id={segment.id}
                 draggable={draggable}
-                onDragStart={draggable ? () => setDragging(segment.id) : undefined}
-                onDragEnd={draggable ? () => setDragging(null) : undefined}
+                onDragStart={draggable ? () => startDrag(segment.id) : undefined}
+                onDragEnd={draggable ? () => startDrag(null) : undefined}
                 onDragOver={onReorder && !inherited ? (event) => event.preventDefault() : undefined}
                 onDrop={onReorder && !inherited ? (event) => onDrop(event, segment) : undefined}
               >

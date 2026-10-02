@@ -19,6 +19,23 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Firebase (Auth, Firestore with listeners, Functions) is one ~550 kB
+    // vendor file that cannot shrink without changing the data layer; it is
+    // cached across deploys. Everything else stays well under the default.
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // Firebase and React change far less often than the app, so they ship
+        // as their own files and stay cached across deploys. Screens load on
+        // demand (src/screens.ts); Rollup splits those itself.
+        manualChunks(id) {
+          if (id.includes('/node_modules/firebase/') || id.includes('/node_modules/@firebase/')) return 'firebase';
+          if (/\/node_modules\/(react|react-dom|scheduler|wouter)\//.test(id)) return 'react';
+          if (id.includes('/node_modules/lucide-react/')) return 'icons';
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,

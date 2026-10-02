@@ -167,4 +167,9 @@ checked against the build each time; the last is `index-DWM2HQAN.js`.
 - The chip header and drawer offsets assume the 68px app header and the save bar height
   (`BELOW_SAVE_BAR` in `RuleEditor.tsx`); change them together.
 - Reordering by keyboard is through the drawer's arrows; drag is mouse only.
-- The production bundle is over Vite's 500 kB warning; code splitting would fix it.
+- Bundle split, 2026-10-02: the single 995 kB file (292 kB gzipped) is now an app entry of
+  23 kB gzipped, vendor files for Firebase (163 kB), React (63 kB) and icons (4 kB), and one
+  2 to 11 kB file per screen, loaded on demand and prefetched when idle. The warning limit is
+  600 kB because Firebase alone is 549 kB raw. A tab opened before a deploy reloads once if a
+  screen file is gone. The full Playwright suite passes against `vite preview` of the
+  production build as well as the dev server.

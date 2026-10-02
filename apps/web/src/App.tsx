@@ -1,18 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Route, Switch, Router as WouterRouter, useLocation, useRoute } from 'wouter';
 
 import { AppShell } from '@/components/AppShell';
-import { Builder } from '@/components/Builder';
-import { Compliance } from '@/components/Compliance';
-import { CsvChecker } from '@/components/CsvChecker';
-import { Definitions } from '@/components/Definitions';
 import { Home, RulesAdminsOnly } from '@/components/Home';
-import { Members, MembersAdminsOnly } from '@/components/Members';
-import { Tenants, TenantsSuperOnly } from '@/components/Tenants';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { NotFound } from '@/components/NotFound';
-import { RuleSetWorkspace, type RuleSetEdit } from '@/components/rules/RuleSetWorkspace';
-import { RuleSetList } from '@/components/RuleSetList';
+import type { RuleSetEdit } from '@/components/rules/RuleSetWorkspace';
 import { NoWorkspace, SignIn } from '@/components/SignIn';
 import { createAccessQueue, createAccessRequester, type AccessQueue, type AccessRequest } from '@/data/access';
 import { createAuth, type Role, type User } from '@/data/auth';
@@ -22,6 +15,10 @@ import { createScanner, type Scanner } from '@/data/scan';
 import { createStore, type BuildDraft, type BuildDraftDraft, type Definition, type DefinitionDraft, type Invite, type RuleSet, type RuleSetDraft, type Store, type StoreSession, type Tenant, type TenantUser, type ValueRequest, type ValueRequestDraft } from '@/data/store';
 import { createTenantsDirectory, type TenantsDirectory } from '@/data/tenants';
 import { isActionPath, readUiState, writeUiState, type UiState } from '@/data/ui-state';
+import { Builder, Compliance, CsvChecker, Definitions, Members, MembersAdminsOnly, prefetchScreens, RuleSetList, RuleSetWorkspace, Tenants, TenantsSuperOnly } from '@/screens';
+
+// What a screen shows while its code arrives; the shell stays in place.
+const screenLoading = <div className="py-12 text-center text-sm font-semibold text-muted-foreground" data-testid="screen-loading-view">Loading</div>;
 
 // App owns all shared state with useState: the signed-in user, the Rule Sets
 // (from the store) and the persistent workspace context. Everything below
@@ -199,7 +196,9 @@ function TenantsStandalone({ user, tenants, directory, accessRequests, accessQue
     <div className="min-h-[100dvh] bg-background">
       <div className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">
         <div className="mb-6 flex items-center justify-between text-xs text-muted-foreground"><span>Signed in as {user.email ?? user.name}, super user</span><button type="button" className="underline" onClick={() => void onSignOut()} data-testid="button-sign-out">Sign out</button></div>
-        <Tenants tenants={tenants} directory={directory} membersService={noInvites} viewedTenantId={null} storeKind="firestore" accessRequests={accessRequests} accessQueue={accessQueue} onOpen={() => { /* the first tenant opens by default once it exists */ }} />
+        <Suspense fallback={screenLoading}>
+          <Tenants tenants={tenants} directory={directory} membersService={noInvites} viewedTenantId={null} storeKind="firestore" accessRequests={accessRequests} accessQueue={accessQueue} onOpen={() => { /* the first tenant opens by default once it exists */ }} />
+        </Suspense>
       </div>
     </div>
   );
@@ -273,6 +272,9 @@ function Workspace(props: WorkspaceProps) {
     onLocationChange(location);
   }, [location, onLocationChange]);
 
+  // Once the workspace is up, fetch the other screens in the background.
+  useEffect(() => prefetchScreens(), []);
+
   // A Rule Set (and a saved Rule) opened by its URL becomes the persistent context.
   useEffect(() => {
     const opened = routeRuleSetId ? ruleSets.find((item) => item.id === routeRuleSetId) : undefined;
@@ -337,6 +339,7 @@ function Workspace(props: WorkspaceProps) {
   return (
     <AppShell user={user} ruleSets={ruleSets} storeKind={storeKind} ruleSetId={ui.ruleSetId} ruleId={ui.ruleId} onSelectRuleSet={selectRuleSet} onSelectRule={onSelectRule} onSignOut={onSignOut} definitionsBadge={definitionsBadge} tenantsBadge={accessRequests.filter((request) => request.status === 'pending').length} canManage={canManage} isSuper={isSuper} roleHere={roleHere} tenants={tenants} tenantId={viewedTenantId} onSelectTenant={onSelectTenant}>
       <ErrorBoundary resetKey={location}>
+        <Suspense fallback={screenLoading}>
         <Switch>
           <Route path="/"><Home canManage={canManage} ruleSets={ruleSets} selectedRuleSet={selectedRuleSet} selectedRule={selectedRule} /></Route>
           <Route path="/rules">{canManage ? <RuleSetList ruleSets={ruleSets} canCreate={canEdit} storeKind={storeKind} onOpen={(id) => setLocation(`/rules/${id}`)} onCreate={() => setLocation('/rules/new')} /> : <RulesAdminsOnly />}</Route>
@@ -349,6 +352,7 @@ function Workspace(props: WorkspaceProps) {
           <Route path="/tenants">{isSuper && directory && accessQueue ? <Tenants tenants={tenants} directory={directory} membersService={membersService} viewedTenantId={viewedTenantId} storeKind={storeKind} accessRequests={accessRequests} accessQueue={accessQueue} onOpen={(id) => { onSelectTenant(id); setLocation('/rules'); }} /> : <TenantsSuperOnly />}</Route>
           <Route component={NotFound} />
         </Switch>
+        </Suspense>
       </ErrorBoundary>
     </AppShell>
   );

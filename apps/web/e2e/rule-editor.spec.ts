@@ -108,7 +108,12 @@ test('segments are added, reordered by drag and removed, and the order is stored
   await page.getByTestId('input-segment-label-0-2').fill('Channel');
 
   // Drag Channel onto Campaign Type: it moves to the front.
-  await page.getByTestId('chips-rule-seg-channel').dragTo(page.getByTestId('chips-rule-seg-campaign_type'));
+  // A stepped drag, as a hand would do it; a one-shot dragTo is unreliable with native drag and drop.
+  await page.getByTestId('chips-rule-seg-channel').hover();
+  await page.mouse.down();
+  const target = await page.getByTestId('chips-rule-seg-campaign_type').boundingBox();
+  await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 12 });
+  await page.mouse.up();
   await expect(page.getByTestId('chips-rule-index-channel')).toHaveText('1');
   await expect(page.getByTestId('chips-rule-index-campaign_type')).toHaveText('2');
 
