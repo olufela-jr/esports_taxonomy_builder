@@ -1,5 +1,5 @@
-import { ReactNode, useState } from 'react';
-import { ShieldCheck, Menu, X, ChevronRight, LogOut } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { ShieldCheck, ChevronRight, LogOut } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import type { User } from '@/data/auth';
 import type { RuleSet, Store, Tenant } from '@/data/store';
@@ -18,14 +18,24 @@ function IconMark() {
 }
 
 // badge: an in-app notice (v3 O17), the count of things waiting for this
-// person behind the action: pending requests for an admin, decided ones for a
-// member.
-function NavItem({ href, label, active, badge }: { href: string; label: string; active: boolean; badge?: number }) {
+// person behind the page: pending requests for an admin, decided ones for a
+// member. The active item looks like a selected chip elsewhere in the app.
+// id: the test id suffix, kept stable when a label changes.
+function NavItem({ href, label, id, active, badge }: { href: string; label: string; id: string; active: boolean; badge?: number }) {
   return (
-    <Link href={href} className={`group flex items-center rounded-lg px-3 py-2.5 text-sm font-semibold transition ${active ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}>
+    <Link href={href} className={`flex items-center rounded-lg border px-3 py-2 text-sm font-semibold transition ${active ? 'border-primary/60 bg-primary/10 text-sidebar-accent-foreground' : 'border-transparent text-sidebar-foreground/65 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground'}`} aria-current={active ? 'page' : undefined} data-testid={`link-nav-${id}`}>
       <span>{label}</span>
-      {badge ? <span className="ml-auto rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-primary-foreground" data-testid={`badge-nav-${label.toLowerCase()}`}>{badge}</span> : active ? <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent" /> : null}
+      {badge ? <span className="ml-auto rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-primary-foreground" data-testid={`badge-nav-${id}`}>{badge}</span> : null}
     </Link>
+  );
+}
+
+function NavGroup({ name, children }: { name: string; children: ReactNode }) {
+  return (
+    <>
+      <div className="mt-6 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">{name}</div>
+      <nav className="mt-2 space-y-1" aria-label={name} data-testid={`nav-group-${name.toLowerCase().replaceAll(' ', '-')}`}>{children}</nav>
+    </>
   );
 }
 
@@ -57,7 +67,6 @@ type AppShellProps = {
 // actions, the signed-in user, and the workspace for the current action.
 export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelectRuleSet, onSelectRule, onSignOut, definitionsBadge, tenantsBadge, canManage, isSuper, roleHere, tenants, tenantId, onSelectTenant, children }: AppShellProps) {
   const [location, setLocation] = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   const current = location.startsWith('/rules') ? 'rules' : location.startsWith('/build') ? 'build' : location.startsWith('/compliance') ? 'compliance' : location.startsWith('/check') ? 'check' : location.startsWith('/definitions') ? 'definitions' : location.startsWith('/members') ? 'members' : location.startsWith('/tenants') ? 'tenants' : location === '/' ? 'home' : '';
   const currentLabel = current === 'rules' ? 'Manage Rules' : current;
@@ -66,7 +75,7 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
 
   return (
     <div className="min-h-[100dvh] bg-background">
-      <aside className={`fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col overflow-y-auto bg-sidebar px-4 py-5 text-sidebar-foreground transition-transform duration-300 lg:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`} data-testid="sidebar">
+      <aside className="fixed inset-y-0 left-0 z-40 flex w-[248px] flex-col overflow-y-auto bg-sidebar px-4 py-5 text-sidebar-foreground" data-testid="sidebar">
         <div className="flex items-center gap-3 px-2">
           <Link href="/" className="flex items-center gap-3" aria-label="Home" data-testid="link-home">
             <IconMark />
@@ -75,7 +84,6 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
               <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-primary mt-0.5">Rule Set Tool</div>
             </div>
           </Link>
-          <button className="ml-auto rounded-md p-1.5 text-sidebar-foreground/55 hover:bg-sidebar-accent lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close navigation" data-testid="button-close-navigation"><X className="h-4 w-4" /></button>
         </div>
         
         <div className="mt-8 px-2 flex flex-col gap-3">
@@ -129,23 +137,24 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           </div>
         </div>
 
-        <div className="mt-8 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Actions</div>
-        <nav className="mt-2 space-y-1" aria-label="Main navigation">
-          <NavItem href="/" label="Home" active={current === 'home'} />
-          {canManage && <NavItem href="/rules" label="Manage Rules" active={current === 'rules'} />}
-          <NavItem href="/build" label="Build" active={current === 'build'} />
-          <NavItem href="/check" label="Check" active={current === 'check'} />
-          <NavItem href="/compliance" label="Compliance" active={current === 'compliance'} />
-          <NavItem href="/definitions" label="Definitions" active={current === 'definitions'} badge={definitionsBadge} />
-        </nav>
-        {canManage && <>
-          <div className="mt-6 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.05em] text-sidebar-foreground/40">Admin</div>
-          <nav className="mt-2 space-y-1" aria-label="Admin navigation">
-            <NavItem href="/members" label="Members" active={current === 'members'} />
-            {isSuper && <NavItem href="/tenants" label="Tenants" active={current === 'tenants'} badge={tenantsBadge} />}
-          </nav>
-        </>}
-        
+        {/* The homepage's three themes, each with its pages beneath it. */}
+        <nav className="mt-8 space-y-1" aria-label="Home"><NavItem href="/" label="Home" id="home" active={current === 'home'} /></nav>
+        <NavGroup name="Manage Rules">
+          {canManage && <NavItem href="/rules" label="Rule Sets" id="manage-rules" active={current === 'rules'} />}
+          <NavItem href="/definitions" label="Definitions" id="definitions" active={current === 'definitions'} badge={definitionsBadge} />
+        </NavGroup>
+        <NavGroup name="Build">
+          <NavItem href="/build" label="Build names" id="build" active={current === 'build'} />
+        </NavGroup>
+        <NavGroup name="Check">
+          <NavItem href="/check" label="Check names" id="check" active={current === 'check'} />
+          <NavItem href="/compliance" label="Compliance" id="compliance" active={current === 'compliance'} />
+        </NavGroup>
+        {canManage && <NavGroup name="Admin">
+          <NavItem href="/members" label="Members" id="members" active={current === 'members'} />
+          {isSuper && <NavItem href="/tenants" label="Tenants" id="tenants" active={current === 'tenants'} badge={tenantsBadge} />}
+        </NavGroup>}
+
         <div className="mt-auto">
           <div className="mb-4 rounded border border-sidebar-border bg-sidebar-accent/30 p-3">
             <div className="flex items-center gap-2 text-xs font-semibold" data-testid="text-store-mode"><ShieldCheck className="h-4 w-4 text-muted-foreground" /> {storeKind === 'firestore' ? 'Shared workspace' : 'Local draft'}</div>
@@ -158,12 +167,9 @@ export function AppShell({ user, ruleSets, storeKind, ruleSetId, ruleId, onSelec
           </div>
         </div>
       </aside>
-      {mobileOpen && <button className="fixed inset-0 z-30 bg-primary/20 backdrop-blur-sm lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close menu overlay" data-testid="button-menu-overlay" />}
-      <main className="min-h-[100dvh] lg:pl-[248px]">
+      <main className="min-h-[100dvh] pl-[248px]">
         <header className="sticky top-0 z-20 flex h-[68px] items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur-md sm:px-8">
-          <button className="rounded-lg border border-border bg-card p-2 lg:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation" data-testid="button-open-navigation"><Menu className="h-5 w-5" /></button>
-          <div className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex"><span className="font-mono text-[10px] uppercase tracking-[0.15em]">Workspace</span><ChevronRight className="h-3.5 w-3.5" /><span className="font-semibold text-foreground capitalize">{currentLabel}</span></div>
-          <div className="ml-auto flex h-8 w-8 items-center justify-center rounded bg-primary text-[11px] font-semibold text-primary-foreground lg:hidden" title={user.name} aria-hidden="true">{initials(user.name)}</div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground"><span className="font-mono text-[10px] uppercase tracking-[0.15em]">Workspace</span><ChevronRight className="h-3.5 w-3.5" /><span className="font-semibold text-foreground capitalize">{currentLabel}</span></div>
         </header>
         <div className="mx-auto max-w-[1440px] px-5 py-8 sm:px-8 lg:px-10">{children}</div>
       </main>

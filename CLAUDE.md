@@ -41,6 +41,9 @@ round-trip and every violation type; keep it green after every change.
 - Tailwind (v4, kept from the prototype by decision), no component library. Native HTML
   elements, shared class strings in `components/styles.ts`, restrained internal-console
   styling.
+- Desktop only (decided 2026-10-01): no responsive or mobile layouts, and no mobile
+  navigation. Existing `sm:` and `lg:` classes may stay, but new screens need no small-screen
+  layout.
 - Loading (2026-10-02): the action screens load on demand from `apps/web/src/screens.ts`
   and are prefetched once the app is idle; Firebase, React and the icons are vendor chunks
   (`apps/web/vite.config.ts`). Hosting serves `/assets/**` as immutable for a year and the
@@ -91,8 +94,10 @@ round-trip and every violation type; keep it green after every change.
 
 ## UI rule: action-first with persistent context
 The homepage (`/`) offers three boxes: Manage Rules (admins, and the super user read only),
-Build and Check. The sidebar actions are Home, Manage Rules, Build, Check, Compliance and
-Definitions (renamed 2026-10-01 from Author and Dictionary, no redirects from the old paths).
+Build and Check. The sidebar nests every page under those three themes, without icons
+(decided 2026-10-02): Home; Manage Rules: Rule Sets (admins and super only), Definitions;
+Build: Build names; Check: Check names, Compliance; then Admin: Members, Tenants. Author and
+Dictionary were renamed on 2026-10-01, with no redirects from the old paths.
 - Manage Rules: `/rules` lists Rule Sets; `/rules/:ruleSetId` is the Rule Set page, Rules
   grouped by platform as parent and child trees; `/rules/:ruleSetId/:ruleId` edits one Rule,
   and `.../segments/:segmentId` opens a segment in a drawer beside the Rule's chips. Standard

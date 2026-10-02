@@ -90,6 +90,13 @@ test('a first visit with nothing saved shows the three boxes', async ({ page }) 
   await expect(page.getByTestId('box-home-build')).toContainText('Pick a Rule Set and Rule in the sidebar');
   await expect(page.getByTestId('box-home-check')).toBeVisible();
   await expect(page.getByTestId('select-shell-ruleset')).toHaveValue('');
+  // The sidebar nests each page under the homepage's three themes.
+  await expect(page.getByTestId('nav-group-manage-rules').getByTestId('link-nav-manage-rules')).toHaveText('Rule Sets');
+  await expect(page.getByTestId('nav-group-manage-rules').getByTestId('link-nav-definitions')).toBeVisible();
+  await expect(page.getByTestId('nav-group-build').getByTestId('link-nav-build')).toBeVisible();
+  await expect(page.getByTestId('nav-group-check').getByTestId('link-nav-check')).toBeVisible();
+  await expect(page.getByTestId('nav-group-check').getByTestId('link-nav-compliance')).toBeVisible();
+  await expect(page.getByTestId('link-nav-home')).toHaveAttribute('aria-current', 'page');
   await page.getByTestId('box-home-rules').click();
   await expect(page).toHaveURL(/\/rules$/);
   await expect(page.getByTestId('button-create-ruleset')).toBeVisible();
