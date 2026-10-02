@@ -98,14 +98,16 @@ Build and Check. The sidebar nests every page under those three themes, without 
 (decided 2026-10-02): Home; Manage Rules: Rule Sets (admins and super only), Definitions;
 Build: Build names; Check: Check names, Compliance; then Admin: Members, Tenants. Author and
 Dictionary were renamed on 2026-10-01, with no redirects from the old paths.
-- Manage Rules: `/rules` lists Rule Sets; `/rules/:ruleSetId` is the Rule Set page, Rules
-  grouped by platform as parent and child trees; `/rules/:ruleSetId/:ruleId` edits one Rule,
-  and `.../segments/:segmentId` opens a segment in a drawer beside the Rule's chips. Standard
+- Manage Rules: `/rules` lists Rule Sets; `/rules/:ruleSetId` is the Rule Set page, a plain
+  table of its Rules with a filter; `/rules/:ruleSetId/:ruleId` is one Rule's own page, every
+  segment listed below the sticky chips, the selected one highlighted on its chip, and
+  `.../segments/:segmentId` selects a segment (decided 2026-10-02: no drawers). Standard
   users have no Manage Rules entry, and its links say it is for admins.
 - Definitions (v3, added 2026-09-25): every value list in the workspace. Global means a
   tenant-wide stored definition; Local means an enum segment's own list, read off the Rule
   Sets and edited only in its Rule. Use "Global" and "Local" in the UI, never "shared" for
-  definitions. Admins author Global definitions there; standard users request new values.
+  definitions. Only Global carries a badge; no badge means Local (decided 2026-10-02).
+  Admins author Global definitions there; standard users request new values.
 - Compliance (added 2026-09-30 by decision): what fails and why across every Rule in the
   selected Rule Set, from a CSV or a live scan. Check is single-Rule only and links across to
   Compliance; the pooled "All Rules" figure and the strict per-row view both live on the
@@ -117,8 +119,8 @@ Set or Rule opened by its URL becomes the context. Switching action must NOT res
 regression test in checklist step 3 guards it.)
 
 Every single-name preview is a `SegmentChipRow` (`apps/web/src/components/SegmentChipRow.tsx`),
-whose values always come from `compose`: the Rule editor's chip header, the Rule Set page's
-nodes and the example at the top of Build. Tables of many names stay plain text. Unsaved Rule
+whose values always come from `compose`: the Rule editor's chip header and the example at
+the top of Build. Tables of many names stay plain text. Unsaved Rule
 Set edits are held in `App` per Rule Set until Save. Log of the revamp in `v3/ui-revamp.md`.
 
 ## v3 phase 1, Foundation, done (2026-09-24)

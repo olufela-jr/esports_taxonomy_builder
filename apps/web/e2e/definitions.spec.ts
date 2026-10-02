@@ -24,7 +24,7 @@ test('Global and Local lists share one list, with badges, usage counts and a sco
 
   await expect(page.getByTestId('badge-scope-def-market')).toHaveText('Global');
   await expect(page.getByTestId('card-definition-def-objective')).toContainText('Google Ads');
-  await expect(page.getByTestId('badge-scope-local-seg-type')).toHaveText('Local');
+  await expect(page.getByTestId('card-definition-local-seg-type')).not.toContainText('Global');
   await expect(page.getByTestId('card-definition-local-seg-type')).toContainText('Paid media (test) / Google Campaigns');
   // Market is a Global now, so it has no Local row.
   await expect(page.getByTestId('card-definition-local-seg-market')).toHaveCount(0);
@@ -81,7 +81,7 @@ test('usage links open the segment in its Rule, and a Local list offers Edit in 
 
   await page.getByTestId('link-usage-rule-google-ad-groups').click();
   await expect(page).toHaveURL(/\/rules\/ruleset-paid\/rule-google-ad-groups\/segments\/seg-type$/);
-  await expect(page.getByTestId('text-drawer-inherited')).toContainText('Google Campaigns');
+  await expect(page.locator('[data-selected="true"]').getByTestId('text-segment-inherited')).toContainText('Google Campaigns');
 
   await page.goto('/definitions/local/ruleset-paid/seg-type');
   await page.getByTestId('link-local-edit').click();
@@ -89,12 +89,12 @@ test('usage links open the segment in its Rule, and a Local list offers Edit in 
   await expect(page.getByTestId('input-segment-label-0-0')).toHaveValue('Campaign Type');
 });
 
-test('a Global chip\'s drawer opens that definition in Definitions', async ({ page }) => {
+test('a Global segment opens that definition in Definitions', async ({ page }) => {
   await seed(page);
   await page.goto('/rules/ruleset-paid');
   await openRule(page, 0);
   await openSegment(page, 'market');
-  await page.getByTestId('link-drawer-definition').click();
+  await page.getByTestId('link-segment-definition').click();
   await expect(page).toHaveURL(/\/definitions\/def-market$/);
   await expect(page.getByTestId('input-definition-name')).toHaveValue('Market');
   await expect(page.getByTestId('card-definition-def-market')).toHaveClass(/border-primary/);

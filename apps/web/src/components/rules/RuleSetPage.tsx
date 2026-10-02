@@ -1,10 +1,9 @@
-import { AlertCircle, CornerDownRight, Plus, Trash2 } from 'lucide-react';
-import { dependentsOf, platformName, PLATFORMS, resolveRule, type Definition, type Rule, type RuleSet as EngineRuleSet, type RuleSetIssues } from '@taxo/shared';
+import { useState } from 'react';
+import { AlertCircle, Plus, Search, Trash2 } from 'lucide-react';
+import { dependentsOf, platformName, resolveRule, type Definition, type Rule, type RuleSet as EngineRuleSet, type RuleSetIssues } from '@taxo/shared';
 import { Link, useLocation } from 'wouter';
-import { segmentMeta } from '@/lib/segment-meta';
 import { Breadcrumbs } from '../Breadcrumbs';
-import { SegmentChipRow } from '../SegmentChipRow';
-import { buttonDanger, buttonQuiet, inputClass } from '../styles';
+import { buttonDanger, buttonQuiet, inputClass, tableBody, tableCard, tableClass, tableHead, tableHeadCell, tableRow, tableWrap } from '../styles';
 import { emptyRule } from './draft';
 
 type RuleSetPageProps = {
@@ -21,47 +20,13 @@ type RuleSetPageProps = {
   onDelete: () => void;
 };
 
-type Group = { platform: string; label: string; count: number; roots: Rule[]; children: Map<string, Rule[]> };
+const cell = 'px-5 py-3 align-top';
 
-// Rules grouped by platform (the product's order, then any unknown ones, then
-// no platform), each group a forest of parent and child Rules. A child shares
-// its parent's platform (D47); one that does not, or whose parent is missing
-// or part of a cycle, is shown as a root so it is never lost.
-function groupRules(rules: Rule[]): Group[] {
-  const keys = [...new Set(rules.map((rule) => rule.tags?.platform ?? ''))];
-  const order = (key: string) => (key === '' ? PLATFORMS.length + 1 : PLATFORMS.findIndex((platform) => platform.id === key) === -1 ? PLATFORMS.length : PLATFORMS.findIndex((platform) => platform.id === key));
-  keys.sort((a, b) => order(a) - order(b));
-  return keys.map((platform) => {
-    const members = rules.filter((rule) => (rule.tags?.platform ?? '') === platform);
-    const ids = new Set(members.map((rule) => rule.id));
-    const children = new Map<string, Rule[]>();
-    for (const rule of members) {
-      if (rule.parent && ids.has(rule.parent.ruleId)) children.set(rule.parent.ruleId, [...(children.get(rule.parent.ruleId) ?? []), rule]);
-    }
-    const roots = members.filter((rule) => !rule.parent || !ids.has(rule.parent.ruleId));
-    // Anything not reachable from a root sits on a parent cycle: show it as a root.
-    const reached = new Set<string>();
-    const walk = (rule: Rule) => {
-      if (reached.has(rule.id)) return;
-      reached.add(rule.id);
-      (children.get(rule.id) ?? []).forEach(walk);
-    };
-    roots.forEach(walk);
-    for (const rule of members) {
-      if (!reached.has(rule.id)) {
-        roots.push(rule);
-        walk(rule);
-      }
-    }
-    return { platform, label: platform ? platformName(platform) : 'No platform', count: members.length, roots, children };
-  });
-}
-
-// The Rule Set page: its name, and every Rule in it as a tree, so how the
-// Rules relate is visible at a glance. Clicking a Rule opens its editor.
+// The Rule Set page: its name, and its Rules as a plain table to find one in.
+// Clicking a Rule opens it on its own page.
 export function RuleSetPage({ name, rules, base, isNew, readOnly, draftRuleSet, issues, definitions, onName, onRules, onDelete }: RuleSetPageProps) {
   const [, setLocation] = useLocation();
-  const groups = groupRules(rules);
+  const [query, setQuery] = useState('');
   const addRule = () => {
     const rule = emptyRule(rules.length);
     onRules([...rules, rule]);
@@ -71,36 +36,9 @@ export function RuleSetPage({ name, rules, base, isNew, readOnly, draftRuleSet, 
     if (window.confirm(`Remove the Rule "${rule.name}"?`)) onRules(rules.filter((item) => item.id !== rule.id));
   };
 
-  const renderNode = (rule: Rule, group: Group, depth: number, seen: Set<string>) => {
-    if (seen.has(rule.id)) return null;
-    seen.add(rule.id);
-    const index = rules.indexOf(rule);
-    const resolution = resolveRule(rule, draftRuleSet, definitions);
-    const shown = resolution.errors.length === 0 ? resolution.rule : rule;
-    const dependents = dependentsOf(draftRuleSet, rule.id);
-    const problems = issues.rules[rule.id] ?? [];
-    const kids = group.children.get(rule.id) ?? [];
-    return (
-      <li key={rule.id}>
-        <div className="flex items-start gap-3" data-testid={`card-rule-node-${rule.id}`}>
-          {depth > 0 && <CornerDownRight className="mt-5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-          <div className="flex min-w-0 flex-1 items-start gap-3 rounded-xl border border-border/30 bg-card p-4 shadow-sm transition hover:border-primary/50">
-            <Link href={`${base}/${rule.id}`} className="min-w-0 flex-1" data-testid={`link-rule-node-${index}`}>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-display text-lg font-medium text-foreground">{rule.name || 'Untitled Rule'}</span>
-                <span className="font-mono text-[10px] text-muted-foreground">{rule.key}</span>
-                {rule.tags?.entityType && <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-bold text-muted-foreground">{rule.tags.entityType}</span>}
-                {problems.length > 0 && <span className="inline-flex items-center gap-1 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive" data-testid={`badge-rule-issues-${index}`}><AlertCircle className="h-3 w-3" /> {problems.length} problem{problems.length === 1 ? '' : 's'}</span>}
-              </div>
-              <div className="mt-3"><SegmentChipRow rule={shown} meta={segmentMeta(rule, draftRuleSet)} mode="labels" compact testId={`chips-node-${index}`} /></div>
-            </Link>
-            {!readOnly && <button type="button" className="rounded-md p-2 text-muted-foreground transition hover:bg-destructive/15 hover:text-destructive disabled:opacity-30" onClick={() => removeRule(rule)} disabled={dependents.length > 0} title={dependents.length > 0 ? `Parent of ${dependents.map((item) => item.ruleName).join(', ')}` : 'Remove Rule'} aria-label="Remove rule" data-testid={`button-remove-rule-${index}`}><Trash2 className="h-4 w-4" /></button>}
-          </div>
-        </div>
-        {kids.length > 0 && <ul className="ml-5 mt-3 space-y-3 border-l border-border/60 pl-4">{kids.map((kid) => renderNode(kid, group, depth + 1, seen))}</ul>}
-      </li>
-    );
-  };
+  const needle = query.trim().toLowerCase();
+  const platformOf = (rule: Rule) => (rule.tags?.platform ? platformName(rule.tags.platform) : '');
+  const shown = needle === '' ? rules : rules.filter((rule) => [rule.name, rule.key, platformOf(rule), rule.tags?.entityType ?? ''].some((text) => text.toLowerCase().includes(needle)));
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -120,17 +58,54 @@ export function RuleSetPage({ name, rules, base, isNew, readOnly, draftRuleSet, 
         </div>
       )}
 
-      {rules.length === 0 && <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center text-sm text-muted-foreground">No Rules yet. {readOnly ? '' : 'Add the first one.'}</div>}
-      <div className="space-y-8" data-testid="list-rule-groups">
-        {groups.map((group) => {
-          const seen = new Set<string>();
-          return (
-            <section key={group.platform || 'none'} data-testid={`group-platform-${group.platform || 'none'}`}>
-              <h2 className="mb-3 flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}<span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-foreground">{group.count}</span></h2>
-              <ul className="space-y-3">{group.roots.map((rule) => renderNode(rule, group, 0, seen))}</ul>
-            </section>
-          );
-        })}
+      <div className="relative mb-4 max-w-sm">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} className={`${inputClass} pl-9`} placeholder="Find a Rule" aria-label="Find a Rule" data-testid="input-find-rule" />
+      </div>
+
+      <div className={tableCard}>
+        <div className={tableWrap}>
+          <table className={tableClass} data-testid="table-rules">
+            <thead className={tableHead}>
+              <tr>
+                <th className={tableHeadCell}>Rule</th>
+                <th className={tableHeadCell}>Platform</th>
+                <th className={tableHeadCell}>Entity type</th>
+                <th className={tableHeadCell}>Parent</th>
+                <th className={tableHeadCell}>Segments</th>
+                <th className={tableHeadCell}>Problems</th>
+                {!readOnly && <th className={tableHeadCell}><span className="sr-only">Remove</span></th>}
+              </tr>
+            </thead>
+            <tbody className={tableBody}>
+              {rules.length === 0 && <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-muted-foreground">No Rules yet. {readOnly ? '' : 'Add the first one.'}</td></tr>}
+              {rules.length > 0 && shown.length === 0 && <tr><td colSpan={7} className="px-5 py-10 text-center text-sm text-muted-foreground" data-testid="text-no-rule-match">No Rules match.</td></tr>}
+              {shown.map((rule) => {
+                const index = rules.indexOf(rule);
+                const href = `${base}/${rule.id}`;
+                const resolution = resolveRule(rule, draftRuleSet, definitions);
+                const segmentCount = resolution.errors.length === 0 ? resolution.rule.segments.length : rule.segments.length;
+                const parent = rule.parent ? rules.find((item) => item.id === rule.parent!.ruleId) : undefined;
+                const dependents = dependentsOf(draftRuleSet, rule.id);
+                const problems = issues.rules[rule.id] ?? [];
+                return (
+                  <tr key={rule.id} className={`${tableRow} cursor-pointer`} onClick={() => setLocation(href)} data-testid={`row-rule-${rule.id}`}>
+                    <td className={cell}>
+                      <Link href={href} className="text-[13px] font-bold text-foreground hover:text-primary" onClick={(event) => event.stopPropagation()} data-testid={`link-rule-row-${index}`}>{rule.name || 'Untitled Rule'}</Link>
+                      <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">{rule.key}</div>
+                    </td>
+                    <td className={cell} data-testid={`cell-rule-platform-${rule.id}`}>{platformOf(rule) || <span className="text-muted-foreground">None</span>}</td>
+                    <td className={cell}>{rule.tags?.entityType || <span className="text-muted-foreground">-</span>}</td>
+                    <td className={cell} data-testid={`cell-rule-parent-${rule.id}`}>{parent ? parent.name || 'Untitled Rule' : <span className="text-muted-foreground">-</span>}</td>
+                    <td className={cell}>{segmentCount}</td>
+                    <td className={cell}>{problems.length > 0 ? <span className="inline-flex items-center gap-1 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-bold text-destructive" data-testid={`badge-rule-issues-${index}`}><AlertCircle className="h-3 w-3" /> {problems.length}</span> : <span className="text-muted-foreground">-</span>}</td>
+                    {!readOnly && <td className={`${cell} text-right`} onClick={(event) => event.stopPropagation()}><button type="button" className="rounded-md p-1.5 text-muted-foreground transition hover:bg-destructive/15 hover:text-destructive disabled:opacity-30" onClick={() => removeRule(rule)} disabled={dependents.length > 0} title={dependents.length > 0 ? `Parent of ${dependents.map((item) => item.ruleName).join(', ')}` : 'Remove Rule'} aria-label="Remove rule" data-testid={`button-remove-rule-${index}`}><Trash2 className="h-4 w-4" /></button></td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

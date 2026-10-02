@@ -263,7 +263,7 @@ function Workspace(props: WorkspaceProps) {
   const [onRuleSetPage, ruleSetParams] = useRoute<{ ruleSetId: string; '*'?: string }>('/rules/:ruleSetId/*?');
   const routeRuleSetId = onRuleSetPage && ruleSetParams.ruleSetId !== 'new' ? ruleSetParams.ruleSetId : null;
   // /rules/:ruleSetId/:ruleId opens one Rule of the Rule Set, and
-  // /rules/:ruleSetId/:ruleId/segments/:segmentId one of its segments beside it.
+  // /rules/:ruleSetId/:ruleId/segments/:segmentId selects one of its segments.
   const routeRest = onRuleSetPage ? (ruleSetParams['*'] ?? '').split('/') : [];
   const routeRuleId = routeRest[0] || null;
   const routeSegmentId = routeRest[1] === 'segments' ? routeRest[2] || null : null;

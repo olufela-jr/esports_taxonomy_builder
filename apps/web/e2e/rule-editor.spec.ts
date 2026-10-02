@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { hierarchyRuleSet, marketDefinition, openRule, openSegment, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
 
 // The Rule editor: numbered segment chips in a sticky header, an example
-// built by compose, and segments edited in a drawer beside the chips.
+// built by compose, and every segment listed below to edit in place.
 
 test('the chips number the segments in order, with the delimiter as its own chip', async ({ page }) => {
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
@@ -42,44 +42,56 @@ test('Show example is off by default and swaps the labels for a name from compos
   await expect(page.getByTestId('chips-rule-seg-campaign_type')).toContainText('Campaign Type');
 });
 
-test('a chip opens its segment in a drawer beside the chips, at its own URL', async ({ page }) => {
+test('every segment is listed, and the selected one is highlighted on its chip', async ({ page }) => {
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
   await page.goto('/rules/ruleset-paid');
   await openRule(page, 0);
-  await openSegment(page, 'market');
 
-  await expect(page).toHaveURL(/\/rules\/ruleset-paid\/rule-google\/segments\/seg-market$/);
+  // Both segments are open for editing without clicking anything.
+  await expect(page.getByTestId('input-segment-label-0-0')).toHaveValue('Campaign Type');
+  await expect(page.getByTestId('input-segment-label-0-1')).toHaveValue('Market');
+  await expect(page.getByTestId('segment-market')).toContainText('2 of 2');
+
+  // A chip selects its segment and scrolls to it; the URL stays on the Rule.
+  await openSegment(page, 'market');
+  await expect(page).toHaveURL(/\/rules\/ruleset-paid\/rule-google$/);
   await expect(page.getByTestId('chips-rule-seg-market')).toHaveAttribute('data-selected', 'true');
   await expect(page.getByTestId('chips-rule-seg-campaign_type')).not.toHaveAttribute('data-selected', 'true');
-  await expect(page.getByTestId('breadcrumbs')).toContainText('Rule Sets');
-  await expect(page.getByTestId('breadcrumbs')).toContainText('Google Campaigns');
-  await expect(page.getByTestId('crumb-3')).toHaveText('Market');
-  await expect(page.getByTestId('drawer-segment')).toContainText('Segment 2 of 2');
+  await expect(page.getByTestId('input-segment-label-0-1')).toBeInViewport();
 
-  // Editing in the drawer shows on the chip straight away; the chips stay visible.
+  // Typing in a segment selects it, and the chip follows straight away.
+  await page.getByTestId('input-segment-label-0-0').fill('Type');
+  await expect(page.getByTestId('chips-rule-seg-type')).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('chips-rule-seg-market')).not.toHaveAttribute('data-selected', 'true');
   await page.getByTestId('input-segment-label-0-1').fill('Region');
   await expect(page.getByTestId('chips-rule-seg-region')).toContainText('Region');
+  await expect(page.getByTestId('chips-rule-seg-region')).toHaveAttribute('data-selected', 'true');
   await expect(page.getByTestId('chips-rule-seg-region')).toBeInViewport();
-
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('drawer-segment')).toHaveCount(0);
-  await expect(page).toHaveURL(/\/rules\/ruleset-paid\/rule-google$/);
 });
 
-test('an inherited chip opens read only, with a way to the Rule that owns it', async ({ page }) => {
+test('a segment URL opens the Rule with that segment selected', async ({ page }) => {
+  await seedRuleSets(page, [hierarchyRuleSet], 'admin');
+  await page.goto('/rules/ruleset-paid/rule-google/segments/seg-market');
+  await expect(page.getByTestId('segment-market')).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('chips-rule-seg-market')).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('crumb-2')).toHaveText('Google Campaigns');
+});
+
+test('an inherited segment is read only, with a way to the Rule that owns it', async ({ page }) => {
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
   await page.goto('/rules/ruleset-paid');
   await openRule(page, 1);
   await openSegment(page, 'campaign_type');
 
-  await expect(page.getByTestId('text-drawer-inherited')).toContainText('Inherited from Google Campaigns');
-  await expect(page.getByTestId('input-segment-label-1-0')).toHaveCount(0);
-  await page.getByTestId('link-drawer-owner').click();
+  const inherited = page.getByTestId('segment-campaign_type');
+  await expect(inherited.getByTestId('text-segment-inherited')).toContainText('Inherited from Google Campaigns');
+  await expect(inherited.locator('input')).toHaveCount(0);
+  await inherited.getByTestId('link-segment-owner').click();
   await expect(page).toHaveURL(/\/rules\/ruleset-paid\/rule-google\/segments\/seg-type$/);
   await expect(page.getByTestId('input-segment-label-0-0')).toHaveValue('Campaign Type');
 });
 
-test('a Global chip carries the badge, and its drawer links to Definitions instead of editing values', async ({ page }) => {
+test('a Global segment carries the badge, and links to Definitions instead of editing values', async ({ page }) => {
   const usingMarket = {
     ...paidMediaRuleSet,
     rules: paidMediaRuleSet.rules.map((rule) => (rule.id === 'rule-google'
@@ -91,11 +103,12 @@ test('a Global chip carries the badge, and its drawer links to Definitions inste
   await openRule(page, 0);
 
   await expect(page.getByTestId('chips-rule-scope-market')).toHaveText('Global');
-  await expect(page.getByTestId('chips-rule-scope-campaign_type')).toHaveText('Local');
+  // A local list carries no badge: no tag means local.
+  await expect(page.getByTestId('chips-rule-scope-campaign_type')).toHaveCount(0);
   await openSegment(page, 'market');
-  await expect(page.getByTestId('badge-drawer-scope')).toHaveText('Global');
+  await expect(page.getByTestId('badge-segment-scope-market')).toHaveText('Global');
   await expect(page.getByTestId('input-segment-values-0-1')).toHaveCount(0);
-  await expect(page.getByTestId('link-drawer-definition')).toHaveAttribute('href', '/definitions/def-market');
+  await expect(page.getByTestId('link-segment-definition')).toHaveAttribute('href', '/definitions/def-market');
 });
 
 test('segments are added, reordered by drag and removed, and the order is stored', async ({ page }) => {
@@ -117,11 +130,11 @@ test('segments are added, reordered by drag and removed, and the order is stored
   await expect(page.getByTestId('chips-rule-index-channel')).toHaveText('1');
   await expect(page.getByTestId('chips-rule-index-campaign_type')).toHaveText('2');
 
-  // Remove Market from its drawer: the chip leaves and the drawer closes.
+  // Remove Market: its chip and its card both leave.
   await openSegment(page, 'market');
   await page.getByTestId('button-remove-segment-0-2').click();
   await expect(page.getByTestId('chips-rule-seg-market')).toHaveCount(0);
-  await expect(page.getByTestId('drawer-segment')).toHaveCount(0);
+  await expect(page.getByTestId('segment-market')).toHaveCount(0);
 
   await page.getByTestId('button-save-ruleset').click();
   await expect(page.getByTestId('text-save-confirmation')).toBeVisible();

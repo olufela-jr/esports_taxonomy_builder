@@ -74,14 +74,11 @@ test('an admin links a Rule to a parent, inherits its leading segments, and the 
   const child = saved?.rules[1] as unknown as { parent?: { ruleId: string; inheritSegmentIds: string[] }; delimiter: string };
   expect(child.parent).toEqual({ ruleId: 'rule-google', inheritSegmentIds: ['seg-type', 'seg-market'] });
 
-  // The Rule Set page now shows the child under its parent, in the Google group,
-  // with the inherited segments greyed ahead of its own; the parent cannot be removed.
+  // The Rule Set page now shows the child's parent and platform, and the
+  // parent cannot be removed.
   await backToRuleSet(page);
-  const parentNode = page.locator('li', { has: page.getByTestId('card-rule-node-rule-google') });
-  await expect(page.getByTestId('group-platform-google').getByTestId('card-rule-node-rule-meta')).toBeVisible();
-  await expect(parentNode.getByTestId('card-rule-node-rule-meta')).toBeVisible();
-  await expect(page.getByTestId('chips-node-1-seg-campaign_type')).toHaveAttribute('data-inherited', 'true');
-  await expect(page.getByTestId('chips-node-1-seg-market')).toHaveAttribute('data-inherited', 'true');
+  await expect(page.getByTestId('cell-rule-parent-rule-meta')).toHaveText('Google Campaigns');
+  await expect(page.getByTestId('cell-rule-platform-rule-meta')).toHaveText('Google Ads');
   await expect(page.getByTestId('button-remove-rule-0')).toBeDisabled();
   await openRule(page, 0);
   await openSegment(page, 'market');

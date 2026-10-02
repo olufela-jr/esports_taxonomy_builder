@@ -77,9 +77,10 @@ test('Segment fields keep focus and value while typing, trailing comma included'
 
 test('adding and reordering segments keeps every field editable', async ({ page }) => {
   await openRule(page, 0);
-  // Adding a segment opens it in the drawer, last in the name.
+  // Adding a segment lists it last in the name, selected and focused.
   await page.getByTestId('button-add-segment-chip').click();
-  await expect(page.getByTestId('drawer-segment')).toContainText('Segment 2 of 2');
+  await expect(page.getByTestId('segment-segment_2')).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('input-segment-label-0-1')).toBeFocused();
   await typeAndCheck(page, page.getByTestId('input-segment-label-0-1'), 'Market');
   await page.getByTestId('button-move-segment-up-0-1').click();
   await expect(page.getByTestId('input-segment-label-0-0')).toHaveValue('Market');

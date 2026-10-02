@@ -219,17 +219,18 @@ export async function seedNoWorkspace(page: Page) {
 // Manage Rules: open a Rule of the Rule Set page that is showing, by its
 // place in the Rule Set, and go back up to the Rule Set page.
 export async function openRule(page: Page, index: number) {
-  await page.getByTestId(`link-rule-node-${index}`).click();
+  await page.getByTestId(`link-rule-row-${index}`).click();
   await page.getByTestId(`card-rule-${index}`).waitFor();
 }
 
 export async function backToRuleSet(page: Page) {
   await page.getByTestId('crumb-1').click();
-  await page.getByTestId('list-rule-groups').waitFor();
+  await page.getByTestId('table-rules').waitFor();
 }
 
-// In the Rule editor: open a segment in the drawer by clicking its chip.
+// In the Rule editor: select a segment by clicking its chip, which scrolls
+// to its card in the list below.
 export async function openSegment(page: Page, key: string) {
   await page.getByTestId(`chips-rule-seg-${key}`).click();
-  await page.getByTestId('drawer-segment').waitFor();
+  await page.locator(`[data-testid="segment-${key}"][data-selected="true"]`).waitFor();
 }

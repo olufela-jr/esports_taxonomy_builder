@@ -4,7 +4,7 @@ import { compose, type Rule, type Segment } from '@taxo/shared';
 import { exampleSelections } from '@/lib/examples';
 import type { SegmentMeta } from '@/lib/segment-meta';
 import { useFlip } from '@/lib/use-flip';
-import { ScopeBadge } from './ScopeBadge';
+import { GlobalBadge } from './GlobalBadge';
 
 // labels: segment labels, the shape of the name. example: sample values in
 // place of the labels. values: the caller's selections, as Build has them.
@@ -99,7 +99,7 @@ export function SegmentChipRow({ rule, meta = {}, mode, selections, fillExamples
               {inherited && <Lock className="h-3 w-3 shrink-0" aria-label="Inherited" />}
               <span className={`truncate ${mode === 'labels' ? 'font-bold' : 'font-mono'} ${placeholder || sample ? 'italic' : ''}`}>{text}</span>
               {!segment.required && <span className="text-[10px] font-semibold text-muted-foreground" title="Optional">opt</span>}
-              {info?.scope && badges && !compact && <ScopeBadge scope={info.scope} small testId={`${testId}-scope-${segment.key}`} />}
+              {info?.scope === 'global' && badges && !compact && <GlobalBadge small testId={`${testId}-scope-${segment.key}`} />}
             </>
           );
           const className = `chip-enter inline-flex max-w-[260px] items-center gap-1.5 rounded-[4px] border ${chipHeight} transition-colors ${tone} ${selected ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''} ${leavingSegmentId === segment.id ? 'chip-leave' : ''} ${dragging === segment.id ? 'opacity-40' : ''} ${onSelect ? 'cursor-pointer hover:border-primary/60' : ''}`;

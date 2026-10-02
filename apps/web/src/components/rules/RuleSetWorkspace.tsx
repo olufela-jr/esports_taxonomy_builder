@@ -16,7 +16,7 @@ export type RuleSetEdit = { name: string; rules: Rule[]; baseUpdatedAt: string }
 type RuleSetWorkspaceProps = {
   existing: RuleSet | null; // null: a new Rule Set, not saved yet
   ruleId: string | null;    // the Rule open in the editor; null shows the Rule Set page
-  segmentId: string | null; // the segment open in the Rule editor's drawer
+  segmentId: string | null; // the segment the Rule editor selects on arrival
   edit: RuleSetEdit | undefined;
   onEdit: (edit: RuleSetEdit | null) => void; // null drops the edits
   definitions: Definition[];

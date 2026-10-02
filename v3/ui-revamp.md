@@ -164,12 +164,30 @@ checked against the build each time; the last is `index-DWM2HQAN.js`.
 - Saving still writes the whole Rule Set: two admins editing different Rules of one set will
   conflict on `updatedAt`, refused safely with Reload offered.
 - `ui.lastAction` is still recorded but no longer drives a redirect from `/`.
-- The chip header and drawer offsets assume the 68px app header and the save bar height
+- The chip header offset assumes the 68px app header and the save bar height
   (`BELOW_SAVE_BAR` in `RuleEditor.tsx`); change them together.
-- Reordering by keyboard is through the drawer's arrows; drag is mouse only.
+- Reordering by keyboard is through each segment's up and down arrows; drag is mouse only.
 - Bundle split, 2026-10-02: the single 995 kB file (292 kB gzipped) is now an app entry of
   23 kB gzipped, vendor files for Firebase (163 kB), React (63 kB) and icons (4 kB), and one
   2 to 11 kB file per screen, loaded on demand and prefetched when idle. The warning limit is
   600 kB because Firebase alone is 549 kB raw. A tab opened before a deploy reloads once if a
   screen file is gone. The full Playwright suite passes against `vite preview` of the
   production build as well as the dev server.
+
+## Follow-up, 2026-10-02: a Rule Set table, segments listed, Global-only badge
+
+On the user's review: the Rule Set page should just find a Rule, and segments should be listed
+on the Rule's page rather than clicked into.
+
+- `RuleSetPage.tsx`: the platform groups, trees and chip previews are replaced by one table
+  (Rule, Platform, Entity type, Parent, Segments, Problems, remove) with a "Find a Rule"
+  filter over name, key, platform and entity type. A row opens the Rule at its own URL.
+- `RuleEditor.tsx` and `SegmentCard.tsx` (was `SegmentDrawer.tsx`): every segment, inherited
+  ones first, is a card under the sticky chips. Clicking a chip selects and scrolls to its
+  card; clicking or typing in a card selects it and lights its chip. Selection is page state,
+  so it adds no history; `.../segments/:segmentId` still seeds it, for the Definitions links.
+  Adding a segment scrolls to it and focuses its label. `Drawer.tsx` and its CSS are gone.
+- `GlobalBadge.tsx` (was `ScopeBadge.tsx`): only Global is tagged, on chips, segments and
+  Definitions. No badge means Local. The Definitions scope filter keeps its Local option.
+- Playwright: 77 passing; `ruleset-page`, `rule-editor`, `author-hierarchy`, `definitions` and
+  `editor-typing` updated for the table, the listed segments and the renamed test ids.

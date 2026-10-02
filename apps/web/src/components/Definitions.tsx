@@ -8,7 +8,7 @@ import type { BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, RuleSet,
 import { newId } from '@/lib/ids';
 import { globalUsage, localLists, localUsage, ruleCount, type LocalList, type Usage } from '@/lib/value-lists';
 import { PageHeading } from './PageHeading';
-import { ScopeBadge } from './ScopeBadge';
+import { GlobalBadge } from './GlobalBadge';
 import { buttonDanger, buttonPrimary, buttonQuiet, iconButton, inputClass } from './styles';
 
 // Definitions: every value list in the workspace, visible to every member.
@@ -124,7 +124,7 @@ export function Definitions(props: DefinitionsProps) {
             const count = ruleCount(globalUsage(ruleSets, definition.id));
             return (
               <Link key={definition.id} href={`/definitions/${definition.id}`} className={`w-full rounded-xl border p-4 text-left transition ${selection.kind === 'global' && definition.id === selection.id ? 'border-primary/50 bg-card shadow-md' : 'border-border/30 bg-card hover:border-primary/40'}`} data-testid={`card-definition-${definition.id}`}>
-                <div className="flex items-start justify-between gap-2"><span className="font-display text-lg font-medium text-foreground">{definition.name}</span><ScopeBadge scope="global" testId={`badge-scope-${definition.id}`} /></div>
+                <div className="flex items-start justify-between gap-2"><span className="font-display text-lg font-medium text-foreground">{definition.name}</span><GlobalBadge testId={`badge-scope-${definition.id}`} /></div>
                 <div className="mt-1.5"><PlatformChips platforms={definition.platforms} /></div>
                 <RowCounts values={definition.entries.length} rules={count} testId={`text-usage-${definition.id}`} />
               </Link>
@@ -134,7 +134,7 @@ export function Definitions(props: DefinitionsProps) {
             const isSelected = selection.kind === 'local' && selection.segmentId === list.segment.id && selection.ruleSetId === list.ruleSet.id;
             return (
               <Link key={`${list.ruleSet.id}/${list.segment.id}`} href={localHref(list)} className={`w-full rounded-xl border p-4 text-left transition ${isSelected ? 'border-primary/50 bg-card shadow-md' : 'border-border/30 bg-card hover:border-primary/40'}`} data-testid={`card-definition-local-${list.segment.id}`}>
-                <div className="flex items-start justify-between gap-2"><span className="font-display text-lg font-medium text-foreground">{list.segment.label}</span><ScopeBadge scope="local" testId={`badge-scope-local-${list.segment.id}`} /></div>
+                <div className="flex items-start justify-between gap-2"><span className="font-display text-lg font-medium text-foreground">{list.segment.label}</span></div>
                 <div className="mt-1 text-[11px] font-bold text-muted-foreground">{list.ruleSet.name} / {list.rule.name}</div>
                 <RowCounts values={list.segment.allowedValues.length} rules={ruleCount(localUsage(list))} testId={`text-usage-local-${list.segment.id}`} />
               </Link>
@@ -194,7 +194,7 @@ function LocalView({ list, canOpenRules }: { list: LocalList; canOpenRules: bool
       <UsagePanel usage={localUsage(list)} canOpenRules={canOpenRules} />
       <div className="rounded-xl border border-border/30 bg-card p-6 shadow-sm" data-testid="view-local-definition">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div><div className="flex items-center gap-2"><span className="font-display text-2xl font-medium text-foreground">{list.segment.label}</span><ScopeBadge scope="local" /></div><div className="mt-1 text-[12px] font-bold text-muted-foreground">Local to {list.ruleSet.name} / {list.rule.name}{list.platform ? `, ${platformName(list.platform)}` : ''}</div></div>
+          <div><div className="flex items-center gap-2"><span className="font-display text-2xl font-medium text-foreground">{list.segment.label}</span></div><div className="mt-1 text-[12px] font-bold text-muted-foreground">Local to {list.ruleSet.name} / {list.rule.name}{list.platform ? `, ${platformName(list.platform)}` : ''}</div></div>
           {canOpenRules && <Link href={href} className={buttonQuiet} data-testid="link-local-edit">Edit in rule</Link>}
         </div>
         <table className="mt-5 w-full text-left text-[13px]"><thead><tr className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground"><th className="pb-2">Label</th><th className="pb-2">Code</th></tr></thead><tbody>
@@ -293,7 +293,7 @@ function DefinitionEditor({ existing, ruleSets, scanner, tenant, storeKind, onCr
   return (
     <form onSubmit={onSubmit} className="rounded-xl border border-border/30 bg-card p-6 shadow-sm" data-testid="form-definition">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div><div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Global definition' : 'Edit Global definition'} <ScopeBadge scope="global" small /></div><p className="mt-1 text-sm text-muted-foreground">Labels are what people pick; codes are what go into names.</p></div>
+        <div><div className="flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-widest text-primary">{isNew ? 'New Global definition' : 'Edit Global definition'} <GlobalBadge small /></div><p className="mt-1 text-sm text-muted-foreground">Labels are what people pick; codes are what go into names.</p></div>
         <div className="flex items-center gap-2">
           {saved && <span className="mr-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary" data-testid="text-definition-saved"><Check className="h-4 w-4" /> {storeKind === 'firestore' ? 'Saved' : 'Saved locally'}</span>}
           {!isNew && <button type="button" className={buttonDanger} disabled={saving || dependents.length > 0} title={dependents.length > 0 ? 'In use by a Rule; move the Rule off it first.' : undefined} onClick={() => { if (window.confirm(`Delete the definition "${existing.name}"?`)) { void onDelete(existing.id); onDone(null); } }} data-testid="button-delete-definition"><Trash2 className="h-4 w-4" /> Delete</button>}
