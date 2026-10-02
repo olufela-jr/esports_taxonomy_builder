@@ -5,16 +5,16 @@ import { googleAdGroupsRule, hierarchyRuleSet, seedRuleSets } from './fixtures';
 // pasted or carried across from a batch of the parent; the inherited segments
 // come from each parent name. Carrying works at every level.
 
-test('a child Rule shows a whole example name, inherited segments marked, and asks for parent names', async ({ page }) => {
+test('a child Rule shows the shape of its name, inherited segments marked, and asks for parent names', async ({ page }) => {
   await seedRuleSets(page, [hierarchyRuleSet], 'admin');
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google-ad-groups');
 
-  // The top of the page shows a whole example name: the inherited segment first, the delimiter as its own chip.
-  await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveAttribute('data-sample', 'true');
+  // The top of the page shows the shape of the name by list: the inherited segment first, the delimiter as its own chip.
+  await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveText('Campaign Type');
   await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveAttribute('data-inherited', 'true');
-  await expect(page.getByTestId('chips-build-seg-match')).toHaveAttribute('data-sample', 'true');
+  await expect(page.getByTestId('chips-build-seg-match')).toHaveText('Match type');
   await expect(page.getByTestId('chips-build-delimiter')).toHaveText('_');
 
   await expect(page.getByTestId('section-child-batch')).toBeVisible();
@@ -22,11 +22,9 @@ test('a child Rule shows a whole example name, inherited segments marked, and as
   await page.getByTestId('textarea-parent-lines').fill('perf_uk');
   await expect(page.getByTestId('text-child-batch-inherited-campaign_type')).toBeVisible();
   await page.getByTestId('checkbox-batch-match-exa').check();
-  // The example follows the choices: the first parent's value and the first tick replace the samples.
-  await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveText('perf');
-  await expect(page.getByTestId('chips-build-seg-campaign_type')).not.toHaveAttribute('data-sample', 'true');
-  await expect(page.getByTestId('chips-build-seg-match')).toHaveText('exa');
-  await expect(page.getByTestId('chips-build-seg-match')).not.toHaveAttribute('data-sample', 'true');
+  // The shape stays put as values are chosen: it names the lists, never a value.
+  await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveText('Campaign Type');
+  await expect(page.getByTestId('chips-build-seg-match')).toHaveText('Match type');
   await page.getByTestId('button-child-batch-generate').click();
   await expect(page.getByTestId('preview-group-perf_uk')).toContainText('perf_exa');
 });

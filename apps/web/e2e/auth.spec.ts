@@ -45,7 +45,7 @@ test('a standard user has no Manage Rules, only Build and Check, and still build
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('link-nav-build').click();
   await page.getByTestId('select-shell-rule').selectOption('rule-meta');
-  await expect(page.getByText('An example Meta Ad Sets name.')).toBeVisible();
+  await expect(page.getByText('The parts of a Meta Ad Sets name, in order.')).toBeVisible();
   await page.getByTestId('checkbox-batch-targeting-broad').check();
   await page.getByTestId('textarea-batch-audience').fill('gamers');
   await page.getByTestId('button-batch-generate').click();

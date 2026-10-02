@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, ChevronDown, ChevronRight, Download, Play, X } from 'lucide-react';
-import { ancestorsOf, buildTrackingUrl, checkParents, parse, countUnderParents, enumerateUnderParents, NAME_VIOLATION_KEY, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
+import { ancestorsOf, buildTrackingUrl, checkParents, countUnderParents, enumerateUnderParents, NAME_VIOLATION_KEY, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
 import type { OptionalMode, RuleSet } from '@/data/store';
-import { BATCH_ROW_CAP, firstValues } from './BatchBuilder';
+import { BATCH_ROW_CAP } from './BatchBuilder';
 import { BlockedNotice, DraftsPanel, RequestValue, useBatchDrafts, type Drafting } from './BatchDrafts';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
@@ -23,9 +23,6 @@ type ChildBatchBuilderProps = {
   children: Rule[];      // Rules whose parent is this one, for carrying on down the hierarchy
   onCarry: (childId: string, lines: ParentLine[]) => void;
   drafting: Drafting;
-  // The first parent's inherited values and the first value per own segment,
-  // for the example name at the top of Build.
-  onPreview: (selections: Record<string, string>) => void;
 };
 
 type PreviewRow = { parentName: string; selections: Record<string, string>; name: string; url: string };
@@ -70,7 +67,7 @@ function linesToText(lines: ParentLine[], ancestors: Rule[]): string {
   return lines.map((line) => [line.name, ...ancestors.map((ancestor) => line.ancestors?.[ancestor.id] ?? '')].join('\t').replace(/\t+$/, '')).join('\n');
 }
 
-export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, carried, children, onCarry, drafting, onPreview }: ChildBatchBuilderProps) {
+export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, carried, children, onCarry, drafting }: ChildBatchBuilderProps) {
   const ancestors = neededAncestors(rule, ruleSet);
   const [text, setText] = useState(() => linesToText(carried, ancestors));
   const [picked, setPicked] = useState<Record<string, string[]>>({});
@@ -115,10 +112,6 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
     else if (mode === 'omit') choices[segment.key] = [''];
     else choices[segment.key] = mode === 'both' ? [...values, ''] : values;
   }
-  const firstParent = valid[0] ? parse(parentRule, valid[0].name).selections : {};
-  const first = { ...Object.fromEntries(Object.entries(firstParent).filter(([key]) => inheritedKeys.has(key))), ...firstValues(choices) };
-  const firstKey = JSON.stringify(first);
-  useEffect(() => { onPreview(first); }, [rule.id, firstKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Narrowing can only remove: keep each parent's subset inside the shared choices.
   const effectiveNarrow: Record<string, BatchChoices> = {};
   for (const [name, subsets] of Object.entries(narrow)) {

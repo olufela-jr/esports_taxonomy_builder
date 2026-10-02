@@ -119,8 +119,8 @@ Set or Rule opened by its URL becomes the context. Switching action must NOT res
 regression test in checklist step 3 guards it.)
 
 Every single-name preview is a `SegmentChipRow` (`apps/web/src/components/SegmentChipRow.tsx`),
-whose values always come from `compose`: the Rule editor's chip header and the example at
-the top of Build. Tables of many names stay plain text. Unsaved Rule
+whose values always come from `compose`: the Rule editor's chip header. The row at the top of Build shows the shape of the name, never values: each segment by
+its Global definition's name, or its own label (decided 2026-10-02). Tables of many names stay plain text. Unsaved Rule
 Set edits are held in `App` per Rule Set until Save. Log of the revamp in `v3/ui-revamp.md`.
 
 ## v3 phase 1, Foundation, done (2026-09-24)

@@ -22,25 +22,13 @@ type BatchBuilderProps = {
   children: Rule[]; // Rules whose parent is this one, for "Build children under these names"
   onCarry: (childId: string, lines: ParentLine[]) => void;
   drafting: Drafting;
-  // The first value ticked or typed per segment, for the example name at the top of Build.
-  onPreview: (selections: Record<string, string>) => void;
 };
-
-// The first non-empty value chosen for each segment: one name out of the batch.
-export function firstValues(choices: BatchChoices): Record<string, string> {
-  const first: Record<string, string> = {};
-  for (const [key, values] of Object.entries(choices)) {
-    const value = values.find(Boolean);
-    if (value) first[key] = value;
-  }
-  return first;
-}
 
 function csvCell(value: string): string {
   return /[",\n\r]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
 }
 
-export function BatchBuilder({ rule, active, ruleSet, baseUrl, children, onCarry, drafting, onPreview }: BatchBuilderProps) {
+export function BatchBuilder({ rule, active, ruleSet, baseUrl, children, onCarry, drafting }: BatchBuilderProps) {
   const [picked, setPicked] = useState<Record<string, string[]>>({});
   const [lines, setLines] = useState<Record<string, string>>({});
   const [optional, setOptional] = useState<Record<string, OptionalMode>>({});
@@ -77,10 +65,6 @@ export function BatchBuilder({ rule, active, ruleSet, baseUrl, children, onCarry
       choices[segment.key] = mode === 'both' ? [...values, ''] : values;
     }
   }
-
-  const first = firstValues(choices);
-  const firstKey = JSON.stringify(first);
-  useEffect(() => { onPreview(first); }, [rule.id, firstKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const errors = checkBatchChoices(active, choices);
   const count = errors.length === 0 ? countCombinations(active, choices) : 0;

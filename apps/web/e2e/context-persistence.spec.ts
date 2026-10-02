@@ -31,7 +31,7 @@ test('selection survives Manage Rules, Build, Check, Compliance, and a reload', 
   await page.getByTestId('link-nav-build').click();
   await expect(page.getByTestId('text-batch-count')).toBeVisible();
   expect(await shellState(page)).toEqual({ ruleSet: 'ruleset-paid', rule: 'rule-meta', path: '/build' });
-  await expect(page.getByText('An example Meta Ad Sets name.')).toBeVisible();
+  await expect(page.getByText('The parts of a Meta Ad Sets name, in order.')).toBeVisible();
 
   await page.getByTestId('link-nav-check').click();
   await expect(page.getByTestId('input-check-column')).toBeVisible();
@@ -81,7 +81,7 @@ test('switching Rule Set falls back to that set\'s first Rule', async ({ page })
 
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-global');
   await expect(page.getByTestId('select-shell-rule')).toHaveValue('rule-initiative');
-  await expect(page.getByText('An example Initiative Name name.')).toBeVisible();
+  await expect(page.getByText('The parts of a Initiative Name name, in order.')).toBeVisible();
 });
 
 test('a first visit with nothing saved shows the three boxes', async ({ page }) => {

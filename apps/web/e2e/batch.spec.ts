@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { paidMediaRuleSet, seedRuleSets } from './fixtures';
+import { marketDefinition, paidMediaRuleSet, seedRuleSets } from './fixtures';
 
 // Phase 3: Build (batch only) generates every combination as a CSV of codes.
 
@@ -41,4 +41,19 @@ test('freeform values come one per line and the count follows them', async ({ pa
   await page.getByTestId('textarea-batch-audience').fill('runners\nno spaces here');
   await expect(page.getByTestId('list-batch-errors')).toContainText('illegal character');
   await expect(page.getByTestId('button-batch-generate')).toBeDisabled();
+});
+
+test('the shape at the top names each list: a Global definition by its own name, a Local list by the segment label', async ({ page }) => {
+  const ruleSet = { ...paidMediaRuleSet, rules: paidMediaRuleSet.rules.map((rule) => (rule.id === 'rule-google'
+    ? { ...rule, segments: rule.segments.map((segment) => (segment.id === 'seg-market' ? { ...segment, allowedValues: [], definitionId: 'def-market' } : segment)) }
+    : rule)) };
+  await seedRuleSets(page, [ruleSet], 'user', [{ ...marketDefinition, name: 'Market list' }]);
+  await page.goto('/build');
+  await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
+  await page.getByTestId('select-shell-rule').selectOption('rule-google');
+  await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveText('Campaign Type');
+  await expect(page.getByTestId('chips-build-seg-market')).toHaveText('Market list');
+  // Ticking values leaves the shape alone.
+  await page.getByTestId('checkbox-batch-campaign_type-brand').check();
+  await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveText('Campaign Type');
 });

@@ -50,8 +50,6 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
   const [baseUrls, setBaseUrls] = useState<Record<string, string>>({});
   // Parent names carried from a parent-level batch into a child batch, per child Rule (D34).
   const [carried, setCarried] = useState<Record<string, ParentLine[]>>({});
-  // The first value chosen per segment, per Rule, for the example name at the top.
-  const [previews, setPreviews] = useState<Record<string, Record<string, string>>>({});
 
   if (!ruleSet || !rule) {
     return (
@@ -86,16 +84,22 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
     setCarried((current) => ({ ...current, [childId]: lines }));
     onSelectRule(childId);
   };
-  const preview = previews[rule.id] ?? {};
-  const onPreview = (selections: Record<string, string>) => setPreviews((current) => ({ ...current, [rule.id]: selections }));
+  // The shape of the name at the top: each segment by the name of its list, a
+  // Global definition's own name where the segment reads one.
+  const meta = segmentMeta(rule, ruleSet);
+  const listNames: Record<string, string> = {};
+  for (const segment of active.segments) {
+    const definition = definitions.find((item) => item.id === meta[segment.id]?.definitionId);
+    if (definition) listNames[segment.id] = definition.name;
+  }
   const drafting: Drafting = { user, definitions, requests, drafts, onCreateRequest, onCreateDraft, onUpdateDraft, onDeleteDraft };
 
   return (
     <div>
       <PageHeading eyebrow="Workspace" title="Compose names" description={resolvedParent ? `Paste ${parentRule?.name.toLowerCase()} names, pick the values to combine, and generate every ${rule.name.toLowerCase()} name at once.` : 'Pick the values to combine and generate every name at once. Tick one of each for a single name.'} />
       <section className="mb-6 rounded-xl border border-border/30 bg-card px-6 py-5 shadow-sm" data-testid="section-build-example">
-        <div className="mb-3 text-[11px] font-bold text-muted-foreground" data-testid="text-build-example">{Object.keys(preview).length > 0 ? `The first ${rule.name} name your choices make. Greyed values are examples until you choose your own.` : `An example ${rule.name} name. Tick values below to generate your own.`}</div>
-        <SegmentChipRow rule={active} meta={segmentMeta(rule, ruleSet)} mode="values" selections={preview} fillExamples badges={false} testId="chips-build" />
+        <div className="mb-3 text-[11px] font-bold text-muted-foreground" data-testid="text-build-example">The parts of a {rule.name} name, in order.</div>
+        <SegmentChipRow rule={active} meta={meta} mode="labels" names={listNames} badges={false} testId="chips-build" />
       </section>
       {mapping && (
         <div className="mb-6 rounded-xl bg-card p-6 shadow-sm border border-border/30" data-testid="section-build-url">
@@ -105,8 +109,8 @@ export function Builder({ ruleSet, rule, definitions, onSelectRule, user, reques
         </div>
       )}
       {rule.parent && resolvedParent
-        ? <ChildBatchBuilder rule={rule} active={active} parentRule={resolvedParent} ruleSet={ruleSet} baseUrl={baseUrl} carried={carried[rule.id] ?? NO_LINES} children={children} onCarry={carryToChild} drafting={drafting} onPreview={onPreview} />
-        : <BatchBuilder rule={rule} active={active} ruleSet={ruleSet} baseUrl={baseUrl} children={children} onCarry={carryToChild} drafting={drafting} onPreview={onPreview} />}
+        ? <ChildBatchBuilder rule={rule} active={active} parentRule={resolvedParent} ruleSet={ruleSet} baseUrl={baseUrl} carried={carried[rule.id] ?? NO_LINES} children={children} onCarry={carryToChild} drafting={drafting} />
+        : <BatchBuilder rule={rule} active={active} ruleSet={ruleSet} baseUrl={baseUrl} children={children} onCarry={carryToChild} drafting={drafting} />}
     </div>
   );
 }
