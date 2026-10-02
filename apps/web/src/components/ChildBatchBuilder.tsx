@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, ChevronDown, ChevronRight, Download, Play, X } from 'lucide-react';
-import { ancestorsOf, buildTrackingUrl, checkParents, countUnderParents, enumerateUnderParents, NAME_VIOLATION_KEY, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
+import { ancestorsOf, buildTrackingUrl, checkParents, countUnderParents, enumerateUnderParents, NAME_VIOLATION_KEY, UTM_PARAMS, type BatchChoices, type ParentLine, type Rule } from '@taxo/shared';
 import type { OptionalMode, RuleSet } from '@/data/store';
 import { BATCH_ROW_CAP } from './BatchBuilder';
-import { BlockedNotice, DraftsPanel, RequestValue, useBatchDrafts, type Drafting } from './BatchDrafts';
+import { BatchSegmentField, DraftsPanel, useBatchDrafts, type Drafting } from './BatchDrafts';
+import { MultiSelect } from './MultiSelect';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 // D34: a child Rule batch built across one or more parent names at once
@@ -134,20 +135,8 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
   const canGenerate = counts !== null && total > 0 && !overCap && !blockedKey;
   const mapping = active.utm;
 
-  const togglePick = (key: string, code: string) => setPicked((current) => {
-    const list = current[key] ?? [];
-    return { ...current, [key]: list.includes(code) ? list.filter((item) => item !== code) : [...list, code] };
-  });
-  const selectAll = (segment: Segment) => {
-    if (segment.kind !== 'enum') return;
-    const all = segment.allowedValues.map((entry) => entry.code);
-    setPicked((current) => ({ ...current, [segment.key]: (current[segment.key] ?? []).length === all.length ? [] : all }));
-  };
-  const toggleNarrow = (name: string, key: string, value: string) => setNarrow((current) => {
-    const subset = current[name]?.[key] ?? choices[key] ?? [];
-    const next = subset.includes(value) ? subset.filter((item) => item !== value) : [...subset, value];
-    return { ...current, [name]: { ...current[name], [key]: next } };
-  });
+  // Narrowing can only remove: the dropdown offers just the shared choices.
+  const setNarrowValues = (name: string, key: string, next: string[]) => setNarrow((current) => ({ ...current, [name]: { ...current[name], [key]: next } }));
 
   const generate = () => {
     if (!canGenerate) return;
@@ -218,22 +207,21 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
             <div className="mt-5 space-y-6">
               {active.segments.filter((segment) => inheritedKeys.has(segment.key)).map((segment) => <div key={segment.id} className="rounded-[4px] bg-muted/40 px-3 py-2 text-[13px]" data-testid={`text-child-batch-inherited-${segment.key}`}><span className="font-bold text-foreground">{segment.label}</span> <span className="ml-2 text-[11px] font-bold text-muted-foreground">from each {parentRule.name.toLowerCase()} name</span></div>)}
               {own.map((segment) => (
-                <div key={segment.id} data-testid={`batch-segment-${segment.key}`}>
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <span className="text-[13px] font-bold text-foreground">{segment.label}<span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span></span>
-                    <div className="flex items-center gap-2">
-                      {!segment.required && <select className={`${inputClass} h-8 w-auto`} disabled={blockedKey === segment.key} value={optional[segment.key] ?? 'include'} onChange={(event) => setOptional((current) => ({ ...current, [segment.key]: event.target.value as 'include' | 'omit' | 'both' }))} aria-label={`${segment.label}: include, omit or both`} data-testid={`select-batch-optional-${segment.key}`}><option value="include">Include</option><option value="omit">Omit</option><option value="both">Both</option></select>}
-                      {segment.kind === 'enum' && blockedKey !== segment.key && (optional[segment.key] ?? 'include') !== 'omit' && <button type="button" className="text-[12px] font-bold text-primary underline-offset-2 hover:underline" onClick={() => selectAll(segment)} data-testid={`button-batch-select-all-${segment.key}`}>{(picked[segment.key] ?? []).length === segment.allowedValues.length ? 'Clear' : 'Select all'}</button>}
-                    </div>
-                  </div>
-                  {(optional[segment.key] ?? 'include') === 'omit' ? <p className="text-[12px] font-bold text-muted-foreground">Left out of every name.</p> : segment.kind === 'enum' ? (
-                    <div className="flex flex-wrap gap-x-4 gap-y-2">{segment.allowedValues.map((entry) => <label key={entry.code} className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground"><input type="checkbox" checked={(picked[segment.key] ?? []).includes(entry.code)} onChange={() => togglePick(segment.key, entry.code)} disabled={blockedKey === segment.key} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-batch-${segment.key}-${entry.code}`} /> {entry.label === entry.code ? entry.label : `${entry.label} (${entry.code})`}</label>)}</div>
-                  ) : (
-                    <textarea className={`${inputClass} h-24 py-2 font-mono`} value={lines[segment.key] ?? ''} onChange={(event) => setLines((current) => ({ ...current, [segment.key]: event.target.value }))} placeholder="One value per line" data-testid={`textarea-batch-${segment.key}`} />
-                  )}
-                  {blockedKey === segment.key && activeRequest && <BlockedNotice segmentKey={segment.key} request={activeRequest} onDiscard={activeDraft ? () => void drafts.discard(activeDraft) : undefined} />}
-                  {segment.kind === 'enum' && blockedKey !== segment.key && (optional[segment.key] ?? 'include') !== 'omit' && <RequestValue segment={segment} definition={drafts.definitionFor(segment)} onSend={drafts.send} />}
-                </div>
+                <BatchSegmentField
+                  key={segment.id}
+                  segment={segment}
+                  picked={picked[segment.key] ?? []}
+                  onPicked={(next) => setPicked((current) => ({ ...current, [segment.key]: next }))}
+                  lines={lines[segment.key] ?? ''}
+                  onLines={(text) => setLines((current) => ({ ...current, [segment.key]: text }))}
+                  mode={optional[segment.key] ?? 'include'}
+                  onMode={(mode) => setOptional((current) => ({ ...current, [segment.key]: mode }))}
+                  blocked={blockedKey === segment.key}
+                  request={activeRequest}
+                  definition={drafts.definitionFor(segment)}
+                  onSend={drafts.send}
+                  onDiscard={activeDraft ? () => void drafts.discard(activeDraft) : undefined}
+                />
               ))}
             </div>
           </div>
@@ -242,7 +230,7 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
         {valid.length > 0 && (
           <div className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
             <div className="font-display text-2xl font-medium text-foreground">Per parent</div>
-            <p className="mt-1 text-[13px] font-bold text-muted-foreground">Expand a parent to untick values that do not belong under it. Narrowing only removes.</p>
+            <p className="mt-1 text-[13px] font-bold text-muted-foreground">Expand a parent to remove values that do not belong under it. Narrowing only removes.</p>
             <ul className="mt-4 divide-y divide-border/40">
               {valid.map((entry) => {
                 const name = entry.name;
@@ -256,9 +244,22 @@ export function ChildBatchBuilder({ rule, active, parentRule, ruleSet, baseUrl, 
                     </div>
                     {isOpen && (
                       <div className="mt-3 flex flex-col gap-3 pl-6">
-                        {own.filter((segment) => (choices[segment.key] ?? []).some((value) => value !== '')).map((segment) => (
-                          <div key={segment.id}><div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{segment.label}</div><div className="flex flex-wrap gap-x-4 gap-y-1">{(choices[segment.key] ?? []).filter((value) => value !== '').map((value) => <label key={value} className="inline-flex items-center gap-2 font-mono text-[12px] text-foreground"><input type="checkbox" checked={(effectiveNarrow[name]?.[segment.key] ?? choices[segment.key] ?? []).includes(value)} onChange={() => toggleNarrow(name, segment.key, value)} className="h-3.5 w-3.5 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-narrow-${name}-${segment.key}-${value}`} /> {value}</label>)}</div></div>
-                        ))}
+                        {own.filter((segment) => (choices[segment.key] ?? []).some((value) => value !== '')).map((segment) => {
+                          const labels = new Map(segment.kind === 'enum' ? segment.allowedValues.map((entry) => [entry.code, entry.label]) : []);
+                          const values = (choices[segment.key] ?? []).filter((value) => value !== '');
+                          return (
+                            <div key={segment.id}>
+                              <div className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{segment.label}</div>
+                              <MultiSelect
+                                options={values.map((value) => ({ value, label: labels.get(value) ?? value }))}
+                                selected={effectiveNarrow[name]?.[segment.key] ?? values}
+                                onChange={(next) => setNarrowValues(name, segment.key, next)}
+                                ariaLabel={`${segment.label} under ${name}`}
+                                testId={`narrow-${name}-${segment.key}`}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </li>

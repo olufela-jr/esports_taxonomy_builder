@@ -3,6 +3,7 @@ import { Clock } from 'lucide-react';
 import { checkDefinition, type Definition, type Rule, type Segment } from '@taxo/shared';
 import type { User } from '@/data/auth';
 import type { BuildDraft, BuildDraftDraft, OptionalMode, RuleSet, ValueRequest, ValueRequestDraft } from '@/data/store';
+import { MultiSelect } from './MultiSelect';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 // v3 D42 in a batch: a member who finds a value missing requests it; the
@@ -105,17 +106,14 @@ export function useBatchDrafts(drafting: Drafting, ruleSet: RuleSet, rule: Rule,
   return { activeDraft, activeRequest, blockedKey, myDrafts, definitionFor, send, resume, discard };
 }
 
-// "Value missing? Request it" under an enum segment that reads a shared
-// definition, opening a small form. Nothing for a segment with its own list.
-export function RequestValue({ segment, definition, onSend }: { segment: Segment; definition: Definition | undefined; onSend: (segment: Segment, proposal: { label: string; code: string }, note: string) => Promise<void> }) {
-  const [open, setOpen] = useState(false);
-  const [label, setLabel] = useState('');
+// The form to request a missing value, opened from a segment's dropdown with
+// the typed text as the label. Only for a segment that reads a Global definition.
+export function RequestValue({ segment, definition, initialLabel, onSend, onClose }: { segment: Segment; definition: Definition; initialLabel: string; onSend: (segment: Segment, proposal: { label: string; code: string }, note: string) => Promise<void>; onClose: () => void }) {
+  const [label, setLabel] = useState(initialLabel);
   const [code, setCode] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-
-  if (!definition) return null;
 
   const submit = async () => {
     if (busy) return;
@@ -127,7 +125,7 @@ export function RequestValue({ segment, definition, onSend }: { segment: Segment
     setError('');
     try {
       await onSend(segment, proposal, note.trim());
-      setOpen(false);
+      onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Sending the request failed.');
     } finally {
@@ -135,9 +133,6 @@ export function RequestValue({ segment, definition, onSend }: { segment: Segment
     }
   };
 
-  if (!open) {
-    return <button type="button" className="mt-2 text-[12px] font-bold text-primary underline-offset-2 hover:underline" onClick={() => { setOpen(true); setLabel(''); setCode(''); setNote(''); setError(''); }} data-testid={`button-request-value-${segment.key}`}>Value missing? Request it</button>;
-  }
   return (
     <div className="mt-3 rounded-lg border border-border/50 bg-muted/20 p-4" data-testid={`form-request-${segment.key}`}>
       <div className="text-[12px] font-bold text-foreground">Request a value for {segment.label}</div>
@@ -147,7 +142,56 @@ export function RequestValue({ segment, definition, onSend }: { segment: Segment
       </div>
       <input className={`${inputClass} mt-2`} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Why it is needed (optional)" aria-label="Note" data-testid={`input-request-note-${segment.key}`} />
       {error && <p className="mt-2 text-[12px] font-semibold text-destructive" data-testid={`text-request-error-${segment.key}`}>{error}</p>}
-      <div className="mt-3 flex gap-2"><button type="button" className={buttonPrimary} disabled={busy} onClick={() => void submit()} data-testid={`button-submit-request-${segment.key}`}>{busy ? 'Sending' : 'Send request and save draft'}</button><button type="button" className={buttonQuiet} onClick={() => setOpen(false)}>Cancel</button></div>
+      <div className="mt-3 flex gap-2"><button type="button" className={buttonPrimary} disabled={busy} onClick={() => void submit()} data-testid={`button-submit-request-${segment.key}`}>{busy ? 'Sending' : 'Send request and save draft'}</button><button type="button" className={buttonQuiet} onClick={onClose}>Cancel</button></div>
+    </div>
+  );
+}
+
+// One segment's controls in a batch, the same in both builders: include, omit
+// or both for an optional segment; a searchable multi-select for an enum, one
+// value per line for a freeform; the request form and the blocked notice.
+type BatchSegmentFieldProps = {
+  segment: Segment;
+  picked: string[];
+  onPicked: (next: string[]) => void;
+  lines: string;
+  onLines: (text: string) => void;
+  mode: OptionalMode;
+  onMode: (mode: OptionalMode) => void;
+  blocked: boolean;                  // a draft waits on a value requested for this segment
+  request: ValueRequest | undefined; // that request, for the notice
+  definition: Definition | undefined; // the Global definition it reads, if any
+  onSend: (segment: Segment, proposal: { label: string; code: string }, note: string) => Promise<void>;
+  onDiscard?: () => void;
+};
+
+export function BatchSegmentField({ segment, picked, onPicked, lines, onLines, mode, onMode, blocked, request, definition, onSend, onDiscard }: BatchSegmentFieldProps) {
+  // The label typed when a request was asked for; null while no form is open.
+  const [requesting, setRequesting] = useState<string | null>(null);
+  const canRequest = segment.kind === 'enum' && Boolean(definition) && !blocked;
+  return (
+    <div data-testid={`batch-segment-${segment.key}`}>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-[13px] font-bold text-foreground">{segment.label}<span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span></span>
+        {!segment.required && <div><select className={`${inputClass} h-8 w-auto`} disabled={blocked} value={mode} onChange={(event) => onMode(event.target.value as OptionalMode)} aria-label={`${segment.label}: include, omit or both`} data-testid={`select-batch-optional-${segment.key}`}><option value="include">Include</option><option value="omit">Omit</option><option value="both">Both</option></select></div>}
+      </div>
+      {mode === 'omit' ? (
+        <p className="text-[12px] font-bold text-muted-foreground">Left out of every name.</p>
+      ) : segment.kind === 'enum' ? (
+        <MultiSelect
+          options={segment.allowedValues.map((entry) => ({ value: entry.code, label: entry.label }))}
+          selected={picked}
+          onChange={onPicked}
+          disabled={blocked}
+          ariaLabel={segment.label}
+          testId={`batch-${segment.key}`}
+          onRequest={canRequest ? (typed) => setRequesting(typed) : undefined}
+        />
+      ) : (
+        <textarea className={`${inputClass} h-24 py-2 font-mono`} value={lines} onChange={(event) => onLines(event.target.value)} placeholder="One value per line" data-testid={`textarea-batch-${segment.key}`} />
+      )}
+      {blocked && request && <BlockedNotice segmentKey={segment.key} request={request} onDiscard={onDiscard} />}
+      {canRequest && definition && requesting !== null && <RequestValue key={requesting} segment={segment} definition={definition} initialLabel={requesting} onSend={onSend} onClose={() => setRequesting(null)} />}
     </div>
   );
 }

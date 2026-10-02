@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { backToRuleSet, marketDefinition, openRule, openSegment, paidMediaRuleSet, readRuleSets, seedRuleSets } from './fixtures';
+import { backToRuleSet, marketDefinition, openRule, openSegment, paidMediaRuleSet, pickValues, readRuleSets, seedRuleSets } from './fixtures';
 
 // v3 phase 2 step 3: a Rule's enum segment can take its values from a shared
 // definition. Author offers the definitions that fit the Rule's platform,
@@ -30,9 +30,9 @@ test('an admin points a segment at a definition, and Build offers its labels and
   // Build resolves the definition: labels on the choices, the code in the name.
   await page.getByTestId('link-nav-build').click();
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
-  await page.getByTestId('checkbox-batch-campaign_type-perf').check();
-  await expect(page.getByTestId('batch-segment-market')).toContainText('United States (us)');
-  await page.getByTestId('checkbox-batch-market-us').check();
+  await pickValues(page, 'batch-campaign_type', ['perf']);
+  await pickValues(page, 'batch-market', ['us']);
+  await expect(page.getByTestId('token-batch-market-us')).toHaveText('United States (us)');
   await page.getByTestId('button-batch-generate').click();
   await expect(page.getByTestId('row-batch-0')).toContainText('perf_us');
 });

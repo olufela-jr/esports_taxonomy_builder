@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { hierarchyRuleSet, marketDefinition, paidMediaRuleSet, readDrafts, readRequests, seedRuleSets } from './fixtures';
+import { hierarchyRuleSet, marketDefinition, openRequest, paidMediaRuleSet, pickValues, readDrafts, readRequests, seedRuleSets } from './fixtures';
 
 // v3 phase 5 (D42): a member who finds a value missing requests it from Build;
 // the batch's choices are saved as a draft and the segment is blocked until an
@@ -17,16 +17,16 @@ test('a member requests a missing value from Build, the batch becomes a blocked 
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
-  await page.getByTestId('checkbox-batch-campaign_type-perf').check();
-  await page.getByTestId('checkbox-batch-campaign_type-brand').check();
+  await pickValues(page, 'batch-campaign_type', ['perf']);
+  await pickValues(page, 'batch-campaign_type', ['brand']);
 
-  await page.getByTestId('button-request-value-market').click();
+  await openRequest(page, 'market');
   await page.getByTestId('input-request-label-market').fill('Germany');
   await page.getByTestId('input-request-code-market').fill('de');
   await page.getByTestId('button-submit-request-market').click();
 
   await expect(page.getByTestId('status-build-blocked-market')).toContainText('Waiting for an admin to approve "Germany" (de)');
-  await expect(page.getByTestId('checkbox-batch-market-uk')).toBeDisabled();
+  await expect(page.getByTestId('multiselect-batch-market')).toBeDisabled();
   await expect(page.getByTestId('text-batch-blocked')).toBeVisible();
   await expect(page.getByTestId('button-batch-generate')).toBeDisabled();
   expect(await readRequests(page)).toMatchObject([{ definitionId: 'def-market', label: 'Germany', code: 'de', status: 'pending' }]);
@@ -37,13 +37,13 @@ test('a member requests a missing value from Build, the batch becomes a blocked 
   // test store does not persist across one).
   await page.getByTestId('select-shell-rule').selectOption('rule-meta');
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
-  await expect(page.getByTestId('checkbox-batch-campaign_type-perf')).not.toBeChecked();
+  await expect(page.getByTestId('token-batch-campaign_type-perf')).toHaveCount(0);
   await expect(page.getByTestId('section-build-drafts')).toContainText('waiting for "Germany" (de)');
   await expect(page.getByTestId(`text-draft-choices-${drafts[0].id}`)).toHaveText('campaign_type: perf, brand');
   await page.getByTestId(`button-resume-draft-${drafts[0].id}`).click();
-  await expect(page.getByTestId('checkbox-batch-campaign_type-perf')).toBeChecked();
-  await expect(page.getByTestId('checkbox-batch-campaign_type-brand')).toBeChecked();
-  await expect(page.getByTestId('checkbox-batch-market-uk')).toBeDisabled();
+  await expect(page.getByTestId('token-batch-campaign_type-perf')).toBeVisible();
+  await expect(page.getByTestId('token-batch-campaign_type-brand')).toBeVisible();
+  await expect(page.getByTestId('multiselect-batch-market')).toBeDisabled();
   await expect(page.getByTestId('button-batch-generate')).toBeDisabled();
 });
 
@@ -61,9 +61,9 @@ test('an approved request makes the draft ready; resuming ticks the new value an
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
   await expect(page.getByTestId('text-draft-status-draft-de')).toContainText('approved, ready to resume');
   await page.getByTestId('button-resume-draft-draft-de').click();
-  await expect(page.getByTestId('checkbox-batch-campaign_type-brand')).toBeChecked();
-  await expect(page.getByTestId('checkbox-batch-market-de')).toBeEnabled();
-  await expect(page.getByTestId('checkbox-batch-market-de')).toBeChecked();
+  await expect(page.getByTestId('token-batch-campaign_type-brand')).toBeVisible();
+  await expect(page.getByTestId('multiselect-batch-market')).toBeEnabled();
+  await expect(page.getByTestId('token-batch-market-de')).toBeVisible();
   await expect(page.getByTestId('text-batch-count')).toContainText('1');
   await page.getByTestId('button-batch-generate').click();
   await expect(page.getByTestId('row-batch-0')).toContainText('brand_de');
@@ -82,9 +82,9 @@ test('a child batch saved as a draft keeps its pasted parent names', async ({ pa
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google-ad-groups');
   await page.getByTestId('textarea-parent-lines').fill('perf_uk\nbrand_us');
-  await page.getByTestId('checkbox-batch-match-brd').check();
+  await pickValues(page, 'batch-match', ['brd']);
 
-  await page.getByTestId('button-request-value-match').click();
+  await openRequest(page, 'match');
   await page.getByTestId('input-request-label-match').fill('Phrase');
   await page.getByTestId('input-request-code-match').fill('phr');
   await page.getByTestId('button-submit-request-match').click();
@@ -97,7 +97,7 @@ test('a child batch saved as a draft keeps its pasted parent names', async ({ pa
   await page.getByTestId('select-shell-rule').selectOption('rule-google-ad-groups');
   await page.getByTestId(`button-resume-draft-${drafts[0].id}`).click();
   await expect(page.getByTestId('textarea-parent-lines')).toHaveValue('perf_uk\nbrand_us');
-  await expect(page.getByTestId('checkbox-batch-match-brd')).toBeChecked();
+  await expect(page.getByTestId('token-batch-match-brd')).toBeVisible();
 });
 
 test('an admin sees pending requests as a badge and approving one marks its draft ready', async ({ page }) => {

@@ -191,3 +191,22 @@ on the Rule's page rather than clicked into.
   Definitions. No badge means Local. The Definitions scope filter keeps its Local option.
 - Playwright: 77 passing; `ruleset-page`, `rule-editor`, `author-hierarchy`, `definitions` and
   `editor-typing` updated for the table, the listed segments and the renamed test ids.
+
+## Build: searchable multi-select for enum values (2026-10-02)
+
+On the user's review: checkboxes do not scale on Build, where a Global definition can hold
+hundreds of values.
+
+- `MultiSelect.tsx` (new): a native combobox. Chosen values sit in the field as removable
+  tokens ("+N more" past eight); typing filters on label or code; the list offers Select all
+  (or Select all N matching) and Clear; Up, Down and Enter pick, Escape closes, Backspace in
+  an empty field removes the last token.
+- `BatchSegmentField` in `BatchDrafts.tsx`: one segment control for both batch builders
+  (optional mode, multi-select or freeform lines, blocked notice, request form), replacing the
+  block each carried.
+- Requests move inside the dropdown: a Global definition's segment ends its list with
+  "Request a new value", or `Request "xyz"` when the typed text matches nothing, which opens
+  the request form with the label prefilled. Local lists offer no request, as before.
+- The child batch's per-parent narrowing uses the same dropdown, offering only the shared choices.
+- Playwright: 79 passing; `pickValues`, `selectAllValues` and `openRequest` in `fixtures.ts`
+  drive the dropdown, and two new `batch` cases cover filtering, Backspace and the request row.

@@ -234,3 +234,23 @@ export async function openSegment(page: Page, key: string) {
   await page.getByTestId(`chips-rule-seg-${key}`).click();
   await page.locator(`[data-testid="segment-${key}"][data-selected="true"]`).waitFor();
 }
+
+// Build: pick values in a segment's searchable multi-select (testId as the
+// component takes it, e.g. "batch-market" or "narrow-perf_uk-match"), then close it.
+export async function pickValues(page: Page, testId: string, codes: string[]) {
+  await page.getByTestId(`multiselect-${testId}`).click();
+  for (const code of codes) await page.getByTestId(`option-${testId}-${code}`).click();
+  await page.keyboard.press('Escape');
+}
+
+export async function selectAllValues(page: Page, testId: string) {
+  await page.getByTestId(`multiselect-${testId}`).click();
+  await page.getByTestId(`button-${testId}-select-all`).click();
+  await page.keyboard.press('Escape');
+}
+
+// Open the request form for a missing value from the segment's dropdown.
+export async function openRequest(page: Page, segmentKey: string) {
+  await page.getByTestId(`multiselect-batch-${segmentKey}`).click();
+  await page.getByTestId(`button-batch-${segmentKey}-request`).click();
+}

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { googleAdGroupsRule, hierarchyRuleSet, seedRuleSets } from './fixtures';
+import { googleAdGroupsRule, hierarchyRuleSet, pickValues, seedRuleSets, selectAllValues } from './fixtures';
 
 // v3 phase 2 step 6, batch only: a child Rule is built across parent names,
 // pasted or carried across from a batch of the parent; the inherited segments
@@ -21,7 +21,7 @@ test('a child Rule shows the shape of its name, inherited segments marked, and a
   await expect(page.getByTestId('text-child-batch-empty')).toBeVisible();
   await page.getByTestId('textarea-parent-lines').fill('perf_uk');
   await expect(page.getByTestId('text-child-batch-inherited-campaign_type')).toBeVisible();
-  await page.getByTestId('checkbox-batch-match-exa').check();
+  await pickValues(page, 'batch-match', ['exa']);
   // The shape stays put as values are chosen: it names the lists, never a value.
   await expect(page.getByTestId('chips-build-seg-campaign_type')).toHaveText('Campaign Type');
   await expect(page.getByTestId('chips-build-seg-match')).toHaveText('Match type');
@@ -34,14 +34,14 @@ test('carrying names into a child switches the persistent Rule, and the choice s
   await page.goto('/build');
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google');
-  await page.getByTestId('checkbox-batch-campaign_type-brand').check();
-  await page.getByTestId('checkbox-batch-market-us').check();
+  await pickValues(page, 'batch-campaign_type', ['brand']);
+  await pickValues(page, 'batch-market', ['us']);
   await page.getByTestId('button-batch-generate').click();
   await page.getByTestId('button-carry-child-rule-google-ad-groups').click();
 
   await expect(page.getByTestId('select-shell-rule')).toHaveValue('rule-google-ad-groups');
   await expect(page.getByTestId('textarea-parent-lines')).toHaveValue('brand_us');
-  await page.getByTestId('checkbox-batch-match-brd').check();
+  await pickValues(page, 'batch-match', ['brd']);
   await page.getByTestId('button-child-batch-generate').click();
   await expect(page.getByTestId('preview-group-brand_us')).toContainText('brand_brd');
 
@@ -67,7 +67,7 @@ test('a child batch carries its names on into a grandchild Rule', async ({ page 
   await page.getByTestId('select-shell-ruleset').selectOption('ruleset-paid');
   await page.getByTestId('select-shell-rule').selectOption('rule-google-ad-groups');
   await page.getByTestId('textarea-parent-lines').fill('perf_uk\nbrand_us');
-  await page.getByTestId('button-batch-select-all-match').click();
+  await selectAllValues(page, 'batch-match');
   await page.getByTestId('button-child-batch-generate').click();
 
   await page.getByTestId('checkbox-carry-perf_exa').uncheck();

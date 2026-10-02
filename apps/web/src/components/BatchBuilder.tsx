@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, ArrowRight, Download, Play } from 'lucide-react';
-import { buildTrackingUrl, checkBatchChoices, countCombinations, enumerate, type BatchChoices, type ParentLine, type Rule, type Segment } from '@taxo/shared';
+import { buildTrackingUrl, checkBatchChoices, countCombinations, enumerate, type BatchChoices, type ParentLine, type Rule } from '@taxo/shared';
 import type { OptionalMode, RuleSet } from '@/data/store';
-import { BlockedNotice, DraftsPanel, RequestValue, useBatchDrafts, type Drafting } from './BatchDrafts';
+import { BatchSegmentField, DraftsPanel, useBatchDrafts, type Drafting } from './BatchDrafts';
 import { buttonPrimary, buttonQuiet, inputClass } from './styles';
 
 // Phase 3: every combination of the chosen values for a Rule as a CSV (v2
-// D32, D33). Build is batch only; a single name is a batch of one. Each enum control becomes a multi-select, each freeform control
+// D32, D33). Build is batch only; a single name is a batch of one. Each enum control is a searchable multi-select, each freeform control
 // takes one value per line, each optional segment offers include, omit or
 // both. The engine streams rows; the page keeps a preview and a Blob.
 
@@ -72,16 +72,6 @@ export function BatchBuilder({ rule, active, ruleSet, baseUrl, children, onCarry
   const canGenerate = errors.length === 0 && count > 0 && !overCap && !blockedKey;
   const mapping = active.utm;
 
-  const togglePick = (key: string, code: string) => setPicked((current) => {
-    const list = current[key] ?? [];
-    return { ...current, [key]: list.includes(code) ? list.filter((item) => item !== code) : [...list, code] };
-  });
-  const selectAll = (segment: Segment) => {
-    if (segment.kind !== 'enum') return;
-    const all = segment.allowedValues.map((entry) => entry.code);
-    setPicked((current) => ({ ...current, [segment.key]: (current[segment.key] ?? []).length === all.length ? [] : all }));
-  };
-
   const generate = () => {
     if (!canGenerate) return;
     const header = [...segments.map((segment) => segment.key), 'name', ...(mapping ? ['tracking_url'] : [])];
@@ -121,27 +111,24 @@ export function BatchBuilder({ rule, active, ruleSet, baseUrl, children, onCarry
     <div className="grid gap-6 xl:grid-cols-[1.2fr_.8fr]" data-testid="section-batch">
       <div className="flex flex-col gap-6">
       <section className="rounded-xl bg-card p-6 shadow-sm border border-border/30">
-        <div className="mb-6"><div className="font-display text-2xl font-medium text-foreground">Batch values</div><p className="mt-1 text-[13px] font-bold text-muted-foreground">Every combination of what you tick becomes a name. Codes go into the names; labels are for you.</p></div>
+        <div className="mb-6"><div className="font-display text-2xl font-medium text-foreground">Batch values</div><p className="mt-1 text-[13px] font-bold text-muted-foreground">Every combination of what you choose becomes a name. Codes go into the names; labels are for you.</p></div>
         <div className="space-y-6">
           {segments.map((segment) => (
-            <div key={segment.id} data-testid={`batch-segment-${segment.key}`}>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-[13px] font-bold text-foreground">{segment.label}<span className="ml-2 font-mono text-[10px] font-normal text-muted-foreground">{segment.key}</span></span>
-                <div className="flex items-center gap-2">
-                  {!segment.required && <select className={`${inputClass} h-8 w-auto`} disabled={blockedKey === segment.key} value={optional[segment.key] ?? 'include'} onChange={(event) => setOptional((current) => ({ ...current, [segment.key]: event.target.value as OptionalMode }))} aria-label={`${segment.label}: include, omit or both`} data-testid={`select-batch-optional-${segment.key}`}><option value="include">Include</option><option value="omit">Omit</option><option value="both">Both</option></select>}
-                  {segment.kind === 'enum' && blockedKey !== segment.key && (optional[segment.key] ?? 'include') !== 'omit' && <button type="button" className="text-[12px] font-bold text-primary underline-offset-2 hover:underline" onClick={() => selectAll(segment)} data-testid={`button-batch-select-all-${segment.key}`}>{(picked[segment.key] ?? []).length === segment.allowedValues.length ? 'Clear' : 'Select all'}</button>}
-                </div>
-              </div>
-              {(optional[segment.key] ?? 'include') === 'omit' ? (
-                <p className="text-[12px] font-bold text-muted-foreground">Left out of every name.</p>
-              ) : segment.kind === 'enum' ? (
-                <div className="flex flex-wrap gap-x-4 gap-y-2">{segment.allowedValues.map((entry) => <label key={entry.code} className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground"><input type="checkbox" checked={(picked[segment.key] ?? []).includes(entry.code)} onChange={() => togglePick(segment.key, entry.code)} disabled={blockedKey === segment.key} className="h-4 w-4 rounded-sm border-gray-300 text-primary focus:ring-primary" data-testid={`checkbox-batch-${segment.key}-${entry.code}`} /> {entry.label === entry.code ? entry.label : `${entry.label} (${entry.code})`}</label>)}</div>
-              ) : (
-                <textarea className={`${inputClass} h-24 py-2 font-mono`} value={lines[segment.key] ?? ''} onChange={(event) => setLines((current) => ({ ...current, [segment.key]: event.target.value }))} placeholder={'One value per line'} data-testid={`textarea-batch-${segment.key}`} />
-              )}
-              {blockedKey === segment.key && activeRequest && <BlockedNotice segmentKey={segment.key} request={activeRequest} onDiscard={activeDraft ? () => void drafts.discard(activeDraft) : undefined} />}
-              {segment.kind === 'enum' && blockedKey !== segment.key && (optional[segment.key] ?? 'include') !== 'omit' && <RequestValue segment={segment} definition={drafts.definitionFor(segment)} onSend={drafts.send} />}
-            </div>
+            <BatchSegmentField
+              key={segment.id}
+              segment={segment}
+              picked={picked[segment.key] ?? []}
+              onPicked={(next) => setPicked((current) => ({ ...current, [segment.key]: next }))}
+              lines={lines[segment.key] ?? ''}
+              onLines={(text) => setLines((current) => ({ ...current, [segment.key]: text }))}
+              mode={optional[segment.key] ?? 'include'}
+              onMode={(mode) => setOptional((current) => ({ ...current, [segment.key]: mode }))}
+              blocked={blockedKey === segment.key}
+              request={activeRequest}
+              definition={drafts.definitionFor(segment)}
+              onSend={drafts.send}
+              onDiscard={activeDraft ? () => void drafts.discard(activeDraft) : undefined}
+            />
           ))}
         </div>
       </section>

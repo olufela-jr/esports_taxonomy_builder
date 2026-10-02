@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seedRuleSets } from './fixtures';
+import { pickValues, seedRuleSets } from './fixtures';
 
 // The sign-in gate and the two roles, in memory mode. Every Rule Set in the
 // workspace is readable by every member; only an admin changes one. The local
@@ -46,7 +46,7 @@ test('a standard user has no Manage Rules, only Build and Check, and still build
   await page.getByTestId('link-nav-build').click();
   await page.getByTestId('select-shell-rule').selectOption('rule-meta');
   await expect(page.getByText('The parts of a Meta Ad Sets name, in order.')).toBeVisible();
-  await page.getByTestId('checkbox-batch-targeting-broad').check();
+  await pickValues(page, 'batch-targeting', ['broad']);
   await page.getByTestId('textarea-batch-audience').fill('gamers');
   await page.getByTestId('button-batch-generate').click();
   await expect(page.getByTestId('row-batch-0')).toContainText('broad_gamers');

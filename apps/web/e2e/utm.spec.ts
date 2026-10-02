@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { hierarchyRuleSet, paidMediaRuleSet, readRuleSets, seedRuleSets, openRule } from './fixtures';
+import { hierarchyRuleSet, openRule, paidMediaRuleSet, pickValues, readRuleSets, seedRuleSets } from './fixtures';
 
 // v3 phase 2 step 8: Author's tracking panel and the tracking URL column Build writes.
 
@@ -24,7 +24,7 @@ test('Build writes a tracking URL per name whose utm_campaign is the parent name
   await expect(page.getByTestId('input-build-base-url')).toHaveValue('https://shop.example.com/sale?ref=abc');
 
   await page.getByTestId('textarea-parent-lines').fill('perf_uk');
-  await page.getByTestId('checkbox-batch-match-exa').check();
+  await pickValues(page, 'batch-match', ['exa']);
   await page.getByTestId('button-child-batch-generate').click();
   await expect(page.getByTestId('preview-group-perf_uk')).toContainText('perf_exa');
   await expect(page.getByTestId('preview-group-perf_uk')).toContainText('https://shop.example.com/sale?ref=abc&utm_source=google&utm_medium=cpc&utm_campaign=perf_uk&utm_content=perf_exa');
