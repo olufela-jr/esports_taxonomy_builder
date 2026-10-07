@@ -325,6 +325,7 @@ function Workspace(props: WorkspaceProps) {
           edit={edits[editKey]}
           onEdit={editFor(editKey)}
           definitions={definitions}
+          ruleSets={ruleSets}
           readOnly={!canEdit}
           storeKind={storeKind}
           justCreated={editKey === justCreatedId}

@@ -1,11 +1,11 @@
 import type { ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Lock, Trash2 } from 'lucide-react';
-import { entriesFromCodes, type Definition, type Rule, type Segment } from '@taxo/shared';
+import { entriesFromCodes, type Definition, type EnumSegment, type Rule, type Segment } from '@taxo/shared';
 import { Link } from 'wouter';
 import type { SegmentMeta } from '@/lib/segment-meta';
 import { GlobalBadge } from '../GlobalBadge';
 import { buttonDanger, iconButton, inputClass } from '../styles';
-import { entriesFromCodeList, slugify } from './draft';
+import { entriesFromCodeList, isDefaultLabel, slugify } from './draft';
 import { CommaListInput } from './RuleFields';
 
 const labelClass = 'block text-[13px] font-bold text-foreground';
@@ -21,6 +21,7 @@ type SegmentCardProps = {
   owner: Rule | undefined;   // the Rule an inherited segment belongs to
   base: string;              // the Rule Set's URL
   definitions: Definition[];
+  findLocalList: (codes: string[]) => EnumSegment | undefined; // another segment's Local list with these codes
   inheritedBy: string[];     // Rules that inherit this segment; it cannot be removed
   selected: boolean;         // highlighted here and on its chip
   leaving: boolean;          // on its way out, after Remove
@@ -68,6 +69,9 @@ export function SegmentCard(props: SegmentCardProps) {
   const offered = definitions.filter((definition) => definition.platforms.length === 0 || (platform !== undefined && definition.platforms.includes(platform)) || definition.id === definitionId);
   const chosen = definitions.find((definition) => definition.id === definitionId);
   const ids = `${ruleIndex}-${ownIndex}`;
+  // Name the segment after the list it now uses, unless someone renamed it.
+  const following = isDefaultLabel(segment.label, [chosen?.name, segment.kind === 'enum' && !definitionId ? props.findLocalList(segment.allowedValues.map((entry) => entry.code))?.label : undefined]);
+  const named = (name: string) => (following ? { label: name, key: slugify(name) || `segment_${ownIndex + 1}` } : {});
   const ownCount = rule.segments.length;
 
   return frame(
@@ -78,7 +82,7 @@ export function SegmentCard(props: SegmentCardProps) {
 
         {segment.kind === 'enum' ? (
           <>
-            <label className={labelClass}>Values from:<select className={`${inputClass} mt-2`} value={definitionId ?? ''} onChange={(event) => onChange(event.target.value ? { definitionId: event.target.value, allowedValues: [] } : { definitionId: undefined, allowedValues: segment.allowedValues.length > 0 ? segment.allowedValues : entriesFromCodes(['value']) })} data-testid={`select-segment-source-${ids}`}><option value="">Local list (this Rule only)</option>{offered.map((definition) => <option key={definition.id} value={definition.id}>Global: {definition.name}{definition.platforms.length > 0 ? ` (${definition.platforms.join(', ')})` : ''}</option>)}</select></label>
+            <label className={labelClass}>Values from:<select className={`${inputClass} mt-2`} value={definitionId ?? ''} onChange={(event) => onChange(event.target.value ? { definitionId: event.target.value, allowedValues: [], ...named(definitions.find((definition) => definition.id === event.target.value)?.name ?? '') } : { definitionId: undefined, allowedValues: segment.allowedValues.length > 0 ? segment.allowedValues : entriesFromCodes(['value']) })} data-testid={`select-segment-source-${ids}`}><option value="">Local list (this Rule only)</option>{offered.map((definition) => <option key={definition.id} value={definition.id}>Global: {definition.name}{definition.platforms.length > 0 ? ` (${definition.platforms.join(', ')})` : ''}</option>)}</select></label>
             {definitionId ? (
               <div className="rounded-[4px] border border-border bg-muted/30 p-3 text-[12px]" data-testid={`text-segment-definition-${ids}`}>
                 {chosen ? <>
@@ -89,7 +93,7 @@ export function SegmentCard(props: SegmentCardProps) {
                 </> : <span className="font-semibold text-destructive">This definition no longer exists.</span>}
               </div>
             ) : (
-              <label className={labelClass}>Local values: <span className="ml-1 font-normal text-muted-foreground">(comma separated, matched exactly)</span><CommaListInput className={`${inputClass} mt-2 font-mono`} value={segment.allowedValues.map((entry) => entry.code)} onChange={(codes) => onChange({ allowedValues: entriesFromCodeList(codes, segment.allowedValues) })} placeholder="na, emea, apac" testId={`input-segment-values-${ids}`} /></label>
+              <label className={labelClass}>Local values: <span className="ml-1 font-normal text-muted-foreground">(comma separated, matched exactly)</span><CommaListInput className={`${inputClass} mt-2 font-mono`} value={segment.allowedValues.map((entry) => entry.code)} onChange={(codes) => { const match = props.findLocalList(codes); onChange({ allowedValues: entriesFromCodeList(codes, segment.allowedValues), ...(match ? named(match.label) : {}) }); }} placeholder="na, emea, apac" testId={`input-segment-values-${ids}`} /></label>
             )}
           </>
         ) : (

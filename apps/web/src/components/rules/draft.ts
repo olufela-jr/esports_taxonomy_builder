@@ -1,8 +1,16 @@
 import { entryFromCode, type EnumEntry, type FreeformSegment, type Rule, type Segment, type Tags } from '@taxo/shared';
 import { newId } from '@/lib/ids';
+import { isPlaceholderLabel } from '@/lib/value-lists';
 
 // Editing helpers for a Rule Set draft. Pure functions over the Rules array;
 // the naming checks themselves stay in @taxo/shared.
+
+// A segment's label is still its default, so naming it after its value list
+// overwrites nothing anyone chose: a placeholder, or the name of the list it
+// already follows (its Global, or the Local list its values match).
+export function isDefaultLabel(label: string, followed: Array<string | undefined>): boolean {
+  return isPlaceholderLabel(label) || followed.some((name) => name !== undefined && name === label.trim());
+}
 
 // Editable slug derived from a display name. Keys are lowercase by convention;
 // enum values are not touched, they match exactly and case-sensitively.

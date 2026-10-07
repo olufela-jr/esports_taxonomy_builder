@@ -106,7 +106,9 @@ Dictionary were renamed on 2026-10-01, with no redirects from the old paths.
 - Definitions (v3, added 2026-09-25): every value list in the workspace. Global means a
   tenant-wide stored definition; Local means an enum segment's own list, read off the Rule
   Sets and edited only in its Rule. Use "Global" and "Local" in the UI, never "shared" for
-  definitions. Only Global carries a badge; no badge means Local (decided 2026-10-02).
+  definitions. Only Global carries a badge; no badge means Local (decided 2026-10-02). A
+  segment takes the name of the list it uses, its Global or a Local list with the same codes,
+  unless someone renamed it (decided 2026-10-02).
   Admins author Global definitions there; standard users request new values.
 - Compliance (added 2026-09-30 by decision): what fails and why across every Rule in the
   selected Rule Set, from a CSV or a live scan. Check is single-Rule only and links across to

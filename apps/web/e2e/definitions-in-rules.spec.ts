@@ -64,3 +64,32 @@ test('a Rule using a definition keeps it from being deleted, and a scoped defini
   await expect(page.getByTestId('select-segment-source-1-0').locator('option', { hasText: 'Match type' })).toHaveCount(0);
   await expect(page.getByTestId('select-segment-source-1-0').locator('option', { hasText: 'Market' })).toHaveCount(1);
 });
+
+test('a segment takes the name of the list it uses, unless someone renamed it', async ({ page }) => {
+  await seedRuleSets(page, undefined, 'admin', [marketDefinition]);
+  await page.goto('/rules/ruleset-paid');
+  await openRule(page, 0);
+
+  // A new segment typed with Targeting's codes, in any order, is named Targeting.
+  await page.getByTestId('button-add-segment-chip').click();
+  await page.getByTestId('select-segment-kind-0-2').selectOption('enum');
+  await page.getByTestId('input-segment-values-0-2').fill('exact, broad');
+  await expect(page.getByTestId('input-segment-label-0-2')).toHaveValue('Targeting');
+  await expect(page.getByTestId('input-segment-key-0-2')).toHaveValue('targeting');
+
+  // Still following a list, it follows the Global it is switched to.
+  await page.getByTestId('select-segment-source-0-2').selectOption('def-market');
+  await expect(page.getByTestId('input-segment-label-0-2')).toHaveValue('Market');
+  await expect(page.getByTestId('input-segment-key-0-2')).toHaveValue('market');
+
+  // A name nobody gave a list is kept: Campaign Type stays Campaign Type.
+  await page.getByTestId('select-segment-source-0-0').selectOption('def-market');
+  await expect(page.getByTestId('input-segment-label-0-0')).toHaveValue('Campaign Type');
+
+  // And a segment renamed by hand keeps its name when its values match a list.
+  await page.getByTestId('button-add-segment-chip').click();
+  await page.getByTestId('select-segment-kind-0-3').selectOption('enum');
+  await page.getByTestId('input-segment-label-0-3').fill('Bid strategy');
+  await page.getByTestId('input-segment-values-0-3').fill('broad, exact');
+  await expect(page.getByTestId('input-segment-label-0-3')).toHaveValue('Bid strategy');
+});

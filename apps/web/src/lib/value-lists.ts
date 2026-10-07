@@ -1,4 +1,4 @@
-import { dependentsOf, type EnumSegment, type Rule } from '@taxo/shared';
+import { dependentsOf, type EnumSegment, type Rule, type RuleSet as EngineRuleSet } from '@taxo/shared';
 import type { RuleSet } from '@/data/store';
 
 // The Definitions page lists two kinds of value list. Global: a stored
@@ -22,6 +22,28 @@ export function localLists(ruleSets: RuleSet[]): LocalList[] {
     }
   }
   return lists;
+}
+
+// A label nobody chose: what a new segment starts with.
+export function isPlaceholderLabel(label: string): boolean {
+  return label.trim() === '' || /^Segment \d+$/.test(label.trim());
+}
+
+// The Local list with exactly these codes, in any order, so a segment given
+// the same values can take its name. The segment itself and lists still on a
+// placeholder name are skipped; the first Rule Set given is searched first.
+export function matchingLocalList(codes: string[], ruleSets: EngineRuleSet[], selfId: string): EnumSegment | undefined {
+  const wanted = [...new Set(codes)].sort().join('\n');
+  if (wanted === '') return undefined;
+  for (const ruleSet of ruleSets) {
+    for (const rule of ruleSet.rules) {
+      for (const segment of rule.segments) {
+        if (segment.kind !== 'enum' || segment.definitionId || segment.id === selfId || isPlaceholderLabel(segment.label)) continue;
+        if ([...new Set(segment.allowedValues.map((entry) => entry.code))].sort().join('\n') === wanted) return segment;
+      }
+    }
+  }
+  return undefined;
 }
 
 // One Rule that uses a list: directly, or by inheriting the segment that does.

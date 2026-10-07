@@ -3,6 +3,7 @@ import { Plus, Shuffle, Trash2 } from 'lucide-react';
 import { dependentsOf, resolveRule, type Definition, type Rule, type RuleSet as EngineRuleSet } from '@taxo/shared';
 import { useLocation } from 'wouter';
 import { segmentMeta } from '@/lib/segment-meta';
+import { matchingLocalList } from '@/lib/value-lists';
 import { Breadcrumbs, type Crumb } from '../Breadcrumbs';
 import { SegmentChipRow } from '../SegmentChipRow';
 import { buttonQuiet, cardClass } from '../styles';
@@ -26,6 +27,7 @@ type RuleEditorProps = {
   draftRuleSet: EngineRuleSet;
   issues: string[];
   definitions: Definition[];
+  ruleSets: EngineRuleSet[]; // the workspace's Rule Sets, for matching Local lists
   readOnly: boolean;
   onRules: (rules: Rule[]) => void;
 };
@@ -35,7 +37,7 @@ type RuleEditorProps = {
 // Clicking a chip scrolls to its segment; working in a segment lights its
 // chip. Edits go into the Rule Set's draft, and the save bar above saves the
 // whole set.
-export function RuleEditor({ rule, ruleIndex, ruleSetName, base, segmentId, rules, draftRuleSet, issues, definitions, readOnly, onRules }: RuleEditorProps) {
+export function RuleEditor({ rule, ruleIndex, ruleSetName, base, segmentId, rules, draftRuleSet, issues, definitions, ruleSets, readOnly, onRules }: RuleEditorProps) {
   const [, setLocation] = useLocation();
   const [example, setExample] = useState(false);
   const [seed, setSeed] = useState(0);
@@ -54,6 +56,9 @@ export function RuleEditor({ rule, ruleIndex, ruleSetName, base, segmentId, rule
   const resolution = resolveRule(rule, draftRuleSet, definitions);
   const shown = resolution.errors.length === 0 ? resolution.rule : rule;
   const meta = segmentMeta(rule, draftRuleSet);
+  // Local lists to name a segment after: this Rule Set's draft first, so its
+  // unsaved edits count and its own lists are preferred.
+  const listPool = [draftRuleSet, ...ruleSets.filter((item) => item.id !== draftRuleSet.id)];
 
   // Scroll a segment's card to just below the sticky chips.
   const scrollTo = (id: string, behavior: ScrollBehavior) => {
@@ -169,6 +174,7 @@ export function RuleEditor({ rule, ruleIndex, ruleSetName, base, segmentId, rule
                     owner={rules.find((item) => item.id === meta[segment.id]?.ownerRuleId)}
                     base={base}
                     definitions={definitions}
+                    findLocalList={(codes) => matchingLocalList(codes, listPool, segment.id)}
                     inheritedBy={dependentsOf(draftRuleSet, rule.id, segment.id).map((dependent) => dependent.ruleName)}
                     selected={selected === segment.id}
                     leaving={leaving === segment.id}

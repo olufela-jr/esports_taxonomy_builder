@@ -189,6 +189,9 @@ on the Rule's page rather than clicked into.
   Adding a segment scrolls to it and focuses its label. `Drawer.tsx` and its CSS are gone.
 - `GlobalBadge.tsx` (was `ScopeBadge.tsx`): only Global is tagged, on chips, segments and
   Definitions. No badge means Local. The Definitions scope filter keeps its Local option.
+- A segment takes its list's name: picking a Global, or typing codes that match another
+  segment's Local list (same codes, any order), sets its label and key, unless the label was
+  renamed by hand (`isDefaultLabel` in `draft.ts`, `matchingLocalList` in `value-lists.ts`).
 - Playwright: 77 passing; `ruleset-page`, `rule-editor`, `author-hierarchy`, `definitions` and
   `editor-typing` updated for the table, the listed segments and the renamed test ids.
 
