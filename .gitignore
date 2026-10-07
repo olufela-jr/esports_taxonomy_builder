@@ -31,3 +31,6 @@ blob-report/
 .idea/
 .vscode/
 functions/deploy/
+
+# Word lock files
+~$*
