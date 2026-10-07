@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { AlertCircle, Plus, Search, Trash2 } from 'lucide-react';
-import { dependentsOf, platformName, resolveRule, type Definition, type Rule, type RuleSet as EngineRuleSet, type RuleSetIssues } from '@taxo/shared';
+import { AlertCircle, Download, Plus, Search, Trash2, Upload } from 'lucide-react';
+import { dependentsOf, platformName, resolveRule, rulesFromSheets, rulesToSheets, type Definition, type Rule, type RuleSet as EngineRuleSet, type RuleSetIssues } from '@taxo/shared';
 import { Link, useLocation } from 'wouter';
 import { Breadcrumbs } from '../Breadcrumbs';
 import { buttonDanger, buttonQuiet, inputClass, tableBody, tableCard, tableClass, tableHead, tableHeadCell, tableRow, tableWrap } from '../styles';
-import { emptyRule } from './draft';
+import { newId } from '@/lib/ids';
+import { downloadRulesWorkbook, readRulesWorkbook } from '@/lib/workbook';
+import { emptyRule, emptySegment, slugify } from './draft';
 
 type RuleSetPageProps = {
   name: string;
@@ -22,16 +24,43 @@ type RuleSetPageProps = {
 
 const cell = 'px-5 py-3 align-top';
 
+// The template is an export of one example Rule, so it can never drift from
+// the format: an enum segment with a Local list and an optional freeform one.
+const TEMPLATE_RULE: Rule = {
+  ...emptyRule(0),
+  key: 'google_campaign',
+  name: 'Google Campaigns',
+  tags: { platform: 'google', entityType: 'campaign' },
+  delimiter: '_',
+  segments: [
+    { id: 'region', kind: 'enum', key: 'region', label: 'Region', required: true, allowedValues: [{ label: 'United Kingdom', code: 'UK' }, { label: 'United States', code: 'US' }] },
+    { ...emptySegment(1), key: 'theme', label: 'Theme', required: false },
+  ],
+};
+
 // The Rule Set page: its name, and its Rules as a plain table to find one in.
 // Clicking a Rule opens it on its own page.
 export function RuleSetPage({ name, rules, base, isNew, readOnly, draftRuleSet, issues, definitions, onName, onRules, onDelete }: RuleSetPageProps) {
   const [, setLocation] = useLocation();
   const [query, setQuery] = useState('');
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [imported, setImported] = useState(0);
   const addRule = () => {
     const rule = emptyRule(rules.length);
     onRules([...rules, rule]);
     setLocation(`${base}/${rule.id}`);
   };
+  // Imported Rules join the unsaved draft like any added Rule, so they are
+  // checked and saved the usual way; an import with any error adds nothing.
+  const importFile = async (file?: File) => {
+    if (!file) return;
+    const read = await readRulesWorkbook(file);
+    const result = 'error' in read ? { rules: [], errors: [read.error] } : rulesFromSheets(read.sheets, rules, definitions, newId, emptyRule(0).source);
+    setImportErrors(result.errors);
+    setImported(result.rules.length);
+    if (result.rules.length > 0) onRules([...rules, ...result.rules]);
+  };
+  const exportRules = () => void downloadRulesWorkbook(rulesToSheets(rules, definitions), `${slugify(name) || 'rule_set'}_rules.xlsx`);
   const removeRule = (rule: Rule) => {
     if (window.confirm(`Remove the Rule "${rule.name}"?`)) onRules(rules.filter((item) => item.id !== rule.id));
   };
@@ -45,11 +74,17 @@ export function RuleSetPage({ name, rules, base, isNew, readOnly, draftRuleSet, 
       <Breadcrumbs items={[{ label: 'Rule Sets', href: '/rules' }, { label: name || 'Untitled Rule Set' }]} />
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <label className="block flex-1 text-[13px] font-bold text-foreground">Rule Set name:<input value={name} onChange={(event) => onName(event.target.value)} className={`${inputClass} mt-2 h-11 font-display text-lg`} placeholder="e.g. Regional paid media" data-testid="input-ruleset-name" /></label>
-        {!readOnly && <div className="flex items-center gap-2">
-          <button type="button" className={buttonQuiet} onClick={addRule} data-testid="button-add-rule"><Plus className="h-4 w-4" /> Add Rule</button>
-          {!isNew && <button type="button" className={buttonDanger} onClick={onDelete} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}
-        </div>}
+        <div className="flex items-center gap-2">
+          {!readOnly && <button type="button" className={buttonQuiet} onClick={addRule} data-testid="button-add-rule"><Plus className="h-4 w-4" /> Add Rule</button>}
+          {!readOnly && <label className={`${buttonQuiet} cursor-pointer`}><Upload className="h-4 w-4" /> Import Excel<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="sr-only" onChange={(event) => { void importFile(event.target.files?.[0]); event.target.value = ''; }} data-testid="input-import-rules" /></label>}
+          <button type="button" className={buttonQuiet} onClick={exportRules} disabled={rules.length === 0} data-testid="button-export-rules"><Download className="h-4 w-4" /> Export Excel</button>
+          {!readOnly && !isNew && <button type="button" className={buttonDanger} onClick={onDelete} data-testid="button-delete-ruleset"><Trash2 className="h-4 w-4" /> Delete</button>}
+        </div>
       </div>
+      {!readOnly && <p className="-mt-5 mb-6 text-xs text-muted-foreground">Import adds new Rules from an Excel workbook with Rules, Segments and Values sheets; set parents and UTMs on each Rule afterwards. <button type="button" className="font-bold text-primary underline" onClick={() => void downloadRulesWorkbook(rulesToSheets([TEMPLATE_RULE], []), 'rules_template.xlsx')} data-testid="button-rules-template">Download a template</button></p>}
+
+      {importErrors.length > 0 && <div className="mb-6 rounded-[4px] border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs font-semibold text-destructive" data-testid="list-import-errors"><p className="mb-1 font-bold">Nothing was imported:</p><ul className="list-disc pl-5">{importErrors.map((message) => <li key={message}>{message}</li>)}</ul></div>}
+      {importErrors.length === 0 && imported > 0 && <p className="mb-6 rounded-[4px] border border-border bg-muted px-4 py-3 text-xs font-semibold text-foreground" data-testid="text-import-done">Added {imported === 1 ? '1 Rule. Review it' : `${imported} Rules. Review them`} below, then save the Rule Set.</p>}
 
       {issues.ruleSet.length > 0 && <ul className="mb-6 list-disc rounded-[4px] border border-destructive/30 bg-destructive/10 py-3 pl-9 pr-4 text-xs font-semibold text-destructive" data-testid="list-ruleset-issues">{issues.ruleSet.map((message) => <li key={message}>{message}</li>)}</ul>}
       {Object.keys(issues.rules).length > 0 && (

@@ -213,3 +213,29 @@ hundreds of values.
 - The child batch's per-parent narrowing uses the same dropdown, offering only the shared choices.
 - Playwright: 79 passing; `pickValues`, `selectAllValues` and `openRequest` in `fixtures.ts`
   drive the dropdown, and two new `batch` cases cover filtering, Backspace and the request row.
+
+## Rules as an Excel workbook: import and export on the Rule Set page (2026-10-05)
+
+Asked for by the user: author Rules in a spreadsheet. Decided 2026-10-05: an import adds new
+Rules only; a `rule_key` already in the Rule Set refuses the whole file. A first CSV version
+packed a Local list into one cell split by `|` and `:`, which corrupted legal codes such as
+`UK:LDN`; decided the same day: Excel over CSV, with one value per cell.
+
+- `packages/shared/src/rules-sheet.ts` (new): `rulesToSheets` and `rulesFromSheets`, pure over
+  rows of cells. Three sheets: Rules (one row per Rule), Segments (one row per segment, row
+  order the segment order) and Values (one row per entry of a Local list, in list order). A
+  Global is named in `global_definition`; `illegal_chars` is the characters themselves;
+  `platform` takes an id or display name. Codes, labels and illegal characters are never
+  trimmed, so any legal code round-trips byte for byte. Parents, UTMs and the scan source stay
+  out. Errors name the sheet and row, and any error imports nothing. No naming checks of its
+  own: imported Rules go through `checkRuleSetIssues` like any other.
+- `apps/web/src/lib/workbook.ts` (new): the only module touching `read-excel-file` and
+  `write-excel-file`, both loaded on click (own lazy chunks). Every cell is written as text,
+  so Excel keeps `01` or `TRUE` as typed; a Read me sheet explains each column.
+- Rule Set page: Import Excel (admins) and Export Excel (everyone who sees the page) next to
+  Add Rule; the template is an export of one example Rule. An import joins the unsaved draft
+  held in `App`, so Save, the `updatedAt` conflict check and the Security Rules apply unchanged.
+- Vitest: 10 cases in `rules-sheet.test.ts`, including codes with `:`, `|`, commas, quotes,
+  leading zeros, a leading space and a newline surviving export then import. Playwright: 84
+  passing, with `rules-workbook.spec.ts` for import and save, a refused duplicate key, a file
+  that is not a workbook, and the exported sheets.
