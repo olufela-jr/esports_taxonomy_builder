@@ -144,7 +144,8 @@ file per phase. Commits C1 to C7 on `main`:
 - `functions/` with the tenant guard (`tenantFromAuth`, `assertDatasetAllowed`) and a
   `scanCampaigns` that runs it and stops at `unimplemented`; built and unit tested, not
   deployed (Blaze plan and a deploy-time manifest without `workspace:*` still needed).
-- `scripts/migrate-v3.ts` (backup, transform, dry run, verify, explicit `--delete-legacy`)
+- `scripts/migrate-v3.ts` (backup, transform, dry run, verify, explicit `--delete-legacy`;
+  removed on 2026-10-07 once the run was complete and the legacy collection deleted)
   and `scripts/provision-user.ts` (claims plus the users mirror).
 Run live on 2026-09-24: the first tenant is `esports` ("Esports", `allowedDatasets:
 ["marketing"]`), the one v2 Rule Set migrated and verified, misterfela@gmail.com is its admin,
@@ -158,7 +159,8 @@ The Replit prototype has been migrated to this codebase; the log is in `migratio
 file per phase. All seven checklist steps below are done, and the app is deployed at
 https://media-taxonomy-tool.web.app. Stage 2 and the v2 build order come next. In place now:
 - Rule Set / Rule / Segment naming throughout, with immutable `id`s and editable `key`s.
-  Old local "taxonomy" data still auto-migrates in `apps/web/src/data/migrations.ts`.
+  The prototype's browser-local "taxonomy" data no longer migrates: the in-memory store
+  reads only the current v3 keys (`apps/web/src/data/local-storage.ts`, trimmed 2026-10-07).
 - Action-first shell with persistent Rule Set and Rule context across actions, refresh,
   and sign-out and sign-in.
 - Pooled "All Rules" `rollup` in the engine, with the strict per-row view secondary.

@@ -47,7 +47,6 @@ export function RuleEditor({ rule, ruleIndex, ruleSetName, base, segmentId, rule
   const [selected, setSelected] = useState<string | null>(segmentId);
   const header = useRef<HTMLElement>(null);
   const focusLabel = useRef<string | null>(null);
-  const href = `${base}/${rule.id}`;
   const dependents = dependentsOf(draftRuleSet, rule.id);
   const change = (updates: Partial<Rule>) => onRules(updateRule(rules, rule.id, updates));
 

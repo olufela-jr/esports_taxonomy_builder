@@ -142,7 +142,7 @@ export function CsvChecker({ ruleSet, rule, definitions, scanner }: { ruleSet: R
             <div className="grid grid-cols-2 rounded-md bg-muted/50 p-1 text-[13px] font-bold border border-border/30">
               <ModeButton active={source === 'csv'} onClick={() => { setSource('csv'); resetResults(); }} testId="button-source-csv">CSV upload</ModeButton>
               <button type="button" className={`flex items-center justify-center gap-2 rounded-[4px] py-1.5 transition-all ${source === 'live' ? 'bg-card text-foreground shadow-sm ring-1 ring-border/20' : scanner ? 'text-muted-foreground hover:text-foreground' : 'cursor-not-allowed text-muted-foreground/50'}`} disabled={!scanner} title={scanner ? undefined : 'Live scan needs the shared workspace.'} onClick={() => { setSource('live'); resetResults(); }} data-testid="button-source-live-scan">
-                Live scan {!scanner && <span className="rounded bg-black/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider dark:bg-white/10">Shared workspace</span>}
+                Live scan {!scanner && <span className="rounded bg-black/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider">Shared workspace</span>}
               </button>
             </div>
           </div>

@@ -29,7 +29,7 @@ apps/web/                React + Vite app
   src/components/        RuleSetList, RuleSetEditor (Author), Builder (Build), CsvChecker (Check), Compliance, Dictionary, Members, Tenants, AppShell, SignIn
   e2e/                   Playwright browser regressions
 functions/               @taxo/functions: the scanCampaigns Callable with the tenant guard (BigQuery body is Stage 2)
-scripts/                 one-off Admin SDK scripts: migrate-v3 (data into the first tenant) and provision-user (claims)
+scripts/                 Admin SDK scripts: provision-user (claims and tenants) and the two demo seeds
 firestore.rules          Security Rules, tested on the emulator by firestore.rules.test.ts
 firebase.json            Firestore rules path, Hosting, Functions, emulator ports
 ```
@@ -136,16 +136,6 @@ exists.
 pnpm provision:user --email someone@example.com --tenant <id> --role admin
 pnpm provision:user --email someone@example.com --tenant <id> --role user
 pnpm provision:user --email someone@example.com --tenant <id> --role admin --tenant-name "New client"   # creates the tenant document
-```
-
-The v3 migration moves the pre-v3 `/rulesets` collection into one first tenant, rewriting
-flat enum values as label = code entries. Every run writes a JSON backup under `backups/`
-first; the legacy collection stays until deleted explicitly.
-
-```
-pnpm migrate:v3 --tenant <id> --name "Client name" --dry-run   # backup, transform, verify, write nothing
-pnpm migrate:v3 --tenant <id> --name "Client name"             # write the tenant and its Rule Sets, then verify
-pnpm migrate:v3 --tenant <id> --delete-legacy                  # later, once everything is verified live
 ```
 
 After provisioning, the user signs out and in (or presses Retry on the "No workspace yet"

@@ -825,7 +825,7 @@ export function parse(rule: Rule, name: string): ParseResult {
 // parent link or a definition-backed segment would be judged against the wrong
 // segments, so both refuse it with one plain error instead of failing every
 // name. Never throws: the CSV checker calls validate per row with no catch.
-export function unresolvedViolation(rule: Rule): CodedError | null {
+function unresolvedViolation(rule: Rule): CodedError | null {
   if (rule.parent) {
     return {
       code: "unresolvedParent",
@@ -841,7 +841,7 @@ export function unresolvedViolation(rule: Rule): CodedError | null {
   return null;
 }
 
-export function unresolvedReason(rule: Rule): string | null {
+function unresolvedReason(rule: Rule): string | null {
   return unresolvedViolation(rule)?.reason ?? null;
 }
 

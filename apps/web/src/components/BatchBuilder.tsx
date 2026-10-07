@@ -3,7 +3,7 @@ import { AlertCircle, ArrowRight, Download, Play } from 'lucide-react';
 import { buildTrackingUrl, checkBatchChoices, countCombinations, enumerate, type BatchChoices, type ParentLine, type Rule } from '@taxo/shared';
 import type { OptionalMode, RuleSet } from '@/data/store';
 import { BatchSegmentField, DraftsPanel, useBatchDrafts, type Drafting } from './BatchDrafts';
-import { buttonPrimary, buttonQuiet, inputClass } from './styles';
+import { buttonPrimary, buttonQuiet } from './styles';
 
 // Phase 3: every combination of the chosen values for a Rule as a CSV (v2
 // D32, D33). Build is batch only; a single name is a batch of one. Each enum control is a searchable multi-select, each freeform control

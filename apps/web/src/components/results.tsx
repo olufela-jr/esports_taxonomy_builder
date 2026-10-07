@@ -3,7 +3,6 @@
 import { UNTAGGED, type Counts } from '@taxo/shared';
 import { AlertTriangle } from 'lucide-react';
 import {
-  cardClass,
   emptyStateClass,
   tableBody,
   tableCard,
@@ -38,7 +37,7 @@ export function StatusPill({ invalidCount }: { invalidCount: number }) {
     : <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5"><span className="h-2 w-2 rounded-full bg-primary" /><span className="text-[10px] font-bold text-foreground">All clear</span></div>;
 }
 
-export function CountCard({ label, caption, counts, missingColumn, testId }: { label: string; caption?: string; counts: Counts; missingColumn?: string; testId?: string }) {
+function CountCard({ label, caption, counts, missingColumn, testId }: { label: string; caption?: string; counts: Counts; missingColumn?: string; testId?: string }) {
   return (
     <div className={`rounded-xl border p-4 shadow-sm ${missingColumn ? 'border-destructive/30 bg-destructive/5' : 'border-border/30 bg-muted/20'}`} data-testid={testId}>
       <div className="flex items-start justify-between gap-3">
@@ -116,4 +115,3 @@ export function ResultsTable({ title, subtitle, action, columns, testId, childre
   );
 }
 
-export { cardClass };

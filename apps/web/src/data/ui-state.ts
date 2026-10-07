@@ -15,7 +15,7 @@ export type UiState = {
   lastAction: ActionPath;
 };
 
-export const defaultUiState: UiState = { tenantId: null, ruleSetId: null, ruleId: null, lastAction: '/build' };
+const defaultUiState: UiState = { tenantId: null, ruleSetId: null, ruleId: null, lastAction: '/build' };
 
 const STORAGE_KEY = 'campaign-tool-ui-state-v4';
 // v3 stored ruleId as the Rule's key (Rules had no ids yet).

@@ -73,7 +73,7 @@ export type Ports = {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function normalizeEmail(value: unknown): string {
+function normalizeEmail(value: unknown): string {
   const email = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (!EMAIL.test(email)) {
     throw new HttpsError('invalid-argument', 'Enter a valid email address.');

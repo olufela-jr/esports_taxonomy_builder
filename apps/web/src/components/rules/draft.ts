@@ -19,7 +19,7 @@ export function slugify(value: string) {
 }
 
 // A cleared definitionId leaves the segment rather than lingering as undefined.
-export function mergeSegment(segment: Segment, updates: Partial<Segment>): Segment {
+function mergeSegment(segment: Segment, updates: Partial<Segment>): Segment {
   const merged = { ...segment, ...updates } as Segment;
   if (merged.kind === 'enum' && merged.definitionId === undefined) delete merged.definitionId;
   return merged;
@@ -34,7 +34,7 @@ export function cleanTags(tags: Tags): Tags | undefined {
 }
 
 // Descendants take the delimiter and platform of the Rule they inherit from.
-export function cascadeToChildren(rules: Rule[], parentId: string): Rule[] {
+function cascadeToChildren(rules: Rule[], parentId: string): Rule[] {
   const parent = rules.find((rule) => rule.id === parentId);
   if (!parent) return rules;
   let next = rules;

@@ -1,14 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-border: hsl(var(--border));
   --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
   --color-card-border: hsl(var(--card-border));
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
@@ -17,7 +14,6 @@
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-sidebar-border: hsl(var(--sidebar-border));
@@ -32,12 +28,11 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-:root, .dark {
+:root {
   --background: 30 5% 9%;
   --foreground: 35 25% 96%;
   
   --card: 30 5% 14%;
-  --card-foreground: 35 25% 96%;
   --card-border: 30 5% 18%;
 
   --primary: 24 95% 58%;
@@ -50,7 +45,6 @@
   --accent-foreground: 20 10% 10%;
   
   --destructive: 355 75% 60%;
-  --destructive-foreground: 0 0% 100%;
   
   --border: 30 5% 18%;
 
@@ -75,9 +69,6 @@
   ::selection { background: hsl(var(--primary) / .2); color: hsl(var(--primary)); }
 }
 
-@layer utilities {
-  .text-balance { text-wrap: balance; }
-}
 /* Segment chips: in, out and (with useFlip) reorder. */
 @keyframes chip-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
 @keyframes chip-out { to { opacity: 0; transform: scale(.85); } }

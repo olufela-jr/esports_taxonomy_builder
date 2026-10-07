@@ -10,7 +10,7 @@ export type CsvTable = {
   rows: string[][];
 };
 
-export function parseCsv(text: string): string[][] {
+function parseCsv(text: string): string[][] {
   return Papa.parse<string[]>(text.trim(), { skipEmptyLines: true }).data;
 }
 

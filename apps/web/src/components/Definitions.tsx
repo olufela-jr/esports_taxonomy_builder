@@ -90,7 +90,7 @@ export function Definitions(props: DefinitionsProps) {
   const needle = query.trim().toLowerCase();
   const globals = [...definitions]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .filter((definition) => scope !== 'local')
+    .filter(() => scope !== 'local')
     .filter((definition) => !platform || definition.platforms.includes(platform) || (includeUnrestricted && definition.platforms.length === 0))
     .filter((definition) => !needle || definition.name.toLowerCase().includes(needle));
   const shownLocals = locals

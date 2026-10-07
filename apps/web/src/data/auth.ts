@@ -54,7 +54,7 @@ declare global {
 // author; seed and fixture Rule Sets all live in this one tenant.
 export const LOCAL_TENANT_ID = 'local';
 
-export function localUser(role: Role, superuser = false): User {
+function localUser(role: Role, superuser = false): User {
   return { uid: 'you', name: 'Local user', email: null, tenantId: LOCAL_TENANT_ID, role, superuser };
 }
 
@@ -77,7 +77,7 @@ function userFromClaims(firebaseUser: FirebaseUser, claims: Record<string, unkno
 
 // ---- In-memory -----------------------------------------------------------------
 
-export function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin', superuser: boolean = window.__taxoTestSuper ?? false): AuthSession {
+function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin', superuser: boolean = window.__taxoTestSuper ?? false): AuthSession {
   const current = (): User => (window.__taxoTestNoWorkspace ? { ...localUser(role, superuser), email: 'you@local.test', tenantId: null, role: null } : localUser(role, superuser));
   let user: User | null = current();
   const listeners = new Set<Listener>();
@@ -103,7 +103,7 @@ export function createMemoryAuth(role: Role = window.__taxoTestRole ?? 'admin', 
 
 // ---- Firebase ------------------------------------------------------------------
 
-export function createFirebaseAuth(auth: Auth): AuthSession {
+function createFirebaseAuth(auth: Auth): AuthSession {
   let user: User | null | undefined = undefined;
   const listeners = new Set<Listener>();
 

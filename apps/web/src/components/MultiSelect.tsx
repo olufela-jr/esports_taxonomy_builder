@@ -22,7 +22,7 @@ type MultiSelectProps = {
 const TOKEN_LIMIT = 8;
 
 // The checkbox wording Build always used: the label, and the code beside it when they differ.
-export function optionText(option: MultiSelectOption): string {
+function optionText(option: MultiSelectOption): string {
   return option.label === option.value ? option.label : `${option.label} (${option.value})`;
 }
 

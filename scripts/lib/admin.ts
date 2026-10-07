@@ -17,7 +17,7 @@ export function defaultProjectId(): string {
 // Project-local settings for these scripts only; never committed.
 const ENV_FILE = '.env.scripts';
 
-export function loadScriptEnv(): void {
+function loadScriptEnv(): void {
   if (existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 }
 

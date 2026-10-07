@@ -1,10 +1,10 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { marketDefinition, objectiveDefinition, readDefinitions, readRequests, seedRuleSets } from './fixtures';
 
 // The Dictionary tab (v3 phase 2): admins author shared definitions, members
 // read them and request values, admins approve or reject.
 
-async function typeAndCheck(page: Page, field: Locator, text: string) {
+async function typeAndCheck(field: Locator, text: string) {
   await field.click();
   await field.fill('');
   await field.pressSequentially(text, { delay: 15 });
@@ -34,12 +34,12 @@ test('an admin creates a definition, typing freely, and it is stored with its en
   await expect(page.getByTestId('card-definition-def-objective')).toBeVisible();
 
   await page.getByTestId('button-create-definition').click();
-  await typeAndCheck(page, page.getByTestId('input-definition-name'), 'Campaign type');
-  await typeAndCheck(page, page.getByTestId('input-entry-label-0'), 'Performance');
-  await typeAndCheck(page, page.getByTestId('input-entry-code-0'), 'perf');
+  await typeAndCheck(page.getByTestId('input-definition-name'), 'Campaign type');
+  await typeAndCheck(page.getByTestId('input-entry-label-0'), 'Performance');
+  await typeAndCheck(page.getByTestId('input-entry-code-0'), 'perf');
   await page.getByTestId('button-add-entry').click();
-  await typeAndCheck(page, page.getByTestId('input-entry-label-1'), 'Brand');
-  await typeAndCheck(page, page.getByTestId('input-entry-code-1'), 'brand');
+  await typeAndCheck(page.getByTestId('input-entry-label-1'), 'Brand');
+  await typeAndCheck(page.getByTestId('input-entry-code-1'), 'brand');
   await page.getByTestId('checkbox-platform-google').check();
   await page.getByTestId('checkbox-platform-meta').check();
   await page.getByTestId('button-save-definition').click();
@@ -75,8 +75,8 @@ test('a standard user reads definitions and submits a request', async ({ page })
   await expect(page.getByTestId('view-definition')).toContainText('United Kingdom');
   await expect(page.getByTestId('row-value-uk')).toBeVisible();
 
-  await typeAndCheck(page, page.getByTestId('input-request-label'), 'Germany');
-  await typeAndCheck(page, page.getByTestId('input-request-code'), 'de');
+  await typeAndCheck(page.getByTestId('input-request-label'), 'Germany');
+  await typeAndCheck(page.getByTestId('input-request-code'), 'de');
   await page.getByTestId('input-request-note').fill('Launching in Q4');
   await page.getByTestId('button-submit-request').click();
   await expect(page.getByTestId('text-request-sent')).toBeVisible();

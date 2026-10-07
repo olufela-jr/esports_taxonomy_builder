@@ -11,7 +11,7 @@ import { collection, deleteDoc, doc, onSnapshot, query, runTransaction, setDoc, 
 import { newId } from '@/lib/ids';
 import { LOCAL_TENANT_ID } from './auth';
 import { getFirebase } from '@/lib/firebase';
-import { readLocalDefinitions, readLocalDrafts, readLocalRequests, readLocalRuleSets, writeLocalDefinitions, writeLocalDrafts, writeLocalRequests, writeLocalRuleSets } from './migrations';
+import { readLocalDefinitions, readLocalDrafts, readLocalRequests, readLocalRuleSets, writeLocalDefinitions, writeLocalDrafts, writeLocalRequests, writeLocalRuleSets } from './local-storage';
 import type { Mode } from './mode';
 import { seedDefinitions, seedRuleSets } from './seeds';
 import type { Audit, BuildDraft, BuildDraftDraft, Definition, DefinitionDraft, Invite, RuleSet, RuleSetDraft, Tenant, TenantUser, ValueRequest, ValueRequestDraft } from './types';
@@ -82,7 +82,7 @@ export type Store = {
 };
 
 // A save was refused because the stored document is not the one the editor loaded.
-export class ConflictError extends Error {
+class ConflictError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'ConflictError';
@@ -108,27 +108,27 @@ declare global {
   }
 }
 
-export function ruleSetsPath(tenantId: string): string {
+function ruleSetsPath(tenantId: string): string {
   return `tenants/${tenantId}/rulesets`;
 }
 
-export function definitionsPath(tenantId: string): string {
+function definitionsPath(tenantId: string): string {
   return `tenants/${tenantId}/definitions`;
 }
 
-export function requestsPath(tenantId: string): string {
+function requestsPath(tenantId: string): string {
   return `tenants/${tenantId}/requests`;
 }
 
-export function draftsPath(tenantId: string): string {
+function draftsPath(tenantId: string): string {
   return `tenants/${tenantId}/drafts`;
 }
 
-export function membersPath(tenantId: string): string {
+function membersPath(tenantId: string): string {
   return `tenants/${tenantId}/users`;
 }
 
-export function invitesPath(tenantId: string): string {
+function invitesPath(tenantId: string): string {
   return `tenants/${tenantId}/invites`;
 }
 
@@ -236,7 +236,7 @@ function draftVisible(session: StoreSession): (draft: BuildDraft) => boolean {
   return session.readAll ? () => true : (draft) => draft.createdBy === session.uid;
 }
 
-export function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], drafts: BuildDraft[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void; drafts: (items: BuildDraft[]) => void }, members?: TenantUser[], invites?: Invite[]): Store {
+function createMemoryStore(ruleSets: RuleSet[], definitions: Definition[], requests: ValueRequest[], drafts: BuildDraft[], session: StoreSession, persist?: { ruleSets: (items: RuleSet[]) => void; definitions: (items: Definition[]) => void; requests: (items: ValueRequest[]) => void; drafts: (items: BuildDraft[]) => void }, members?: TenantUser[], invites?: Invite[]): Store {
   // Admins see the whole list; a standard user's readers stay empty, as under the rules.
   const memberList = memoryList<TenantUser>(session.readAll ? memoryMembers(session, members) : [], byName);
   const inviteList = memoryList<Invite>(session.readAll ? invites ?? [] : [], byNewestInvite);
@@ -403,7 +403,7 @@ function firestoreTenant(db: Firestore, session: StoreSession): TenantReader {
   };
 }
 
-export function createFirestoreStore(db: Firestore, session: StoreSession): Store {
+function createFirestoreStore(db: Firestore, session: StoreSession): Store {
   return {
     kind: 'firestore',
     ruleSets: firestoreCollection<RuleSet, RuleSetDraft>(db, ruleSetsPath(session.tenantId), session),

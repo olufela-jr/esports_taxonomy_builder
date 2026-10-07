@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { complianceBoard, complianceOfRule, resolveRule, validateInRuleSet, type ComplianceBoard as Board, type Definition, type NameAnnotation, type Rule, type RuleCompliance, type ViolationCode } from '@taxo/shared';
+import { complianceBoard, complianceOfRule, resolveRule, validateInRuleSet, type ComplianceBoard as Board, type Definition, type NameAnnotation, type RuleCompliance, type ViolationCode } from '@taxo/shared';
 import { useLocation } from 'wouter';
 import { BarChart3, CheckCircle2, Database, Download, Upload, XCircle } from 'lucide-react';
 import { scanRuleSet, type Scanner } from '@/data/scan';
@@ -203,7 +203,7 @@ export function Compliance({ ruleSet, definitions, scanner, onSelectRule }: {
             <div className="grid grid-cols-2 rounded-md bg-muted/50 p-1 text-[13px] font-bold border border-border/30">
               <ModeButton active={source === 'csv'} onClick={() => setSource('csv')} testId="button-compliance-csv">CSV upload</ModeButton>
               <button type="button" className={`flex items-center justify-center gap-2 rounded-[4px] py-1.5 transition-all ${source === 'live' ? 'bg-card text-foreground shadow-sm ring-1 ring-border/20' : scanner ? 'text-muted-foreground hover:text-foreground' : 'cursor-not-allowed text-muted-foreground/50'}`} disabled={!scanner} title={scanner ? undefined : 'Live scan needs the shared workspace.'} onClick={() => setSource('live')} data-testid="button-compliance-live">
-                Live scan {!scanner && <span className="rounded bg-black/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider dark:bg-white/10">Shared workspace</span>}
+                Live scan {!scanner && <span className="rounded bg-black/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider">Shared workspace</span>}
               </button>
             </div>
           </div>

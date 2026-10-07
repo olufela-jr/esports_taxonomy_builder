@@ -108,7 +108,7 @@ export function useBatchDrafts(drafting: Drafting, ruleSet: RuleSet, rule: Rule,
 
 // The form to request a missing value, opened from a segment's dropdown with
 // the typed text as the label. Only for a segment that reads a Global definition.
-export function RequestValue({ segment, definition, initialLabel, onSend, onClose }: { segment: Segment; definition: Definition; initialLabel: string; onSend: (segment: Segment, proposal: { label: string; code: string }, note: string) => Promise<void>; onClose: () => void }) {
+function RequestValue({ segment, definition, initialLabel, onSend, onClose }: { segment: Segment; definition: Definition; initialLabel: string; onSend: (segment: Segment, proposal: { label: string; code: string }, note: string) => Promise<void>; onClose: () => void }) {
   const [label, setLabel] = useState(initialLabel);
   const [code, setCode] = useState('');
   const [note, setNote] = useState('');
@@ -197,7 +197,7 @@ export function BatchSegmentField({ segment, picked, onPicked, lines, onLines, m
 }
 
 // The notice on the segment a draft is waiting on.
-export function BlockedNotice({ segmentKey, request, onDiscard }: { segmentKey: string; request: ValueRequest; onDiscard?: () => void }) {
+function BlockedNotice({ segmentKey, request, onDiscard }: { segmentKey: string; request: ValueRequest; onDiscard?: () => void }) {
   return (
     <div className="mt-2 rounded-[4px] border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-900" data-testid={`status-build-blocked-${segmentKey}`}>
       <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> {request.status === 'rejected' ? `Your request for "${request.label}" (${request.code}) was rejected${request.reason ? `: ${request.reason}` : '.'}` : `Waiting for an admin to approve "${request.label}" (${request.code}). This batch is saved as a draft.`}</span>

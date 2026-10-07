@@ -40,7 +40,7 @@ function byName(a: Tenant, b: Tenant): number {
 
 // The shape the Function stores: datasets deduplicated and sorted, platforms
 // lowercase. Applied by the memory directory so it reads back the same way.
-export function normalizeTenantConfig(config: TenantConfig): TenantConfig {
+function normalizeTenantConfig(config: TenantConfig): TenantConfig {
   return {
     allowedDatasets: [...new Set(config.allowedDatasets.map((item) => item.trim()).filter(Boolean))].sort(),
     platforms: [...new Set(config.platforms.map((item) => item.trim().toLowerCase()).filter(Boolean))],

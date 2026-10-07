@@ -24,7 +24,7 @@ export function CommaListInput({ value, onChange, className, placeholder, testId
 
 // The parent's resolved segments a child may inherit: the leading run of
 // required segments (D28). An option per position, "up to <label>".
-export function inheritableSegments(parent: Rule | undefined, draftRuleSet: { id: string; name: string; rules: Rule[] }, definitions: Definition[]): { segments: Segment[]; error: string } {
+function inheritableSegments(parent: Rule | undefined, draftRuleSet: { id: string; name: string; rules: Rule[] }, definitions: Definition[]): { segments: Segment[]; error: string } {
   if (!parent) return { segments: [], error: '' };
   const resolution = resolveRule(parent, draftRuleSet, definitions);
   if (resolution.errors.length > 0) return { segments: [], error: `The parent cannot be resolved yet: ${resolution.errors[0]}` };
